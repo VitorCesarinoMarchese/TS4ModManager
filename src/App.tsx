@@ -125,7 +125,7 @@ export function App({ store = defaultStore }: AppProps) {
           onClick={() => setSettingsOpen(false)}
         >
           <section
-            className="modal grid max-h-[90vh] w-[min(860px,100%)] gap-5 overflow-auto rounded-[14px] border border-slate-300 bg-white p-6 dark:border-slate-700 dark:bg-slate-900"
+            className="modal grid w-[min(860px,calc(100vw-2rem))] gap-5 overflow-visible rounded-[14px] border border-slate-300 bg-white p-6 dark:border-slate-700 dark:bg-slate-900"
             role="dialog"
             aria-label="settings-modal"
             onClick={(e) => e.stopPropagation()}

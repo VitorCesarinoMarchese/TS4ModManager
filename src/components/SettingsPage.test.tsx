@@ -24,6 +24,7 @@ describe("SettingsPage", () => {
       "title",
       "/steam/path"
     );
+    expect(screen.getByRole("combobox", { name: "Active instance" })).toHaveClass("appearance-none");
   });
 
   it("fires rescan click", () => {

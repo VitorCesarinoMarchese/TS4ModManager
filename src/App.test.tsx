@@ -57,7 +57,10 @@ describe("App redesign", () => {
     render(<App store={store} />);
 
     fireEvent.click(screen.getByRole("button", { name: "open-settings" }));
-    expect(screen.getByRole("dialog", { name: "settings-modal" })).toBeInTheDocument();
+    const modal = screen.getByRole("dialog", { name: "settings-modal" });
+    expect(modal).toBeInTheDocument();
+    expect(modal).not.toHaveClass("overflow-auto");
+    expect(modal).toHaveClass("overflow-visible");
 
     fireEvent.click(screen.getByRole("button", { name: "close-settings" }));
     expect(screen.queryByRole("dialog", { name: "settings-modal" })).not.toBeInTheDocument();

@@ -22,18 +22,6 @@ button {
   color-scheme: dark;
 }
 
-.app-shell.dark select {
-  background-color: #242a34;
-  color: #e8e8e8;
-  -webkit-text-fill-color: #e8e8e8;
-}
-
-.app-shell.dark select:focus,
-.app-shell.dark select:active {
-  background-color: #242a34;
-  color: #e8e8e8;
-  -webkit-text-fill-color: #e8e8e8;
-}
 
 .app-shell.dark select option {
   background: #1f232b;

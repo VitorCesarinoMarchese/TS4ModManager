@@ -9,13 +9,13 @@ export function ImportPanel({ onImport }: ImportPanelProps) {
   const [archivePath, setArchivePath] = useState("");
   const [name, setName] = useState("");
   const [slug, setSlug] = useState("");
-  const inputClass = "rounded-md border border-slate-300 bg-white px-3 py-1.5 dark:border-slate-600 dark:bg-slate-800";
+  const inputClass = "h-9 rounded-md border border-slate-300 bg-white px-3 py-1.5 text-slate-950 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100";
 
   return (
     <section aria-label="import-panel" className="import-panel grid gap-4">
       <h2 className="text-xl font-semibold">Import</h2>
 
-      <div className="form-grid grid grid-cols-[minmax(120px,auto)_minmax(220px,1fr)_minmax(100px,auto)_minmax(220px,1fr)_minmax(120px,auto)_minmax(180px,1fr)] items-center gap-3">
+      <div className="form-grid grid grid-cols-[minmax(120px,auto)_minmax(220px,1fr)] items-center gap-3">
         <label className="text-sm font-medium" htmlFor="archive-path">
           Archive path
         </label>
