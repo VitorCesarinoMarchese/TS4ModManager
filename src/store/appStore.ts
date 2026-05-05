@@ -1,0 +1,210 @@
+import { createStore } from "zustand/vanilla";
+import type { DryRunResult, GameInstance, Issue, Mod } from "../lib/types";
+
+export type ApplyResult = {
+  applied: boolean;
+  issues: Issue[];
+};
+
+export type MigrateResult = {
+  managedModId: string;
+  issues: Issue[];
+};
+
+export type ImportResult = { modId: string };
+
+export type BackendApi = {
+  detectGameInstances: () => Promise<GameInstance[]>;
+  scanMods: (instanceId: string) => Promise<Mod[]>;
+  detectOrphanSymlinks: (instanceId: string) => Promise<{ path: string; target: string }[]>;
+  validateCustomInstance: (path: string) => Promise<GameInstance>;
+  importArchive: (archivePath: string, name: string, slug?: string) => Promise<ImportResult>;
+  dryRunToggle: (
+    modId: string,
+    targetEnabled: boolean,
+    instanceId: string
+  ) => Promise<DryRunResult>;
+  applyToggle: (
+    modId: string,
+    targetEnabled: boolean,
+    instanceId: string
+  ) => Promise<ApplyResult>;
+  migrateExternalMod: (modId: string, instanceId: string) => Promise<MigrateResult>;
+};
+
+/* c8 ignore start */
+const defaultApi: BackendApi = {
+  detectGameInstances: async () => [],
+  scanMods: async () => [],
+  detectOrphanSymlinks: async () => [],
+  validateCustomInstance: async (path) => ({ id: `custom:${path}`, path, source: "custom" }),
+  importArchive: async () => ({ modId: "" }),
+  dryRunToggle: async () => ({ canApply: true, operations: [], issues: [] }),
+  applyToggle: async () => ({ applied: true, issues: [] }),
+  migrateExternalMod: async (modId) => ({ managedModId: modId, issues: [] })
+};
+/* c8 ignore stop */
+
+export type AppState = {
+  instances: GameInstance[];
+  selectedInstanceId: string | null;
+  mods: Mod[];
+  issues: Issue[];
+  lastDryRun: DryRunResult | null;
+  selectInstance: (id: string | null) => void;
+  loadInstances: () => Promise<void>;
+  selectInstanceAndScan: (id: string) => Promise<void>;
+  rescanSelected: () => Promise<void>;
+  addIssue: (issue: Issue) => void;
+  addCustomInstance: (path: string) => Promise<void>;
+  importArchive: (archivePath: string, name: string, slug?: string) => Promise<void>;
+  toggleMod: (mod: Mod, targetEnabled: boolean, instanceId: string) => Promise<DryRunResult>;
+};
+
+const severityRank: Record<Issue["severity"], number> = {
+  info: 1,
+  warning: 2,
+  error: 3
+};
+
+function mergeIssueList(existing: Issue[], incoming: Issue): Issue[] {
+  const ix = existing.findIndex((it) => it.id === incoming.id);
+  if (ix === -1) {
+    return [...existing, incoming];
+  }
+
+  const current = existing[ix];
+  const keepIncoming = severityRank[incoming.severity] >= severityRank[current.severity];
+  if (!keepIncoming) {
+    return existing;
+  }
+
+  const next = [...existing];
+  next[ix] = incoming;
+  return next;
+}
+
+function mergeIssues(existing: Issue[], incoming: Issue[]): Issue[] {
+  return incoming.reduce(mergeIssueList, existing);
+}
+
+function toIssue(error: unknown, fallbackId: string, fallbackMsg: string): Issue {
+  if (
+    typeof error === "object" &&
+    error !== null &&
+    "message" in error &&
+    typeof (error as { message: unknown }).message === "string"
+  ) {
+    const maybeCode =
+      "code" in error && typeof (error as { code: unknown }).code === "string"
+        ? ((error as { code: string }).code as Issue["code"])
+        : undefined;
+
+    return {
+      id: `${fallbackId}-${Date.now()}`,
+      severity: "error",
+      message: (error as { message: string }).message,
+      code: maybeCode
+    };
+  }
+
+  return {
+    id: `${fallbackId}-${Date.now()}`,
+    severity: "error",
+    message: fallbackMsg
+  };
+}
+
+export function createAppStore(apiOverrides: Partial<BackendApi> = {}) {
+  const api: BackendApi = { ...defaultApi, ...apiOverrides };
+
+  return createStore<AppState>((set, get) => ({
+    instances: [],
+    selectedInstanceId: null,
+    mods: [],
+    issues: [],
+    lastDryRun: null,
+    selectInstance: (id) => set({ selectedInstanceId: id }),
+    loadInstances: async () => {
+      const instances = await api.detectGameInstances();
+      set({ instances });
+    },
+    selectInstanceAndScan: async (id) => {
+      const mods = await api.scanMods(id);
+      set({ selectedInstanceId: id, mods });
+    },
+    rescanSelected: async () => {
+      const id = get().selectedInstanceId;
+      if (!id) return;
+      const mods = await api.scanMods(id);
+      set({ mods });
+
+      const orphans = await api.detectOrphanSymlinks(id);
+      if (orphans.length > 0) {
+        const orphanIssues = orphans.map((orphan, i) => ({
+          id: `orphan-${i}-${orphan.path}`,
+          severity: "warning" as const,
+          message: `Orphan symlink: ${orphan.path}`,
+          code: "EXTERNAL_LINK" as const,
+          context: { target: orphan.target }
+        }));
+        set((state) => ({ issues: mergeIssues(state.issues, orphanIssues) }));
+      }
+    },
+    addIssue: (issue) => set((state) => ({ issues: mergeIssueList(state.issues, issue) })),
+    addCustomInstance: async (path) => {
+      try {
+        const instance = await api.validateCustomInstance(path);
+        set((state) => ({ instances: [...state.instances, instance] }));
+        const mods = await api.scanMods(instance.id);
+        set({ selectedInstanceId: instance.id, mods });
+      } catch (error) {
+        set((state) => ({
+          issues: mergeIssueList(state.issues, toIssue(error, "custom-path", "Custom path invalid"))
+        }));
+      }
+    },
+    importArchive: async (archivePath, name, slug) => {
+      try {
+        await api.importArchive(archivePath, name, slug);
+        const id = get().selectedInstanceId;
+        if (!id) return;
+        const mods = await api.scanMods(id);
+        set({ mods });
+      } catch (error) {
+        set((state) => ({
+          issues: mergeIssueList(state.issues, toIssue(error, "import", "Import failed"))
+        }));
+      }
+    },
+    toggleMod: async (mod, targetEnabled, instanceId) => {
+      let effectiveModId = mod.id;
+
+      if (mod.source === "external") {
+        const migration = await api.migrateExternalMod(mod.id, instanceId);
+        effectiveModId = migration.managedModId;
+        if (migration.issues.length > 0) {
+          set((state) => ({ issues: mergeIssues(state.issues, migration.issues) }));
+        }
+      }
+
+      const dryRun = await api.dryRunToggle(effectiveModId, targetEnabled, instanceId);
+      set({ lastDryRun: dryRun });
+
+      if (dryRun.issues.length > 0) {
+        set((state) => ({ issues: mergeIssues(state.issues, dryRun.issues) }));
+      }
+
+      if (!dryRun.canApply) {
+        return dryRun;
+      }
+
+      const applied = await api.applyToggle(effectiveModId, targetEnabled, instanceId);
+      if (applied.issues.length > 0) {
+        set((state) => ({ issues: mergeIssues(state.issues, applied.issues) }));
+      }
+
+      return dryRun;
+    }
+  }));
+}
