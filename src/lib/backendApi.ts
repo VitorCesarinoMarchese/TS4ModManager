@@ -1,6 +1,11 @@
 import { toBackendErrorCode, type ApiError } from "./error";
 import type { DryRunResult, GameInstance, Issue, Mod } from "./types";
 
+type ScannedModDto = Omit<Mod, "id"> & {
+  id?: string;
+  key?: string;
+};
+
 type InvokeFn = <T = unknown>(command: string, payload?: Record<string, unknown>) => Promise<T>;
 
 type ApplyResult = {
@@ -49,7 +54,11 @@ export function createBackendApi(invoke: InvokeFn) {
 
     async scanMods(instanceId: string): Promise<Mod[]> {
       try {
-        return await invoke<Mod[]>("scan_mods", { instanceId });
+        const mods = await invoke<ScannedModDto[]>("scan_mods", { instanceId });
+        return mods.map(({ key, id, ...mod }) => ({
+          ...mod,
+          id: id ?? key ?? mod.name
+        }));
       } catch (error) {
         throw normalizeError(error);
       }

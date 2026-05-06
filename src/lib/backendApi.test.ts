@@ -44,6 +44,25 @@ describe("backend api wrapper", () => {
     });
   });
 
+  it("normalizes scanned mod key to frontend id", async () => {
+    const invoke = vi.fn().mockResolvedValue([
+      {
+        key: "FolderA",
+        name: "FolderA",
+        files: ["FolderA/a.package"],
+        enabled: false,
+        source: "managed"
+      }
+    ]);
+    const api = createBackendApi(invoke);
+
+    const [mod] = await api.scanMods("i1");
+
+    expect(mod.id).toBe("FolderA");
+    expect(mod.name).toBe("FolderA");
+    expect(invoke).toHaveBeenCalledWith("scan_mods", { instanceId: "i1" });
+  });
+
   it("throws typed error for backend failure", async () => {
     const invoke = vi.fn().mockRejectedValue({ code: "PATH_COLLISION", message: "collision" });
     const api = createBackendApi(invoke);
