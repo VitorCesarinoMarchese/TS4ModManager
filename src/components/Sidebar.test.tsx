@@ -23,6 +23,8 @@ describe("Sidebar", () => {
     const selectedButton = screen.getByRole("button", { name: "Steam Instance 1" });
     expect(selectedButton).toHaveAttribute("title", "/long/path/one");
     expect(selectedButton).toHaveAttribute("aria-pressed", "true");
+    expect(selectedButton).toHaveClass("border-accent");
+    expect(selectedButton).toHaveClass("bg-accent/10");
 
     fireEvent.click(screen.getByRole("button", { name: "Custom Instance 2" }));
     expect(onSelect).toHaveBeenCalledWith("i2");

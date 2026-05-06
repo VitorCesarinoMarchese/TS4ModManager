@@ -35,8 +35,8 @@ export function Sidebar({ instances, selectedInstanceId, onSelectInstance }: Sid
                 aria-pressed={isSelected}
                 className={`inline-flex w-full items-center gap-2 rounded-md border px-3 py-2 text-left text-sm ${
                   isSelected
-                    ? "active border-blue-400 bg-blue-50 dark:border-blue-400 dark:bg-slate-800"
-                    : "border-slate-300 bg-white hover:border-blue-400 hover:bg-blue-50 dark:border-slate-600 dark:bg-slate-800 dark:hover:border-blue-300 dark:hover:bg-slate-700"
+                    ? "active border-accent bg-accent/10 dark:border-accent dark:bg-accent/10"
+                    : "border-slate-300 bg-white hover:border-accent hover:bg-accent/10 dark:border-slate-600 dark:bg-slate-800 dark:hover:border-accent dark:hover:bg-accent/10"
                 }`}
                 onClick={() => onSelectInstance(instance.id)}
               >

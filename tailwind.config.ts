@@ -4,7 +4,11 @@ export default {
   darkMode: "class",
   content: ["./index.html", "./src/**/*.{ts,tsx}"],
   theme: {
-    extend: {}
+    extend: {
+      colors: {
+        accent: "#10b981"
+      }
+    }
   },
   plugins: []
 } satisfies Config;

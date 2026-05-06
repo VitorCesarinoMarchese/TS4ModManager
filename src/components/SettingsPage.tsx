@@ -7,6 +7,7 @@ type SettingsPageProps = {
   selectedInstanceId: string | null;
   onSelectInstance: (id: string) => void;
   onRescan: () => void;
+  rescanDisabled?: boolean;
   onAddCustomPath: (path: string) => void | Promise<void>;
 };
 
@@ -25,12 +26,13 @@ export function SettingsPage({
   selectedInstanceId,
   onSelectInstance,
   onRescan,
+  rescanDisabled = false,
   onAddCustomPath
 }: SettingsPageProps) {
   const [customPath, setCustomPath] = useState("");
   const inputClass = "h-9 rounded-md border border-slate-300 bg-white px-3 py-1.5 text-slate-950 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100";
   const buttonClass =
-    "inline-flex items-center gap-2 rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm hover:border-blue-400 hover:bg-blue-50 dark:border-slate-600 dark:bg-slate-800 dark:hover:border-blue-300 dark:hover:bg-slate-700";
+    "inline-flex items-center gap-2 rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm hover:border-accent hover:bg-accent/10 focus:outline-none focus:ring-2 focus:ring-accent/40 disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-600 dark:bg-slate-800 dark:hover:border-accent dark:hover:bg-accent/10";
 
   return (
     <section aria-label="settings-page" className="settings-page grid gap-4">
@@ -60,8 +62,13 @@ export function SettingsPage({
             aria-hidden="true"
           />
         </div>
-        <button type="button" className={buttonClass} onClick={onRescan}>
-          <ArrowsClockwise size={16} weight="regular" aria-hidden="true" />
+        <button type="button" className={buttonClass} disabled={rescanDisabled} onClick={onRescan}>
+          <ArrowsClockwise
+            className={rescanDisabled ? "animate-spin" : ""}
+            size={16}
+            weight="regular"
+            aria-hidden="true"
+          />
           Rescan Mods
         </button>
       </div>

@@ -6,7 +6,7 @@ describe("TopBar", () => {
   it("renders title and settings button", () => {
     render(<TopBar />);
     expect(screen.getByText("Sims 4 Mod Manager")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "open-settings" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "open-settings" })).toHaveClass("focus:ring-accent/40");
   });
 
   it("fires onSettings when button clicked", () => {
