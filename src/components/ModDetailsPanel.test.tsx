@@ -14,7 +14,7 @@ describe("ModDetailsPanel", () => {
   it("renders mod details and file list", () => {
     render(<ModDetailsPanel mod={mod} onClose={() => {}} />);
 
-    expect(screen.getByRole("dialog", { name: "mod-details" })).toBeInTheDocument();
+    expect(screen.getByRole("dialog", { name: "mod-details" })).toHaveAttribute("data-animated", "true");
     expect(screen.getByText("MyMod")).toBeInTheDocument();
     expect(screen.getByText("2 files")).toBeInTheDocument();
     expect(screen.getByTitle("packages/a.package")).toHaveClass("truncate");

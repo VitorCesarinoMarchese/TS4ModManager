@@ -1,4 +1,5 @@
 import { FloppyDisk, X } from "@phosphor-icons/react";
+import { motion } from "framer-motion";
 import { useEffect, useState } from "react";
 import type { Mod } from "../lib/types";
 
@@ -11,24 +12,31 @@ type ModDetailsPanelProps = {
 export function ModDetailsPanel({ mod, onClose, onRename }: ModDetailsPanelProps) {
   const [name, setName] = useState(mod.name);
   const buttonClass =
-    "inline-flex items-center gap-2 rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm hover:border-blue-400 hover:bg-blue-50 dark:border-slate-600 dark:bg-slate-800 dark:hover:border-blue-300 dark:hover:bg-slate-700";
+    "inline-flex items-center gap-2 rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm hover:border-accent hover:bg-accent/10 focus:outline-none focus:ring-2 focus:ring-accent/40 dark:border-slate-600 dark:bg-slate-800 dark:hover:border-accent dark:hover:bg-accent/10";
 
   useEffect(() => {
     setName(mod.name);
   }, [mod.id, mod.name]);
 
   return (
-    <div
+    <motion.div
       className="modal-backdrop fixed inset-0 z-20 grid place-items-center bg-black/35 p-4"
       role="presentation"
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      transition={{ duration: 0.16 }}
       onClick={(e) => {
         if (e.target === e.currentTarget) onClose();
       }}
     >
-      <section
+      <motion.section
         className="modal grid max-h-[90vh] w-[min(860px,100%)] gap-5 overflow-auto rounded-[14px] border border-slate-300 bg-white p-6 dark:border-slate-700 dark:bg-slate-900"
         role="dialog"
         aria-label="mod-details"
+        data-animated="true"
+        initial={{ opacity: 0, scale: 0.98 }}
+        animate={{ opacity: 1, scale: 1 }}
+        transition={{ duration: 0.18, ease: "easeOut" }}
         onClick={(e) => e.stopPropagation()}
       >
         <header className="modal-header flex items-center justify-between gap-4">
@@ -77,7 +85,7 @@ export function ModDetailsPanel({ mod, onClose, onRename }: ModDetailsPanelProps
             </li>
           ))}
         </ul>
-      </section>
-    </div>
+      </motion.section>
+    </motion.div>
   );
 }

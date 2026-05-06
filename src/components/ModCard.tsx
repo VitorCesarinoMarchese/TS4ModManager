@@ -1,4 +1,5 @@
 import { Eye, ImageSquare, Power, WarningCircle } from "@phosphor-icons/react";
+import { motion } from "framer-motion";
 import type { Mod } from "../lib/types";
 
 type ModCardProps = {
@@ -10,12 +11,17 @@ type ModCardProps = {
 
 export function ModCard({ mod, disabled, onToggle, onDetails }: ModCardProps) {
   const buttonClass =
-    "inline-flex items-center gap-2 rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm hover:border-blue-400 hover:bg-blue-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-600 dark:bg-slate-800 dark:hover:border-blue-300 dark:hover:bg-slate-700";
+    "inline-flex items-center gap-2 rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm hover:border-accent hover:bg-accent/10 disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-600 dark:bg-slate-800 dark:hover:border-accent dark:hover:bg-accent/10";
 
   return (
-    <article
-      className="mod-card grid gap-3 rounded-[14px] border border-slate-300 bg-white p-[18px] transition duration-150 ease-in hover:-translate-y-px hover:border-blue-400 hover:shadow-md dark:border-slate-700 dark:bg-slate-900"
+    <motion.article
+      className="mod-card grid gap-3 rounded-[14px] border border-slate-300 bg-white p-[18px] transition duration-150 ease-in hover:-translate-y-px hover:border-accent hover:shadow-md dark:border-slate-700 dark:bg-slate-900"
       aria-label={`mod-card-${mod.id}`}
+      data-animated="true"
+      initial={{ opacity: 0, y: 8 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.18, ease: "easeOut" }}
+      whileTap={{ scale: 0.995 }}
     >
       <div className="preview grid h-[140px] place-items-center overflow-hidden rounded-[10px] border border-dashed border-slate-300 text-slate-500 dark:border-slate-700 dark:text-slate-300">
         {mod.preview ? (
@@ -62,6 +68,6 @@ export function ModCard({ mod, disabled, onToggle, onDetails }: ModCardProps) {
           Details
         </button>
       </div>
-    </article>
+    </motion.article>
   );
 }
