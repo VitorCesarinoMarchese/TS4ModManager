@@ -77,9 +77,10 @@ pub fn scan_mods(mods_dir: &Path, managed_root: &Path) -> Vec<ScannedMod> {
 
     groups
         .into_iter()
-        .map(|(key, mut files)| {
+        .filter_map(|(key, mut files)| {
             files.sort_by(|a, b| a.relative.cmp(&b.relative));
-            build_scanned_mod(key, files, managed_root)
+            let scanned = build_scanned_mod(key, files, managed_root);
+            (!scanned.mod_files.is_empty()).then_some(scanned)
         })
         .collect()
 }
@@ -153,7 +154,8 @@ fn filename_prefix(filename: &str) -> String {
 }
 
 fn is_mod_file(path: &str) -> bool {
-    path.ends_with(".package") || path.ends_with(".ts4script")
+    let lower = path.to_ascii_lowercase();
+    lower.ends_with(".package") || lower.ends_with(".ts4script")
 }
 
 fn is_preview_candidate(path: &str) -> bool {
@@ -221,7 +223,7 @@ mod tests {
     }
 
     #[test]
-    fn includes_non_mod_assets_and_identifies_mod_extensions() {
+    fn includes_assets_only_when_group_contains_mod_files() {
         let root = TempDir::new().expect("tmp");
         let mods = root.path().join("Mods");
         let managed = root.path().join("managed");
@@ -234,8 +236,27 @@ mod tests {
         fs::write(mods.join("Pack/readme.md"), b"md").expect("md");
 
         let scanned = scan_mods(&mods, &managed);
+        assert_eq!(scanned.len(), 1);
         assert_eq!(scanned[0].files.len(), 4);
         assert_eq!(scanned[0].mod_files.len(), 2);
+    }
+
+    #[test]
+    fn excludes_files_and_folders_without_mod_files() {
+        let root = TempDir::new().expect("tmp");
+        let mods = root.path().join("Mods");
+        let managed = root.path().join("managed");
+
+        fs::create_dir_all(mods.join("Resource.dasdas")).expect("dirs");
+        fs::create_dir_all(mods.join("RealMod")).expect("real");
+        fs::create_dir_all(&managed).expect("managed");
+        fs::write(mods.join("Resource.dasdas/readme.txt"), b"txt").expect("txt");
+        fs::write(mods.join("orphan.txt"), b"txt").expect("orphan");
+        fs::write(mods.join("RealMod/main.package"), b"pkg").expect("pkg");
+
+        let scanned = scan_mods(&mods, &managed);
+        assert_eq!(scanned.len(), 1);
+        assert_eq!(scanned[0].key, "RealMod");
     }
 
     #[test]
@@ -250,6 +271,7 @@ mod tests {
         let small = ImageBuffer::<Rgba<u8>, _>::from_pixel(64, 64, Rgba([1, 2, 3, 255]));
         let big = ImageBuffer::<Rgba<u8>, _>::from_pixel(256, 256, Rgba([1, 2, 3, 255]));
 
+        fs::write(mods.join("Pack/main.package"), b"pkg").expect("pkg");
         small
             .save(mods.join("Pack/preview_small.png"))
             .expect("save small");
