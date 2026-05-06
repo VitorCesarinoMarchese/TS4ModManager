@@ -51,6 +51,7 @@ export type AppState = {
   mods: Mod[];
   issues: Issue[];
   lastDryRun: DryRunResult | null;
+  scanStatus: "idle" | "scanning";
   selectInstance: (id: string | null) => void;
   loadInstances: () => Promise<void>;
   selectInstanceAndScan: (id: string) => Promise<void>;
@@ -124,31 +125,50 @@ export function createAppStore(apiOverrides: Partial<BackendApi> = {}) {
     mods: [],
     issues: [],
     lastDryRun: null,
+    scanStatus: "idle",
     selectInstance: (id) => set({ selectedInstanceId: id }),
     loadInstances: async () => {
       const instances = await api.detectGameInstances();
       set({ instances });
     },
     selectInstanceAndScan: async (id) => {
-      const mods = await api.scanMods(id);
-      set({ selectedInstanceId: id, mods });
+      set({ scanStatus: "scanning" });
+      try {
+        const mods = await api.scanMods(id);
+        set({ selectedInstanceId: id, mods });
+      } catch (error) {
+        set((state) => ({
+          issues: mergeIssueList(state.issues, toIssue(error, "scan", "Scan failed"))
+        }));
+      } finally {
+        set({ scanStatus: "idle" });
+      }
     },
     rescanSelected: async () => {
       const id = get().selectedInstanceId;
       if (!id) return;
-      const mods = await api.scanMods(id);
-      set({ mods });
+      set({ scanStatus: "scanning" });
+      try {
+        const mods = await api.scanMods(id);
+        set({ mods });
 
-      const orphans = await api.detectOrphanSymlinks(id);
-      if (orphans.length > 0) {
-        const orphanIssues = orphans.map((orphan, i) => ({
-          id: `orphan-${i}-${orphan.path}`,
-          severity: "warning" as const,
-          message: `Orphan symlink: ${orphan.path}`,
-          code: "EXTERNAL_LINK" as const,
-          context: { target: orphan.target }
+        const orphans = await api.detectOrphanSymlinks(id);
+        if (orphans.length > 0) {
+          const orphanIssues = orphans.map((orphan, i) => ({
+            id: `orphan-${i}-${orphan.path}`,
+            severity: "warning" as const,
+            message: `Orphan symlink: ${orphan.path}`,
+            code: "EXTERNAL_LINK" as const,
+            context: { target: orphan.target }
+          }));
+          set((state) => ({ issues: mergeIssues(state.issues, orphanIssues) }));
+        }
+      } catch (error) {
+        set((state) => ({
+          issues: mergeIssueList(state.issues, toIssue(error, "scan", "Scan failed"))
         }));
-        set((state) => ({ issues: mergeIssues(state.issues, orphanIssues) }));
+      } finally {
+        set({ scanStatus: "idle" });
       }
     },
     addIssue: (issue) => set((state) => ({ issues: mergeIssueList(state.issues, issue) })),

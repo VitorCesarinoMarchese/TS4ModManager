@@ -1,6 +1,16 @@
 import { describe, expect, it, vi } from "vitest";
 import { createAppStore } from "./appStore";
 
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((res, rej) => {
+    resolve = res;
+    reject = rej;
+  });
+  return { promise, resolve, reject };
+}
+
 describe("app store bootstrap", () => {
   it("starts with empty instances/mods/issues", () => {
     const store = createAppStore();
@@ -10,6 +20,7 @@ describe("app store bootstrap", () => {
     expect(state.mods).toEqual([]);
     expect(state.issues).toEqual([]);
     expect(state.selectedInstanceId).toBeNull();
+    expect(state.scanStatus).toBe("idle");
   });
 
   it("allows setting selected instance", () => {
@@ -303,6 +314,49 @@ describe("app store bootstrap", () => {
     await store.getState().importArchive("/tmp/x.zip", "X");
 
     expect(store.getState().issues.at(-1)?.code).toBe("ARCHIVE_EXTRACTION_FAILED");
+  });
+
+  it("tracks scan status while rescan is pending", async () => {
+    const scan = deferred<never[]>();
+    const api = {
+      detectGameInstances: vi.fn().mockResolvedValue([]),
+      scanMods: vi.fn().mockReturnValue(scan.promise),
+      detectOrphanSymlinks: vi.fn().mockResolvedValue([]),
+      dryRunToggle: vi.fn().mockResolvedValue({ canApply: true, operations: [], issues: [] }),
+      applyToggle: vi.fn().mockResolvedValue({ applied: true, issues: [] }),
+      migrateExternalMod: vi.fn().mockResolvedValue({ managedModId: "m1", issues: [] }),
+      validateCustomInstance: vi.fn().mockResolvedValue({ id: "c", path: "/x", source: "custom" }),
+      importArchive: vi.fn().mockResolvedValue({ modId: "m2" })
+    };
+
+    const store = createAppStore(api);
+    store.getState().selectInstance("inst-1");
+    const rescan = store.getState().rescanSelected();
+
+    expect(store.getState().scanStatus).toBe("scanning");
+    scan.resolve([]);
+    await rescan;
+    expect(store.getState().scanStatus).toBe("idle");
+  });
+
+  it("clears scan status and stores issue when rescan fails", async () => {
+    const api = {
+      detectGameInstances: vi.fn().mockResolvedValue([]),
+      scanMods: vi.fn().mockRejectedValue({ code: "IO_ERROR", message: "Scan failed" }),
+      detectOrphanSymlinks: vi.fn().mockResolvedValue([]),
+      dryRunToggle: vi.fn().mockResolvedValue({ canApply: true, operations: [], issues: [] }),
+      applyToggle: vi.fn().mockResolvedValue({ applied: true, issues: [] }),
+      migrateExternalMod: vi.fn().mockResolvedValue({ managedModId: "m1", issues: [] }),
+      validateCustomInstance: vi.fn().mockResolvedValue({ id: "c", path: "/x", source: "custom" }),
+      importArchive: vi.fn().mockResolvedValue({ modId: "m2" })
+    };
+
+    const store = createAppStore(api);
+    store.getState().selectInstance("inst-1");
+    await store.getState().rescanSelected();
+
+    expect(store.getState().scanStatus).toBe("idle");
+    expect(store.getState().issues.at(-1)?.message).toBe("Scan failed");
   });
 
   it("rescan no-op when no selected instance", async () => {

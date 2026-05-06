@@ -1,5 +1,5 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { App } from "./App";
 import { createAppStore } from "./store/appStore";
 
@@ -36,7 +36,58 @@ function makeApi(overrides: Record<string, unknown> = {}) {
   };
 }
 
+function mockLocalStorage() {
+  let data: Record<string, string> = {};
+  Object.defineProperty(window, "localStorage", {
+    writable: true,
+    value: {
+      getItem: vi.fn((key: string) => data[key] ?? null),
+      setItem: vi.fn((key: string, value: string) => {
+        data[key] = value;
+      }),
+      removeItem: vi.fn((key: string) => {
+        delete data[key];
+      }),
+      clear: vi.fn(() => {
+        data = {};
+      })
+    }
+  });
+}
+
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((res, rej) => {
+    resolve = res;
+    reject = rej;
+  });
+  return { promise, resolve, reject };
+}
+
+function mockSystemTheme(prefersDark: boolean) {
+  Object.defineProperty(window, "matchMedia", {
+    writable: true,
+    value: vi.fn().mockImplementation((query: string) => ({
+      matches: prefersDark && query === "(prefers-color-scheme: dark)",
+      media: query,
+      onchange: null,
+      addListener: vi.fn(),
+      removeListener: vi.fn(),
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      dispatchEvent: vi.fn()
+    }))
+  });
+}
+
 describe("App redesign", () => {
+  beforeEach(() => {
+    mockLocalStorage();
+    window.localStorage.clear();
+    mockSystemTheme(false);
+  });
+
   it("renders top bar, sidebar, and mod grid", async () => {
     const api = makeApi();
     const store = createAppStore(api);
@@ -59,6 +110,7 @@ describe("App redesign", () => {
     fireEvent.click(screen.getByRole("button", { name: "open-settings" }));
     const modal = screen.getByRole("dialog", { name: "settings-modal" });
     expect(modal).toBeInTheDocument();
+    expect(modal).toHaveAttribute("data-animated", "true");
     expect(modal).not.toHaveClass("overflow-auto");
     expect(modal).toHaveClass("overflow-visible");
 
@@ -66,7 +118,38 @@ describe("App redesign", () => {
     expect(screen.queryByRole("dialog", { name: "settings-modal" })).not.toBeInTheDocument();
   });
 
-  it("toggles dark mode class on root element", async () => {
+  it("uses system dark theme on first launch", () => {
+    mockSystemTheme(true);
+    const api = makeApi();
+    const store = createAppStore(api);
+    const { container } = render(<App store={store} />);
+
+    expect(document.documentElement.classList.contains("dark")).toBe(true);
+    expect(container.querySelector(".app-shell")?.classList.contains("dark")).toBe(true);
+  });
+
+  it("uses system light theme on first launch", () => {
+    mockSystemTheme(false);
+    const api = makeApi();
+    const store = createAppStore(api);
+    const { container } = render(<App store={store} />);
+
+    expect(document.documentElement.classList.contains("dark")).toBe(false);
+    expect(container.querySelector(".app-shell")?.classList.contains("dark")).toBe(false);
+  });
+
+  it("uses stored theme preference over system theme", () => {
+    window.localStorage.setItem("ts4mm-theme", "light");
+    mockSystemTheme(true);
+    const api = makeApi();
+    const store = createAppStore(api);
+    const { container } = render(<App store={store} />);
+
+    expect(document.documentElement.classList.contains("dark")).toBe(false);
+    expect(container.querySelector(".app-shell")?.classList.contains("dark")).toBe(false);
+  });
+
+  it("toggles dark mode class and persists preference", async () => {
     const api = makeApi();
     const store = createAppStore(api);
     const { container } = render(<App store={store} />);
@@ -78,6 +161,80 @@ describe("App redesign", () => {
 
     expect(document.documentElement.classList.contains("dark")).toBe(true);
     expect(container.querySelector(".app-shell")?.classList.contains("dark")).toBe(true);
+    expect(window.localStorage.getItem("ts4mm-theme")).toBe("dark");
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Native Instance 1" })).toHaveClass("border-accent");
+    });
+  });
+
+  it("shows loading overlay and disables rescan while scan is pending", async () => {
+    const pendingScan = deferred<Awaited<ReturnType<ReturnType<typeof makeApi>["scanMods"]>>>();
+    const api = makeApi({
+      scanMods: vi
+        .fn()
+        .mockResolvedValueOnce([
+          {
+            id: "mod-1",
+            name: "BuildPack",
+            files: ["a.package"],
+            enabled: false,
+            source: "managed",
+            groupPath: ["Build", "BuildPack"]
+          }
+        ])
+        .mockReturnValueOnce(pendingScan.promise)
+    });
+    const store = createAppStore(api);
+    render(<App store={store} />);
+
+    await waitFor(() => {
+      expect(screen.getByText("BuildPack")).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Rescan" }));
+
+    expect(screen.getByLabelText("mod-scan-loading")).toBeInTheDocument();
+    expect(screen.getByText("Scanning mods...")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Rescan" })).toBeDisabled();
+    expect(screen.getByTestId("rescan-icon")).toHaveClass("animate-spin");
+
+    pendingScan.resolve([]);
+
+    await waitFor(() => {
+      expect(screen.queryByLabelText("mod-scan-loading")).not.toBeInTheDocument();
+    });
+  });
+
+  it("clears scan loading state when scan fails", async () => {
+    const api = makeApi({
+      scanMods: vi
+        .fn()
+        .mockResolvedValueOnce([
+          {
+            id: "mod-1",
+            name: "BuildPack",
+            files: ["a.package"],
+            enabled: false,
+            source: "managed",
+            groupPath: ["Build", "BuildPack"]
+          }
+        ])
+        .mockRejectedValueOnce({ code: "IO_ERROR", message: "Scan failed" })
+    });
+    const store = createAppStore(api);
+    render(<App store={store} />);
+
+    await waitFor(() => {
+      expect(screen.getByText("BuildPack")).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Rescan" }));
+
+    await waitFor(() => {
+      expect(screen.queryByLabelText("mod-scan-loading")).not.toBeInTheDocument();
+      expect(screen.getByText("Scan failed")).toBeInTheDocument();
+    });
   });
 
   it("opens mod details and can rename mod", async () => {
