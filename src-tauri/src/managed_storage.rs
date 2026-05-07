@@ -5,6 +5,7 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use crate::error::{ErrorCode, ManagerError};
+use crate::metadata_names::detect_display_name;
 
 #[derive(Debug, Clone)]
 pub struct ImportRequest {
@@ -74,12 +75,13 @@ pub fn create_managed_mod(managed_root: &Path, req: ImportRequest) -> Result<Mod
     let files = copy_recursive(&req.source_dir, &files_root)?;
 
     let name = req.name;
+    let detected_name = detect_display_name(&name);
     let meta = ModMetadata {
         version: 1,
         created_by: "sims4-mod-manager".to_string(),
         mod_id: mod_id.clone(),
-        display_name: name.clone(),
-        detected_name: Some(name.clone()),
+        display_name: detected_name.clone(),
+        detected_name: Some(detected_name),
         custom_name: None,
         name,
         slug: req.slug,

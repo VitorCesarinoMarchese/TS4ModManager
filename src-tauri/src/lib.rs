@@ -4,6 +4,7 @@ pub mod error;
 pub mod external_migration;
 pub mod logging;
 pub mod managed_storage;
+pub mod metadata_names;
 pub mod mod_scan;
 pub mod orphan;
 pub mod path_detection;

@@ -4,6 +4,8 @@ use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 
+use crate::metadata_names::detect_display_name;
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
 pub enum ModSource {
@@ -108,7 +110,8 @@ fn build_scanned_mod(key: String, files: Vec<FileEntry>, managed_root: &Path) ->
     };
 
     let group_path = key.split('/').map(ToString::to_string).collect::<Vec<_>>();
-    let name = group_path.last().cloned().unwrap_or_else(|| key.clone());
+    let raw_name = group_path.last().cloned().unwrap_or_else(|| key.clone());
+    let name = detect_display_name(&raw_name);
 
     ScannedMod {
         key,
