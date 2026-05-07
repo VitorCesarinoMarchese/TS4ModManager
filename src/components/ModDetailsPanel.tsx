@@ -9,10 +9,11 @@ type ModDetailsPanelProps = {
   onClose: () => void;
   onRename?: (modId: string, newName: string) => void | Promise<void>;
   onAttachSourceUrl?: (modId: string, sourceUrl: string, providerId?: string) => void | Promise<void>;
+  onRemoveSourceUrl?: (modId: string) => void | Promise<void>;
   onOpenSourceUrl?: (sourceUrl: string) => void;
 };
 
-export function ModDetailsPanel({ mod, onClose, onRename, onAttachSourceUrl, onOpenSourceUrl }: ModDetailsPanelProps) {
+export function ModDetailsPanel({ mod, onClose, onRename, onAttachSourceUrl, onRemoveSourceUrl, onOpenSourceUrl }: ModDetailsPanelProps) {
   const [name, setName] = useState(mod.name);
   const [sourceUrl, setSourceUrl] = useState(mod.sourceUrl ?? "");
   const buttonClass =
@@ -107,14 +108,24 @@ export function ModDetailsPanel({ mod, onClose, onRename, onAttachSourceUrl, onO
             Save Source
           </button>
           {mod.sourceUrl ? (
-            <button
-              type="button"
-              aria-label="open-source-url"
-              className={buttonClass}
-              onClick={() => onOpenSourceUrl?.(mod.sourceUrl!)}
-            >
-              Open Source
-            </button>
+            <>
+              <button
+                type="button"
+                aria-label="open-source-url"
+                className={buttonClass}
+                onClick={() => onOpenSourceUrl?.(mod.sourceUrl!)}
+              >
+                Open Source
+              </button>
+              <button
+                type="button"
+                aria-label="remove-source-url"
+                className={buttonClass}
+                onClick={() => onRemoveSourceUrl?.(mod.id)}
+              >
+                Remove Source
+              </button>
+            </>
           ) : null}
         </div>
         <p className="text-sm text-slate-600 dark:text-slate-300">

@@ -20,6 +20,20 @@ describe("ModDetailsPanel", () => {
     expect(screen.getByTitle("packages/a.package")).toHaveClass("truncate");
   });
 
+  it("removes source URL", () => {
+    const onRemoveSourceUrl = vi.fn();
+    render(
+      <ModDetailsPanel
+        mod={{ ...mod, sourceUrl: "https://modthesims.info/d/123456/example" }}
+        onClose={() => {}}
+        onRemoveSourceUrl={onRemoveSourceUrl}
+      />
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "remove-source-url" }));
+    expect(onRemoveSourceUrl).toHaveBeenCalledWith("m1");
+  });
+
   it("attaches source URL and opens browser fallback", () => {
     const onAttachSourceUrl = vi.fn();
     const onOpenSourceUrl = vi.fn();

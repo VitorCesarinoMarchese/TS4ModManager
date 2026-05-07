@@ -166,6 +166,15 @@ export function createBackendApi(invoke: InvokeFn) {
       }
     },
 
+    async removeSourceUrl(modId: string): Promise<Mod> {
+      try {
+        const mod = await invoke<ModMetadataDto>("remove_source_url", { modId });
+        return modFromMetadata(mod, modId, mod.displayName ?? mod.name ?? modId);
+      } catch (error) {
+        throw normalizeError(error);
+      }
+    },
+
     async attachSourceUrl(modId: string, sourceUrl: string, providerId?: string): Promise<Mod> {
       try {
         const mod = await invoke<ModMetadataDto>("attach_source_url", {

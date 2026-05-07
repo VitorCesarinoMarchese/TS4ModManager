@@ -51,6 +51,15 @@ function makeApi(overrides: Record<string, unknown> = {}) {
         source: "managed"
       })
     ),
+    removeSourceUrl: vi.fn().mockImplementation((modId: string) =>
+      Promise.resolve({
+        id: modId,
+        name: "MyMod",
+        files: ["a.package"],
+        enabled: false,
+        source: "managed"
+      })
+    ),
     ...overrides
   };
 }

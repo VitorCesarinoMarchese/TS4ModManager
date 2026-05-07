@@ -108,6 +108,21 @@ describe("backend api wrapper", () => {
     expect(invoke).toHaveBeenCalledWith("validate_custom_instance", { path: "/games/sims4" });
   });
 
+  it("calls remove source URL command", async () => {
+    const invoke = vi.fn().mockResolvedValue({
+      modId: "m1",
+      displayName: "My Mod",
+      files: [],
+      source: "local"
+    });
+    const api = createBackendApi(invoke);
+
+    const res = await api.removeSourceUrl("m1");
+
+    expect(res.sourceUrl).toBeUndefined();
+    expect(invoke).toHaveBeenCalledWith("remove_source_url", { modId: "m1" });
+  });
+
   it("calls attach source URL command", async () => {
     const invoke = vi.fn().mockResolvedValue({
       modId: "m1",

@@ -222,6 +222,14 @@ pub fn set_source_url(
     Ok(meta)
 }
 
+pub fn remove_source_url(managed_root: &Path, mod_id: &str) -> Result<ModMetadata, ManagerError> {
+    let mut meta = read_managed_mod_or_create_local(managed_root, mod_id)?;
+    meta.source_url = None;
+    meta.source = "local".to_string();
+    write_managed_mod(managed_root, &meta)?;
+    Ok(meta)
+}
+
 pub fn read_managed_mod_or_default(managed_root: &Path, mod_id: &str, detected_name: &str) -> ModMetadata {
     read_managed_mod(managed_root, mod_id).unwrap_or_else(|_| ModMetadata {
         version: 1,
@@ -420,6 +428,36 @@ mod tests {
         assert_eq!(read.detected_name.as_deref(), Some("Detected Name"));
         assert_eq!(read.custom_name.as_deref(), Some("Custom Name"));
         assert_eq!(read.source_url.as_deref(), Some("https://example.test/mod"));
+    }
+
+    #[test]
+    fn removes_source_url_from_metadata() {
+        let tmp = TempDir::new().expect("tmp");
+        let src = tmp.path().join("import");
+        fs::create_dir_all(&src).expect("src");
+        fs::write(src.join("a.package"), b"x").expect("file");
+        let meta = create_managed_mod(
+            tmp.path(),
+            ImportRequest {
+                name: "Detected".to_string(),
+                slug: None,
+                source_dir: src,
+            },
+        )
+        .expect("create");
+        super::set_source_url(
+            tmp.path(),
+            &meta.mod_id,
+            "https://www.curseforge.com/sims4/mods/example".to_string(),
+            Some("curseforge".to_string()),
+        )
+        .expect("attach");
+
+        let updated = super::remove_source_url(tmp.path(), &meta.mod_id).expect("remove");
+
+        assert_eq!(updated.source_url, None);
+        assert_eq!(updated.source, "local");
+        assert_eq!(updated.files, vec!["a.package"]);
     }
 
     #[test]

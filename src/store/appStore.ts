@@ -32,6 +32,7 @@ export type BackendApi = {
   migrateExternalMod: (modId: string, instanceId: string) => Promise<MigrateResult>;
   renameModDisplayName: (modId: string, displayName: string) => Promise<Mod>;
   attachSourceUrl: (modId: string, sourceUrl: string, providerId?: string) => Promise<Mod>;
+  removeSourceUrl: (modId: string) => Promise<Mod>;
 };
 
 /* c8 ignore start */
@@ -58,6 +59,13 @@ const defaultApi: BackendApi = {
     files: [],
     enabled: false,
     source: "managed"
+  }),
+  removeSourceUrl: async (modId) => ({
+    id: modId,
+    name: modId,
+    files: [],
+    enabled: false,
+    source: "managed"
   })
 };
 /* c8 ignore stop */
@@ -78,6 +86,7 @@ export type AppState = {
   importArchive: (archivePath: string, name: string, slug?: string) => Promise<void>;
   renameModDisplayName: (modId: string, displayName: string) => Promise<Mod | null>;
   attachSourceUrl: (modId: string, sourceUrl: string, providerId?: string) => Promise<Mod | null>;
+  removeSourceUrl: (modId: string) => Promise<Mod | null>;
   toggleMod: (mod: Mod, targetEnabled: boolean, instanceId: string) => Promise<DryRunResult>;
 };
 
@@ -203,6 +212,32 @@ export function createAppStore(apiOverrides: Partial<BackendApi> = {}) {
         }));
       }
     },
+    removeSourceUrl: async (modId) => {
+      try {
+        const withoutSource = await api.removeSourceUrl(modId);
+        let updated: Mod | null = null;
+        set((state) => ({
+          mods: state.mods.map((mod) => {
+            if (mod.id !== modId) return mod;
+            updated = {
+              ...mod,
+              ...withoutSource,
+              id: mod.id,
+              name: withoutSource.name || mod.name,
+              files: withoutSource.files.length > 0 ? withoutSource.files : mod.files,
+              sourceUrl: withoutSource.sourceUrl
+            };
+            return updated;
+          })
+        }));
+        return updated;
+      } catch (error) {
+        set((state) => ({
+          issues: mergeIssueList(state.issues, toIssue(error, "source-url", "Source URL remove failed"))
+        }));
+        return null;
+      }
+    },
     attachSourceUrl: async (modId, sourceUrl, providerId) => {
       try {
         const withSource = await api.attachSourceUrl(modId, sourceUrl, providerId);
@@ -210,7 +245,13 @@ export function createAppStore(apiOverrides: Partial<BackendApi> = {}) {
         set((state) => ({
           mods: state.mods.map((mod) => {
             if (mod.id !== modId) return mod;
-            updated = { ...mod, ...withSource, id: mod.id, name: withSource.name || mod.name };
+            updated = {
+              ...mod,
+              ...withSource,
+              id: mod.id,
+              name: withSource.name || mod.name,
+              files: withSource.files.length > 0 ? withSource.files : mod.files
+            };
             return updated;
           })
         }));

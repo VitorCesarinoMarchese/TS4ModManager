@@ -254,6 +254,52 @@ describe("app store bootstrap", () => {
     expect(store.getState().issues[0].message).toBe("err");
   });
 
+  it("attaches source URL without clearing existing files when backend has metadata only", async () => {
+    const api = {
+      detectGameInstances: vi.fn().mockResolvedValue([]),
+      scanMods: vi.fn().mockResolvedValue([{ id: "m1", name: "Detected", files: ["a.package"], enabled: false, source: "managed" }]),
+      detectOrphanSymlinks: vi.fn().mockResolvedValue([]),
+      dryRunToggle: vi.fn().mockResolvedValue({ canApply: true, operations: [], issues: [] }),
+      applyToggle: vi.fn().mockResolvedValue({ applied: true, issues: [] }),
+      migrateExternalMod: vi.fn().mockResolvedValue({ managedModId: "m1", issues: [] }),
+      validateCustomInstance: vi.fn().mockResolvedValue({ id: "c", path: "/x", source: "custom" }),
+      importArchive: vi.fn().mockResolvedValue({ modId: "m2" }),
+      renameModDisplayName: vi.fn().mockResolvedValue({ id: "m1", name: "Detected", files: [], enabled: false, source: "managed" }),
+      attachSourceUrl: vi.fn().mockResolvedValue({ id: "m1", name: "Detected", sourceUrl: "https://modthesims.info/d/123456/example", files: [], enabled: false, source: "managed" })
+    };
+
+    const store = createAppStore(api);
+    await store.getState().selectInstanceAndScan("inst-1");
+    await store.getState().attachSourceUrl("m1", "https://modthesims.info/d/123456/example", "modthesims");
+
+    expect(store.getState().mods[0].files).toEqual(["a.package"]);
+    expect(store.getState().mods[0].sourceUrl).toBe("https://modthesims.info/d/123456/example");
+  });
+
+  it("removes source URL without clearing existing files", async () => {
+    const api = {
+      detectGameInstances: vi.fn().mockResolvedValue([]),
+      scanMods: vi.fn().mockResolvedValue([{ id: "m1", name: "Detected", sourceUrl: "https://modthesims.info/d/123456/example", files: ["a.package"], enabled: false, source: "managed" }]),
+      detectOrphanSymlinks: vi.fn().mockResolvedValue([]),
+      dryRunToggle: vi.fn().mockResolvedValue({ canApply: true, operations: [], issues: [] }),
+      applyToggle: vi.fn().mockResolvedValue({ applied: true, issues: [] }),
+      migrateExternalMod: vi.fn().mockResolvedValue({ managedModId: "m1", issues: [] }),
+      validateCustomInstance: vi.fn().mockResolvedValue({ id: "c", path: "/x", source: "custom" }),
+      importArchive: vi.fn().mockResolvedValue({ modId: "m2" }),
+      renameModDisplayName: vi.fn().mockResolvedValue({ id: "m1", name: "Detected", files: [], enabled: false, source: "managed" }),
+      attachSourceUrl: vi.fn().mockResolvedValue({ id: "m1", name: "Detected", files: [], enabled: false, source: "managed" }),
+      removeSourceUrl: vi.fn().mockResolvedValue({ id: "m1", name: "Detected", files: [], enabled: false, source: "managed" })
+    };
+
+    const store = createAppStore(api);
+    await store.getState().selectInstanceAndScan("inst-1");
+    await store.getState().removeSourceUrl("m1");
+
+    expect(api.removeSourceUrl).toHaveBeenCalledWith("m1");
+    expect(store.getState().mods[0].files).toEqual(["a.package"]);
+    expect(store.getState().mods[0].sourceUrl).toBeUndefined();
+  });
+
   it("attaches source URL and updates store", async () => {
     const api = {
       detectGameInstances: vi.fn().mockResolvedValue([]),
