@@ -19,8 +19,9 @@ describe("IssuesPanel", () => {
     expect(screen.getByText("PATH_COLLISION")).toBeInTheDocument();
   });
 
-  it("shows clean empty state", () => {
+  it("shows clean empty state without emoji", () => {
     render(<IssuesPanel issues={[]} />);
-    expect(screen.getByText("No issues detected ✔")).toBeInTheDocument();
+    expect(screen.getByText("No issues detected")).toBeInTheDocument();
+    expect(screen.queryByText(/✔/)).not.toBeInTheDocument();
   });
 });

@@ -12,7 +12,7 @@ export function IssuesPanel({ issues }: IssuesPanelProps) {
       {issues.length === 0 ? (
         <p className="inline-flex items-center gap-2 text-sm text-slate-600 dark:text-slate-300">
           <CheckCircle size={18} weight="regular" aria-hidden="true" />
-          No issues detected ✔
+          No issues detected
         </p>
       ) : (
         <ul className="m-0 grid list-none gap-2 p-0">
