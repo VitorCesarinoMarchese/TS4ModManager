@@ -46,5 +46,7 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
       - name: Rust tests
         run: cargo test --manifest-path src-tauri/Cargo.toml
+      - name: Build frontend for Tauri context
+        run: npm run build
       - name: Tauri feature check
         run: cargo check --manifest-path src-tauri/Cargo.toml --features tauri-app
