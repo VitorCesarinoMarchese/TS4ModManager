@@ -108,6 +108,30 @@ describe("backend api wrapper", () => {
     expect(invoke).toHaveBeenCalledWith("validate_custom_instance", { path: "/games/sims4" });
   });
 
+  it("calls attach source URL command", async () => {
+    const invoke = vi.fn().mockResolvedValue({
+      modId: "m1",
+      displayName: "My Mod",
+      sourceUrl: "https://www.curseforge.com/sims4/mods/example",
+      files: ["a.package"],
+      source: "curseforge"
+    });
+    const api = createBackendApi(invoke);
+
+    const res = await api.attachSourceUrl(
+      "m1",
+      "https://www.curseforge.com/sims4/mods/example",
+      "curseforge"
+    );
+
+    expect(res.sourceUrl).toBe("https://www.curseforge.com/sims4/mods/example");
+    expect(invoke).toHaveBeenCalledWith("attach_source_url", {
+      modId: "m1",
+      sourceUrl: "https://www.curseforge.com/sims4/mods/example",
+      providerId: "curseforge"
+    });
+  });
+
   it("calls rename mod display name command", async () => {
     const invoke = vi.fn().mockResolvedValue({
       modId: "m1",

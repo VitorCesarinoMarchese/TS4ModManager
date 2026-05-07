@@ -20,6 +20,33 @@ describe("ModDetailsPanel", () => {
     expect(screen.getByTitle("packages/a.package")).toHaveClass("truncate");
   });
 
+  it("attaches source URL and opens browser fallback", () => {
+    const onAttachSourceUrl = vi.fn();
+    const onOpenSourceUrl = vi.fn();
+    render(
+      <ModDetailsPanel
+        mod={{ ...mod, sourceUrl: "https://modthesims.info/d/123456/example" }}
+        onClose={() => {}}
+        onAttachSourceUrl={onAttachSourceUrl}
+        onOpenSourceUrl={onOpenSourceUrl}
+      />
+    );
+
+    expect(screen.getByText("Provider: ModTheSims")).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("edit-source-url"), {
+      target: { value: "https://www.curseforge.com/sims4/mods/example" }
+    });
+    fireEvent.click(screen.getByRole("button", { name: "save-source-url" }));
+    expect(onAttachSourceUrl).toHaveBeenCalledWith(
+      "m1",
+      "https://www.curseforge.com/sims4/mods/example",
+      "curseforge"
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "open-source-url" }));
+    expect(onOpenSourceUrl).toHaveBeenCalledWith("https://modthesims.info/d/123456/example");
+  });
+
   it("closes and saves renamed mod", () => {
     const onClose = vi.fn();
     const onRename = vi.fn();

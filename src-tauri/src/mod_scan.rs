@@ -4,7 +4,7 @@ use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 
-use crate::managed_storage::read_managed_mod;
+use crate::managed_storage::{read_managed_mod, ModMetadata};
 use crate::metadata_names::detect_display_name;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -21,6 +21,8 @@ pub struct ScannedMod {
     pub files: Vec<String>,
     pub mod_files: Vec<String>,
     pub preview: Option<String>,
+    #[serde(rename = "sourceUrl", skip_serializing_if = "Option::is_none")]
+    pub source_url: Option<String>,
     pub source: ModSource,
     pub group_path: Vec<String>,
 }
@@ -112,11 +114,10 @@ fn build_scanned_mod(key: String, files: Vec<FileEntry>, managed_root: &Path) ->
 
     let group_path = key.split('/').map(ToString::to_string).collect::<Vec<_>>();
     let raw_name = group_path.last().cloned().unwrap_or_else(|| key.clone());
-    let name = files
-        .iter()
-        .filter_map(|f| f.symlink_target.as_ref())
-        .filter_map(|target| managed_mod_id_from_target(target, managed_root))
-        .find_map(|mod_id| read_managed_mod(managed_root, &mod_id).ok())
+    let metadata = managed_metadata_from_files(&files, managed_root);
+    let source_url = metadata.as_ref().and_then(|meta| meta.source_url.clone());
+    let name = metadata
+        .as_ref()
         .map(|meta| meta.effective_display_name().to_string())
         .unwrap_or_else(|| detect_display_name(&raw_name));
 
@@ -126,9 +127,18 @@ fn build_scanned_mod(key: String, files: Vec<FileEntry>, managed_root: &Path) ->
         files: all_files,
         mod_files,
         preview,
+        source_url,
         source,
         group_path,
     }
+}
+
+fn managed_metadata_from_files(files: &[FileEntry], managed_root: &Path) -> Option<ModMetadata> {
+    files
+        .iter()
+        .filter_map(|f| f.symlink_target.as_ref())
+        .filter_map(|target| managed_mod_id_from_target(target, managed_root))
+        .find_map(|mod_id| read_managed_mod(managed_root, &mod_id).ok())
 }
 
 fn managed_mod_id_from_target(target: &Path, managed_root: &Path) -> Option<String> {
@@ -319,6 +329,48 @@ mod tests {
 
         let scanned = scan_mods(&mods, &managed);
         assert_eq!(scanned[0].source, ModSource::External);
+    }
+
+    #[test]
+    fn managed_symlink_includes_metadata_source_url() {
+        let root = TempDir::new().expect("tmp");
+        let mods = root.path().join("Mods");
+        let managed = root.path().join("managed");
+        let managed_file = managed.join("mods/id/files/Example.package");
+
+        fs::create_dir_all(&mods).expect("mods");
+        fs::create_dir_all(managed_file.parent().expect("parent")).expect("managed tree");
+        fs::write(&managed_file, b"pkg").expect("pkg");
+        write_managed_mod(
+            &managed,
+            &ModMetadata {
+                version: 1,
+                created_by: "sims4-mod-manager".to_string(),
+                mod_id: "id".to_string(),
+                name: "Example".to_string(),
+                display_name: "Example".to_string(),
+                detected_name: Some("Example".to_string()),
+                custom_name: None,
+                slug: None,
+                files: vec!["Example.package".to_string()],
+                source: "curseforge".to_string(),
+                source_url: Some("https://www.curseforge.com/sims4/mods/example".to_string()),
+                preview_url: None,
+                local_preview_path: None,
+                locked_name: false,
+                updated_at: None,
+            },
+        )
+        .expect("write meta");
+
+        #[cfg(unix)]
+        std::os::unix::fs::symlink(&managed_file, mods.join("Example.package")).expect("symlink");
+
+        let scanned = scan_mods(&mods, &managed);
+        assert_eq!(
+            scanned[0].source_url.as_deref(),
+            Some("https://www.curseforge.com/sims4/mods/example")
+        );
     }
 
     #[test]

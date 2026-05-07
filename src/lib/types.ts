@@ -22,6 +22,7 @@ export type Mod = {
   files: string[];
   enabled: boolean;
   preview?: string;
+  sourceUrl?: string;
   source: "managed" | "external";
   groupPath?: string[];
 };

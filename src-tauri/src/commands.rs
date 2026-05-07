@@ -4,7 +4,7 @@ use crate::archive_import::import_archive_to_managed;
 use crate::error::ManagerError;
 use crate::external_migration::{migrate_external_mod, MigrateResult};
 use crate::logging::append_issue_log;
-use crate::managed_storage::{set_custom_display_name, ModMetadata};
+use crate::managed_storage::{set_custom_display_name, set_source_url, ModMetadata};
 use crate::mod_scan::ScannedMod;
 use crate::orphan::{detect_orphan_symlinks, OrphanSymlink};
 use crate::path_detection::{detect_game_instances, validate_custom_instance, GameInstance};
@@ -79,4 +79,13 @@ pub fn cmd_rename_mod_display_name(
     display_name: String,
 ) -> Result<ModMetadata, ManagerError> {
     set_custom_display_name(&managed_root, &mod_id, display_name)
+}
+
+pub fn cmd_attach_source_url(
+    managed_root: PathBuf,
+    mod_id: String,
+    source_url: String,
+    provider_id: Option<String>,
+) -> Result<ModMetadata, ManagerError> {
+    set_source_url(&managed_root, &mod_id, source_url, provider_id)
 }

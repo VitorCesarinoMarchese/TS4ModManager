@@ -163,6 +163,29 @@ pub fn set_custom_display_name(
     Ok(meta)
 }
 
+pub fn set_source_url(
+    managed_root: &Path,
+    mod_id: &str,
+    source_url: String,
+    provider_id: Option<String>,
+) -> Result<ModMetadata, ManagerError> {
+    let mut meta = read_managed_mod(managed_root, mod_id)?;
+    let trimmed = source_url.trim();
+    if trimmed.is_empty() {
+        return Err(ManagerError::new(
+            ErrorCode::InvalidPath,
+            "Source URL cannot be empty",
+        ));
+    }
+
+    meta.source_url = Some(trimmed.to_string());
+    if let Some(provider) = provider_id.filter(|provider| !provider.trim().is_empty()) {
+        meta.source = provider;
+    }
+    write_managed_mod(managed_root, &meta)?;
+    Ok(meta)
+}
+
 pub fn read_managed_mod_or_default(managed_root: &Path, mod_id: &str, detected_name: &str) -> ModMetadata {
     read_managed_mod(managed_root, mod_id).unwrap_or_else(|_| ModMetadata {
         version: 1,
@@ -361,6 +384,44 @@ mod tests {
         assert_eq!(read.detected_name.as_deref(), Some("Detected Name"));
         assert_eq!(read.custom_name.as_deref(), Some("Custom Name"));
         assert_eq!(read.source_url.as_deref(), Some("https://example.test/mod"));
+    }
+
+    #[test]
+    fn attaches_source_url_in_metadata() {
+        let tmp = TempDir::new().expect("tmp");
+        let src = tmp.path().join("import");
+        fs::create_dir_all(&src).expect("src");
+        fs::write(src.join("a.package"), b"x").expect("file");
+        let meta = create_managed_mod(
+            tmp.path(),
+            ImportRequest {
+                name: "Detected".to_string(),
+                slug: None,
+                source_dir: src,
+            },
+        )
+        .expect("create");
+
+        let updated = super::set_source_url(
+            tmp.path(),
+            &meta.mod_id,
+            "https://www.curseforge.com/sims4/mods/example".to_string(),
+            Some("curseforge".to_string()),
+        )
+        .expect("attach");
+
+        assert_eq!(
+            updated.source_url.as_deref(),
+            Some("https://www.curseforge.com/sims4/mods/example")
+        );
+        assert_eq!(updated.source, "curseforge");
+        assert_eq!(
+            read_managed_mod(tmp.path(), &meta.mod_id)
+                .expect("read")
+                .source_url
+                .as_deref(),
+            Some("https://www.curseforge.com/sims4/mods/example")
+        );
     }
 
     #[test]

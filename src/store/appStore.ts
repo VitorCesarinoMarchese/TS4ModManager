@@ -31,6 +31,7 @@ export type BackendApi = {
   ) => Promise<ApplyResult>;
   migrateExternalMod: (modId: string, instanceId: string) => Promise<MigrateResult>;
   renameModDisplayName: (modId: string, displayName: string) => Promise<Mod>;
+  attachSourceUrl: (modId: string, sourceUrl: string, providerId?: string) => Promise<Mod>;
 };
 
 /* c8 ignore start */
@@ -46,6 +47,14 @@ const defaultApi: BackendApi = {
   renameModDisplayName: async (modId, displayName) => ({
     id: modId,
     name: displayName,
+    files: [],
+    enabled: false,
+    source: "managed"
+  }),
+  attachSourceUrl: async (modId, sourceUrl) => ({
+    id: modId,
+    name: modId,
+    sourceUrl,
     files: [],
     enabled: false,
     source: "managed"
@@ -68,6 +77,7 @@ export type AppState = {
   addCustomInstance: (path: string) => Promise<void>;
   importArchive: (archivePath: string, name: string, slug?: string) => Promise<void>;
   renameModDisplayName: (modId: string, displayName: string) => Promise<Mod | null>;
+  attachSourceUrl: (modId: string, sourceUrl: string, providerId?: string) => Promise<Mod | null>;
   toggleMod: (mod: Mod, targetEnabled: boolean, instanceId: string) => Promise<DryRunResult>;
 };
 
@@ -191,6 +201,25 @@ export function createAppStore(apiOverrides: Partial<BackendApi> = {}) {
         set((state) => ({
           issues: mergeIssueList(state.issues, toIssue(error, "custom-path", "Custom path invalid"))
         }));
+      }
+    },
+    attachSourceUrl: async (modId, sourceUrl, providerId) => {
+      try {
+        const withSource = await api.attachSourceUrl(modId, sourceUrl, providerId);
+        let updated: Mod | null = null;
+        set((state) => ({
+          mods: state.mods.map((mod) => {
+            if (mod.id !== modId) return mod;
+            updated = { ...mod, ...withSource, id: mod.id, name: withSource.name || mod.name };
+            return updated;
+          })
+        }));
+        return updated;
+      } catch (error) {
+        set((state) => ({
+          issues: mergeIssueList(state.issues, toIssue(error, "source-url", "Source URL attach failed"))
+        }));
+        return null;
       }
     },
     renameModDisplayName: async (modId, displayName) => {

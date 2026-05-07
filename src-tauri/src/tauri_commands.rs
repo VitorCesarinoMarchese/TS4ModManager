@@ -89,6 +89,15 @@ fn rename_mod_display_name(
     commands::cmd_rename_mod_display_name(managed_root()?, mod_id, display_name)
 }
 
+#[tauri::command]
+fn attach_source_url(
+    mod_id: String,
+    source_url: String,
+    provider_id: Option<String>,
+) -> Result<crate::managed_storage::ModMetadata, ManagerError> {
+    commands::cmd_attach_source_url(managed_root()?, mod_id, source_url, provider_id)
+}
+
 pub fn run() {
     tauri::Builder::default()
         .invoke_handler(tauri::generate_handler![
@@ -100,7 +109,8 @@ pub fn run() {
             apply_toggle,
             migrate_external_mod,
             detect_orphan_symlinks,
-            rename_mod_display_name
+            rename_mod_display_name,
+            attach_source_url
         ])
         .run(tauri::generate_context!())
         .expect("tauri run failed");

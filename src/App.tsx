@@ -47,6 +47,7 @@ export function App({ store = defaultStore }: AppProps) {
   const addCustomInstance = useStore(store, (s) => s.addCustomInstance);
   const importArchive = useStore(store, (s) => s.importArchive);
   const renameModDisplayName = useStore(store, (s) => s.renameModDisplayName);
+  const attachSourceUrl = useStore(store, (s) => s.attachSourceUrl);
 
   const [search, setSearch] = useState("");
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -200,6 +201,11 @@ export function App({ store = defaultStore }: AppProps) {
             const renamed = await renameModDisplayName(modId, newName);
             if (renamed) setSelectedMod(renamed);
           }}
+          onAttachSourceUrl={async (modId, sourceUrl, providerId) => {
+            const updated = await attachSourceUrl(modId, sourceUrl, providerId);
+            if (updated) setSelectedMod(updated);
+          }}
+          onOpenSourceUrl={(sourceUrl) => window.open(sourceUrl, "_blank", "noopener,noreferrer")}
         />
       ) : null}
     </div>

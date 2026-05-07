@@ -1,22 +1,30 @@
 import { FloppyDisk, X } from "@phosphor-icons/react";
 import { motion } from "framer-motion";
 import { useEffect, useState } from "react";
+import { getMetadataProviderForUrl } from "../lib/metadataProviders";
 import type { Mod } from "../lib/types";
 
 type ModDetailsPanelProps = {
   mod: Mod;
   onClose: () => void;
   onRename?: (modId: string, newName: string) => void | Promise<void>;
+  onAttachSourceUrl?: (modId: string, sourceUrl: string, providerId?: string) => void | Promise<void>;
+  onOpenSourceUrl?: (sourceUrl: string) => void;
 };
 
-export function ModDetailsPanel({ mod, onClose, onRename }: ModDetailsPanelProps) {
+export function ModDetailsPanel({ mod, onClose, onRename, onAttachSourceUrl, onOpenSourceUrl }: ModDetailsPanelProps) {
   const [name, setName] = useState(mod.name);
+  const [sourceUrl, setSourceUrl] = useState(mod.sourceUrl ?? "");
   const buttonClass =
     "inline-flex items-center gap-2 rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm hover:border-accent hover:bg-accent/10 focus:outline-none focus:ring-2 focus:ring-accent/40 dark:border-slate-600 dark:bg-slate-800 dark:hover:border-accent dark:hover:bg-accent/10";
 
   useEffect(() => {
     setName(mod.name);
-  }, [mod.id, mod.name]);
+    setSourceUrl(mod.sourceUrl ?? "");
+  }, [mod.id, mod.name, mod.sourceUrl]);
+
+  const selectedProvider = getMetadataProviderForUrl(sourceUrl);
+  const existingProvider = mod.sourceUrl ? getMetadataProviderForUrl(mod.sourceUrl) : null;
 
   return (
     <motion.div
@@ -72,6 +80,46 @@ export function ModDetailsPanel({ mod, onClose, onRename }: ModDetailsPanelProps
             Save Name
           </button>
         </div>
+
+        <label className="text-sm font-medium" htmlFor="edit-source-url">
+          Source URL
+        </label>
+        <div className="actions flex flex-wrap gap-2.5">
+          <input
+            id="edit-source-url"
+            aria-label="edit-source-url"
+            className="min-w-0 flex-1 rounded-md border border-slate-300 bg-white px-3 py-1.5 dark:border-slate-600 dark:bg-slate-800"
+            value={sourceUrl}
+            onChange={(e) => setSourceUrl(e.target.value)}
+            placeholder="https://www.curseforge.com/sims4/mods/..."
+          />
+          <button
+            type="button"
+            aria-label="save-source-url"
+            className={buttonClass}
+            onClick={() => {
+              const next = sourceUrl.trim();
+              if (!next) return;
+              onAttachSourceUrl?.(mod.id, next, selectedProvider?.id);
+            }}
+          >
+            <FloppyDisk size={16} weight="regular" aria-hidden="true" />
+            Save Source
+          </button>
+          {mod.sourceUrl ? (
+            <button
+              type="button"
+              aria-label="open-source-url"
+              className={buttonClass}
+              onClick={() => onOpenSourceUrl?.(mod.sourceUrl!)}
+            >
+              Open Source
+            </button>
+          ) : null}
+        </div>
+        <p className="text-sm text-slate-600 dark:text-slate-300">
+          Provider: {existingProvider?.name ?? selectedProvider?.name ?? "Manual"}
+        </p>
 
         <p className="text-sm text-slate-600 dark:text-slate-300">{mod.files.length} files</p>
         <ul className="m-0 grid list-none gap-2 p-0">

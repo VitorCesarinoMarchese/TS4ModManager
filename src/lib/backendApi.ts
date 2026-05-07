@@ -13,6 +13,7 @@ type ModMetadataDto = {
   displayName?: string;
   files?: string[];
   source?: string;
+  sourceUrl?: string;
 };
 
 type InvokeFn = <T = unknown>(command: string, payload?: Record<string, unknown>) => Promise<T>;
@@ -26,6 +27,17 @@ type MigrateResult = {
   managedModId: string;
   issues: Issue[];
 };
+
+function modFromMetadata(mod: ModMetadataDto, fallbackId: string, fallbackName: string): Mod {
+  return {
+    id: mod.id ?? mod.modId ?? fallbackId,
+    name: mod.displayName ?? mod.name ?? fallbackName,
+    files: mod.files ?? [],
+    enabled: false,
+    source: mod.source === "external" ? "external" : "managed",
+    sourceUrl: mod.sourceUrl
+  };
+}
 
 function normalizeError(error: unknown): ApiError {
   if (
@@ -148,13 +160,20 @@ export function createBackendApi(invoke: InvokeFn) {
           modId,
           displayName
         });
-        return {
-          id: mod.id ?? mod.modId ?? modId,
-          name: mod.displayName ?? mod.name ?? displayName,
-          files: mod.files ?? [],
-          enabled: false,
-          source: mod.source === "external" ? "external" : "managed"
-        };
+        return modFromMetadata(mod, modId, displayName);
+      } catch (error) {
+        throw normalizeError(error);
+      }
+    },
+
+    async attachSourceUrl(modId: string, sourceUrl: string, providerId?: string): Promise<Mod> {
+      try {
+        const mod = await invoke<ModMetadataDto>("attach_source_url", {
+          modId,
+          sourceUrl,
+          providerId
+        });
+        return modFromMetadata(mod, modId, mod.displayName ?? mod.name ?? modId);
       } catch (error) {
         throw normalizeError(error);
       }
