@@ -1,4 +1,5 @@
 use std::env;
+use std::fs;
 use std::path::PathBuf;
 
 use crate::error::{ErrorCode, ManagerError};
@@ -11,7 +12,14 @@ pub fn managed_root() -> Result<PathBuf, ManagerError> {
         )
     })?;
 
-    Ok(PathBuf::from(home).join(".local/share/sims4-mod-manager"))
+    let root = PathBuf::from(home).join(".local/share/sims4-mod-manager");
+    fs::create_dir_all(root.join("mods")).map_err(|e| {
+        ManagerError::new(
+            ErrorCode::IoError,
+            format!("Create managed root failed {}: {e}", root.display()),
+        )
+    })?;
+    Ok(root)
 }
 
 pub fn instance_root_from_id(instance_id: &str) -> Result<PathBuf, ManagerError> {

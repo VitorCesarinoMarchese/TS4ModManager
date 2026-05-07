@@ -252,8 +252,37 @@ describe("App redesign", () => {
 
     await waitFor(() => {
       expect(screen.queryByLabelText("mod-scan-loading")).not.toBeInTheDocument();
-      expect(screen.getByText("Scan failed")).toBeInTheDocument();
+      expect(screen.getAllByText("Scan failed").length).toBeGreaterThan(0);
     });
+  });
+
+  it("shows popup warning when source URL save fails", async () => {
+    const api = makeApi({
+      attachSourceUrl: vi.fn().mockRejectedValue({
+        code: "NOT_FOUND",
+        message: "Metadata not found: /home/user/.local/share/sims4-mod-manager/mods/McCmdCenter_AllModules_2026_2_0/meta.json"
+      })
+    });
+    const store = createAppStore(api);
+    render(<App store={store} />);
+
+    await waitFor(() => {
+      expect(screen.getByText("BuildPack")).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "details-mod-1" }));
+    fireEvent.change(screen.getByLabelText("edit-source-url"), {
+      target: { value: "https://www.curseforge.com/sims4/mods/mc-command-center" }
+    });
+    fireEvent.click(screen.getByRole("button", { name: "save-source-url" }));
+
+    await waitFor(() => {
+      expect(screen.getByRole("alertdialog", { name: "error-warning" })).toBeInTheDocument();
+      expect(screen.getAllByText(/Metadata not found/).length).toBeGreaterThan(0);
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "dismiss-error-warning" }));
+    expect(screen.queryByRole("alertdialog", { name: "error-warning" })).not.toBeInTheDocument();
   });
 
   it("opens mod details and can rename mod", async () => {

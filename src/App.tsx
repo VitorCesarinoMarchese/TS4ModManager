@@ -53,6 +53,7 @@ export function App({ store = defaultStore }: AppProps) {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [darkMode, setDarkMode] = useState(getInitialDarkMode);
   const [selectedMod, setSelectedMod] = useState<AppState["mods"][number] | null>(null);
+  const [dismissedIssueId, setDismissedIssueId] = useState<string | null>(null);
   const [toggleDisabledById, setToggleDisabledById] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
@@ -77,6 +78,9 @@ export function App({ store = defaultStore }: AppProps) {
     : null;
 
   const isScanning = scanStatus === "scanning";
+  const popupIssue = [...issues]
+    .reverse()
+    .find((issue) => issue.severity === "error" && issue.id !== dismissedIssueId);
 
   const onToggle = async (mod: AppState["mods"][number]) => {
     if (!selectedInstanceId) return;
@@ -189,6 +193,41 @@ export function App({ store = defaultStore }: AppProps) {
             />
 
             <ImportPanel onImport={(archivePath, name, slug) => importArchive(archivePath, name, slug)} />
+          </motion.section>
+        </motion.div>
+      ) : null}
+
+      {popupIssue ? (
+        <motion.div
+          className="modal-backdrop fixed inset-0 z-30 grid place-items-center bg-black/35 p-4"
+          role="presentation"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ duration: 0.16 }}
+        >
+          <motion.section
+            role="alertdialog"
+            aria-label="error-warning"
+            aria-live="assertive"
+            className="grid w-[min(560px,calc(100vw-2rem))] gap-4 rounded-[14px] border border-red-500 bg-white p-6 text-slate-950 shadow-xl dark:bg-slate-900 dark:text-slate-100"
+            initial={{ opacity: 0, scale: 0.98 }}
+            animate={{ opacity: 1, scale: 1 }}
+            transition={{ duration: 0.18, ease: "easeOut" }}
+          >
+            <header className="flex items-center justify-between gap-4">
+              <h2 className="text-xl font-semibold text-red-600 dark:text-red-400">Error</h2>
+              <button
+                type="button"
+                aria-label="dismiss-error-warning"
+                className="inline-flex items-center gap-2 rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm hover:border-accent hover:bg-accent/10 focus:outline-none focus:ring-2 focus:ring-accent/40 dark:border-slate-600 dark:bg-slate-800"
+                onClick={() => setDismissedIssueId(popupIssue.id)}
+              >
+                <X size={16} weight="regular" aria-hidden="true" />
+                Close
+              </button>
+            </header>
+            <p>{popupIssue.message}</p>
+            {popupIssue.code ? <p className="text-sm text-slate-600 dark:text-slate-300">{popupIssue.code}</p> : null}
           </motion.section>
         </motion.div>
       ) : null}

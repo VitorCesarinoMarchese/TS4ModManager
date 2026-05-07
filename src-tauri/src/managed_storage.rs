@@ -108,6 +108,15 @@ pub fn write_managed_mod(managed_root: &Path, meta: &ModMetadata) -> Result<(), 
     })?;
 
     let meta_path = managed_root.join("mods").join(&meta.mod_id).join("meta.json");
+    if let Some(parent) = meta_path.parent() {
+        fs::create_dir_all(parent).map_err(|e| {
+            ManagerError::new(
+                ErrorCode::IoError,
+                format!("Metadata dir create failed {}: {e}", parent.display()),
+            )
+        })?;
+    }
+
     fs::write(&meta_path, meta_json).map_err(|e| {
         ManagerError::new(
             ErrorCode::IoError,
@@ -143,12 +152,39 @@ pub fn read_managed_mod(managed_root: &Path, mod_id: &str) -> Result<ModMetadata
     Ok(meta)
 }
 
+fn read_managed_mod_or_create_local(managed_root: &Path, mod_id: &str) -> Result<ModMetadata, ManagerError> {
+    match read_managed_mod(managed_root, mod_id) {
+        Ok(meta) => Ok(meta),
+        Err(err) if err.code == ErrorCode::NotFound => {
+            let detected_name = detect_display_name(mod_id);
+            Ok(ModMetadata {
+                version: 1,
+                created_by: "sims4-mod-manager".to_string(),
+                mod_id: mod_id.to_string(),
+                name: mod_id.to_string(),
+                display_name: detected_name.clone(),
+                detected_name: Some(detected_name),
+                custom_name: None,
+                slug: None,
+                files: vec![],
+                source: "local".to_string(),
+                source_url: None,
+                preview_url: None,
+                local_preview_path: None,
+                locked_name: false,
+                updated_at: None,
+            })
+        }
+        Err(err) => Err(err),
+    }
+}
+
 pub fn set_custom_display_name(
     managed_root: &Path,
     mod_id: &str,
     custom_name: String,
 ) -> Result<ModMetadata, ManagerError> {
-    let mut meta = read_managed_mod(managed_root, mod_id)?;
+    let mut meta = read_managed_mod_or_create_local(managed_root, mod_id)?;
     let trimmed = custom_name.trim();
     if trimmed.is_empty() {
         return Err(ManagerError::new(
@@ -169,7 +205,7 @@ pub fn set_source_url(
     source_url: String,
     provider_id: Option<String>,
 ) -> Result<ModMetadata, ManagerError> {
-    let mut meta = read_managed_mod(managed_root, mod_id)?;
+    let mut meta = read_managed_mod_or_create_local(managed_root, mod_id)?;
     let trimmed = source_url.trim();
     if trimmed.is_empty() {
         return Err(ManagerError::new(
@@ -384,6 +420,37 @@ mod tests {
         assert_eq!(read.detected_name.as_deref(), Some("Detected Name"));
         assert_eq!(read.custom_name.as_deref(), Some("Custom Name"));
         assert_eq!(read.source_url.as_deref(), Some("https://example.test/mod"));
+    }
+
+    #[test]
+    fn attaches_source_url_by_imported_bundle_name_when_id_is_missing() {
+        let tmp = TempDir::new().expect("tmp");
+        let src = tmp.path().join("import").join("McCmdCenter_AllModules_2026_2_0");
+        fs::create_dir_all(&src).expect("src");
+        fs::write(src.join("mc_cmd_center.package"), b"x").expect("file");
+        create_managed_mod(
+            tmp.path(),
+            ImportRequest {
+                name: "McCmdCenter_AllModules_2026_2_0".to_string(),
+                slug: None,
+                source_dir: src.parent().expect("parent").to_path_buf(),
+            },
+        )
+        .expect("create");
+
+        let updated = super::set_source_url(
+            tmp.path(),
+            "McCmdCenter_AllModules_2026_2_0",
+            "https://www.curseforge.com/sims4/mods/mc-command-center".to_string(),
+            Some("curseforge".to_string()),
+        )
+        .expect("attach by bundle name");
+
+        assert_eq!(updated.name, "McCmdCenter_AllModules_2026_2_0");
+        assert_eq!(
+            updated.source_url.as_deref(),
+            Some("https://www.curseforge.com/sims4/mods/mc-command-center")
+        );
     }
 
     #[test]
