@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import {
   createCurseForgeProvider,
+  createModTheSimsProvider,
   curseForgeProvider,
   getMetadataProviderForUrl,
   localNameProvider,
@@ -74,6 +75,46 @@ describe("metadata providers", () => {
       "https://api.curseforge.com/v1/mods/search?gameId=7806&slug=example",
       { headers: { "x-api-key": "key" } }
     );
+  });
+
+  it("ModTheSims fetch extracts metadata from pasted HTML URL", async () => {
+    const fetchFn = vi.fn().mockResolvedValue({
+      ok: true,
+      text: async () => `
+        <html>
+          <head>
+            <meta property="og:description" content="Long mod description" />
+            <meta property="og:image" content="https://static.modthesims.info/preview.jpg" />
+          </head>
+          <body>
+            <h1>Example MTS Mod</h1>
+            <a rel="author">MTS Creator</a>
+            <span class="version">v2.0</span>
+          </body>
+        </html>
+      `
+    });
+    const provider = createModTheSimsProvider({ fetchFn });
+
+    const metadata = await provider.fetchMetadataFromUrl("https://modthesims.info/d/123456/example");
+
+    expect(metadata).toEqual({
+      displayName: "Example MTS Mod",
+      description: "Long mod description",
+      sourceUrl: "https://modthesims.info/d/123456/example",
+      previewUrl: "https://static.modthesims.info/preview.jpg",
+      author: "MTS Creator",
+      version: "v2.0"
+    });
+    expect(fetchFn).toHaveBeenCalledWith("https://modthesims.info/d/123456/example");
+  });
+
+  it("ModTheSims fetch fails gracefully", async () => {
+    const provider = createModTheSimsProvider({ fetchFn: vi.fn().mockRejectedValue(new Error("offline")) });
+
+    await expect(provider.fetchMetadataFromUrl("https://modthesims.info/d/123456/example")).resolves.toEqual({
+      sourceUrl: "https://modthesims.info/d/123456/example"
+    });
   });
 
   it("ignores unsupported URLs and local provider does not claim URLs", () => {

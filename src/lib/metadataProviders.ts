@@ -26,7 +26,8 @@ function parseUrl(raw: string): URL | null {
 
 type ProviderFetch = (url: string, init?: { headers?: Record<string, string> }) => Promise<{
   ok: boolean;
-  json(): Promise<unknown>;
+  json?(): Promise<unknown>;
+  text?(): Promise<string>;
 }>;
 
 type CurseForgeApiMod = {
@@ -86,7 +87,7 @@ export function createCurseForgeProvider({
       );
       if (!response.ok) return { sourceUrl };
 
-      const json = (await response.json()) as { data?: CurseForgeApiMod[] };
+      const json = (await response.json?.()) as { data?: CurseForgeApiMod[] };
       const mod = json.data?.[0];
       if (!mod) return { sourceUrl };
 
@@ -108,18 +109,51 @@ export const curseForgeProvider: MetadataProvider = createCurseForgeProvider({
   apiKey: viteEnv.env?.VITE_CURSEFORGE_API_KEY
 });
 
-export const modTheSimsProvider: MetadataProvider = {
-  id: "modthesims",
-  name: "ModTheSims",
-  canHandleUrl: (raw) => {
-    const url = parseUrl(raw);
-    if (!url) return false;
-    const host = url.hostname.replace(/^www\./, "").toLowerCase();
-    const path = url.pathname.toLowerCase();
-    return host === "modthesims.info" && (path.startsWith("/d/") || path === "/download.php");
-  },
-  fetchMetadataFromUrl: unsupportedFetch("ModTheSims")
-};
+function textContent(doc: Document, selector: string): string | undefined {
+  return doc.querySelector(selector)?.textContent?.trim() || undefined;
+}
+
+function metaContent(doc: Document, selector: string): string | undefined {
+  return doc.querySelector<HTMLMetaElement>(selector)?.content?.trim() || undefined;
+}
+
+export function createModTheSimsProvider({
+  fetchFn = globalThis.fetch as ProviderFetch
+}: { fetchFn?: ProviderFetch } = {}): MetadataProvider {
+  return {
+    id: "modthesims",
+    name: "ModTheSims",
+    canHandleUrl: (raw) => {
+      const url = parseUrl(raw);
+      if (!url) return false;
+      const host = url.hostname.replace(/^www\./, "").toLowerCase();
+      const path = url.pathname.toLowerCase();
+      return host === "modthesims.info" && (path.startsWith("/d/") || path === "/download.php");
+    },
+    async fetchMetadataFromUrl(sourceUrl) {
+      try {
+        if (!fetchFn) return { sourceUrl };
+        const response = await fetchFn(sourceUrl);
+        if (!response.ok || !response.text) return { sourceUrl };
+        const html = await response.text();
+        const doc = new DOMParser().parseFromString(html, "text/html");
+
+        return {
+          displayName: textContent(doc, "h1") || metaContent(doc, 'meta[property="og:title"]'),
+          description: metaContent(doc, 'meta[property="og:description"]'),
+          sourceUrl,
+          previewUrl: metaContent(doc, 'meta[property="og:image"]'),
+          author: textContent(doc, '[rel="author"]') || textContent(doc, ".username"),
+          version: textContent(doc, ".version")
+        };
+      } catch {
+        return { sourceUrl };
+      }
+    }
+  };
+}
+
+export const modTheSimsProvider: MetadataProvider = createModTheSimsProvider();
 
 export const metadataProviders: MetadataProvider[] = [
   localNameProvider,
