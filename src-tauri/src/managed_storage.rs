@@ -143,6 +143,26 @@ pub fn read_managed_mod(managed_root: &Path, mod_id: &str) -> Result<ModMetadata
     Ok(meta)
 }
 
+pub fn set_custom_display_name(
+    managed_root: &Path,
+    mod_id: &str,
+    custom_name: String,
+) -> Result<ModMetadata, ManagerError> {
+    let mut meta = read_managed_mod(managed_root, mod_id)?;
+    let trimmed = custom_name.trim();
+    if trimmed.is_empty() {
+        return Err(ManagerError::new(
+            ErrorCode::InvalidPath,
+            "Display name cannot be empty",
+        ));
+    }
+
+    meta.custom_name = Some(trimmed.to_string());
+    meta.display_name = trimmed.to_string();
+    write_managed_mod(managed_root, &meta)?;
+    Ok(meta)
+}
+
 pub fn read_managed_mod_or_default(managed_root: &Path, mod_id: &str, detected_name: &str) -> ModMetadata {
     read_managed_mod(managed_root, mod_id).unwrap_or_else(|_| ModMetadata {
         version: 1,
@@ -341,6 +361,34 @@ mod tests {
         assert_eq!(read.detected_name.as_deref(), Some("Detected Name"));
         assert_eq!(read.custom_name.as_deref(), Some("Custom Name"));
         assert_eq!(read.source_url.as_deref(), Some("https://example.test/mod"));
+    }
+
+    #[test]
+    fn updates_custom_display_name_in_metadata() {
+        let tmp = TempDir::new().expect("tmp");
+        let src = tmp.path().join("import");
+        fs::create_dir_all(&src).expect("src");
+        fs::write(src.join("a.package"), b"x").expect("file");
+
+        let meta = create_managed_mod(
+            tmp.path(),
+            ImportRequest {
+                name: "Detected".to_string(),
+                slug: None,
+                source_dir: src,
+            },
+        )
+        .expect("create");
+
+        let updated = super::set_custom_display_name(tmp.path(), &meta.mod_id, "Custom Display".to_string())
+            .expect("update");
+
+        assert_eq!(updated.custom_name.as_deref(), Some("Custom Display"));
+        assert_eq!(updated.display_name, "Custom Display");
+        assert_eq!(updated.effective_display_name(), "Custom Display");
+
+        let read = read_managed_mod(tmp.path(), &meta.mod_id).expect("read");
+        assert_eq!(read.custom_name.as_deref(), Some("Custom Display"));
     }
 
     #[test]

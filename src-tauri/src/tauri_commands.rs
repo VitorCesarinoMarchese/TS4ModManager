@@ -81,6 +81,14 @@ fn detect_orphan_symlinks(
     Ok(commands::cmd_detect_orphan_symlinks(mods_dir_from_instance_id(&instance_id)?))
 }
 
+#[tauri::command]
+fn rename_mod_display_name(
+    mod_id: String,
+    display_name: String,
+) -> Result<crate::managed_storage::ModMetadata, ManagerError> {
+    commands::cmd_rename_mod_display_name(managed_root()?, mod_id, display_name)
+}
+
 pub fn run() {
     tauri::Builder::default()
         .invoke_handler(tauri::generate_handler![
@@ -91,7 +99,8 @@ pub fn run() {
             dry_run_toggle,
             apply_toggle,
             migrate_external_mod,
-            detect_orphan_symlinks
+            detect_orphan_symlinks,
+            rename_mod_display_name
         ])
         .run(tauri::generate_context!())
         .expect("tauri run failed");

@@ -30,6 +30,7 @@ export type BackendApi = {
     instanceId: string
   ) => Promise<ApplyResult>;
   migrateExternalMod: (modId: string, instanceId: string) => Promise<MigrateResult>;
+  renameModDisplayName: (modId: string, displayName: string) => Promise<Mod>;
 };
 
 /* c8 ignore start */
@@ -41,7 +42,14 @@ const defaultApi: BackendApi = {
   importArchive: async () => ({ modId: "" }),
   dryRunToggle: async () => ({ canApply: true, operations: [], issues: [] }),
   applyToggle: async () => ({ applied: true, issues: [] }),
-  migrateExternalMod: async (modId) => ({ managedModId: modId, issues: [] })
+  migrateExternalMod: async (modId) => ({ managedModId: modId, issues: [] }),
+  renameModDisplayName: async (modId, displayName) => ({
+    id: modId,
+    name: displayName,
+    files: [],
+    enabled: false,
+    source: "managed"
+  })
 };
 /* c8 ignore stop */
 
@@ -59,6 +67,7 @@ export type AppState = {
   addIssue: (issue: Issue) => void;
   addCustomInstance: (path: string) => Promise<void>;
   importArchive: (archivePath: string, name: string, slug?: string) => Promise<void>;
+  renameModDisplayName: (modId: string, displayName: string) => Promise<Mod | null>;
   toggleMod: (mod: Mod, targetEnabled: boolean, instanceId: string) => Promise<DryRunResult>;
 };
 
@@ -182,6 +191,25 @@ export function createAppStore(apiOverrides: Partial<BackendApi> = {}) {
         set((state) => ({
           issues: mergeIssueList(state.issues, toIssue(error, "custom-path", "Custom path invalid"))
         }));
+      }
+    },
+    renameModDisplayName: async (modId, displayName) => {
+      try {
+        const renamed = await api.renameModDisplayName(modId, displayName);
+        let updated: Mod | null = null;
+        set((state) => ({
+          mods: state.mods.map((mod) => {
+            if (mod.id !== modId) return mod;
+            updated = { ...mod, ...renamed, id: mod.id, name: renamed.name };
+            return updated;
+          })
+        }));
+        return updated;
+      } catch (error) {
+        set((state) => ({
+          issues: mergeIssueList(state.issues, toIssue(error, "rename", "Rename failed"))
+        }));
+        return null;
       }
     },
     importArchive: async (archivePath, name, slug) => {

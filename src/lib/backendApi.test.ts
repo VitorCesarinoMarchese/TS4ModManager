@@ -108,6 +108,25 @@ describe("backend api wrapper", () => {
     expect(invoke).toHaveBeenCalledWith("validate_custom_instance", { path: "/games/sims4" });
   });
 
+  it("calls rename mod display name command", async () => {
+    const invoke = vi.fn().mockResolvedValue({
+      modId: "m1",
+      name: "Raw Local Name",
+      displayName: "Custom Display",
+      files: ["a.package"],
+      source: "local"
+    });
+    const api = createBackendApi(invoke);
+
+    const res = await api.renameModDisplayName("m1", "Custom Display");
+
+    expect(res.name).toBe("Custom Display");
+    expect(invoke).toHaveBeenCalledWith("rename_mod_display_name", {
+      modId: "m1",
+      displayName: "Custom Display"
+    });
+  });
+
   it("calls import archive command", async () => {
     const invoke = vi.fn().mockResolvedValue({ modId: "m7" });
     const api = createBackendApi(invoke);

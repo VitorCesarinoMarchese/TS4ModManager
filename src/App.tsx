@@ -46,12 +46,12 @@ export function App({ store = defaultStore }: AppProps) {
   const toggleMod = useStore(store, (s) => s.toggleMod);
   const addCustomInstance = useStore(store, (s) => s.addCustomInstance);
   const importArchive = useStore(store, (s) => s.importArchive);
+  const renameModDisplayName = useStore(store, (s) => s.renameModDisplayName);
 
   const [search, setSearch] = useState("");
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [darkMode, setDarkMode] = useState(getInitialDarkMode);
   const [selectedMod, setSelectedMod] = useState<AppState["mods"][number] | null>(null);
-  const [modNameById, setModNameById] = useState<Record<string, string>>({});
   const [toggleDisabledById, setToggleDisabledById] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
@@ -71,16 +71,8 @@ export function App({ store = defaultStore }: AppProps) {
     };
   }, [darkMode]);
 
-  const displayMods = mods.map((mod) => ({
-    ...mod,
-    name: modNameById[mod.id] ?? mod.name
-  }));
-
   const effectiveSelectedMod = selectedMod
-    ? {
-        ...selectedMod,
-        name: modNameById[selectedMod.id] ?? selectedMod.name
-      }
+    ? (mods.find((mod) => mod.id === selectedMod.id) ?? selectedMod)
     : null;
 
   const isScanning = scanStatus === "scanning";
@@ -116,7 +108,7 @@ export function App({ store = defaultStore }: AppProps) {
 
         <main className="main-content grid gap-6 rounded-2xl border border-slate-300 bg-white p-6 dark:border-slate-700 dark:bg-slate-900">
           <header className="main-header flex items-center justify-between gap-4">
-            <h2 className="text-xl font-semibold">Mods ({displayMods.length})</h2>
+            <h2 className="text-xl font-semibold">Mods ({mods.length})</h2>
             <div className="controls flex gap-4">
               <SearchBar value={search} onChange={setSearch} />
               <button
@@ -139,7 +131,7 @@ export function App({ store = defaultStore }: AppProps) {
 
           <div className="relative min-h-[220px]">
             <HomePage
-              mods={displayMods}
+              mods={mods}
               search={search}
               onToggle={onToggle}
               onDetails={(mod) => setSelectedMod(mod)}
@@ -204,9 +196,9 @@ export function App({ store = defaultStore }: AppProps) {
         <ModDetailsPanel
           mod={effectiveSelectedMod}
           onClose={() => setSelectedMod(null)}
-          onRename={(modId, newName) => {
-            setModNameById((prev) => ({ ...prev, [modId]: newName }));
-            setSelectedMod((prev) => (prev && prev.id === modId ? { ...prev, name: newName } : prev));
+          onRename={async (modId, newName) => {
+            const renamed = await renameModDisplayName(modId, newName);
+            if (renamed) setSelectedMod(renamed);
           }}
         />
       ) : null}

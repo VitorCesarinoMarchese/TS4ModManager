@@ -6,7 +6,7 @@ import type { Mod } from "../lib/types";
 type ModDetailsPanelProps = {
   mod: Mod;
   onClose: () => void;
-  onRename?: (modId: string, newName: string) => void;
+  onRename?: (modId: string, newName: string) => void | Promise<void>;
 };
 
 export function ModDetailsPanel({ mod, onClose, onRename }: ModDetailsPanelProps) {

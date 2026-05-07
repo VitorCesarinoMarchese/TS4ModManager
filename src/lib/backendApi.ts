@@ -6,6 +6,15 @@ type ScannedModDto = Omit<Mod, "id"> & {
   key?: string;
 };
 
+type ModMetadataDto = {
+  id?: string;
+  modId?: string;
+  name?: string;
+  displayName?: string;
+  files?: string[];
+  source?: string;
+};
+
 type InvokeFn = <T = unknown>(command: string, payload?: Record<string, unknown>) => Promise<T>;
 
 type ApplyResult = {
@@ -128,6 +137,24 @@ export function createBackendApi(invoke: InvokeFn) {
           modId,
           instanceId
         });
+      } catch (error) {
+        throw normalizeError(error);
+      }
+    },
+
+    async renameModDisplayName(modId: string, displayName: string): Promise<Mod> {
+      try {
+        const mod = await invoke<ModMetadataDto>("rename_mod_display_name", {
+          modId,
+          displayName
+        });
+        return {
+          id: mod.id ?? mod.modId ?? modId,
+          name: mod.displayName ?? mod.name ?? displayName,
+          files: mod.files ?? [],
+          enabled: false,
+          source: mod.source === "external" ? "external" : "managed"
+        };
       } catch (error) {
         throw normalizeError(error);
       }

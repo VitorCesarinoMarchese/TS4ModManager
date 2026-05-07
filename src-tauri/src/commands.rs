@@ -4,7 +4,7 @@ use crate::archive_import::import_archive_to_managed;
 use crate::error::ManagerError;
 use crate::external_migration::{migrate_external_mod, MigrateResult};
 use crate::logging::append_issue_log;
-use crate::managed_storage::ModMetadata;
+use crate::managed_storage::{set_custom_display_name, ModMetadata};
 use crate::mod_scan::ScannedMod;
 use crate::orphan::{detect_orphan_symlinks, OrphanSymlink};
 use crate::path_detection::{detect_game_instances, validate_custom_instance, GameInstance};
@@ -71,4 +71,12 @@ pub fn cmd_migrate_external_mod(
 
 pub fn cmd_detect_orphan_symlinks(game_mods_dir: PathBuf) -> Vec<OrphanSymlink> {
     detect_orphan_symlinks(&game_mods_dir)
+}
+
+pub fn cmd_rename_mod_display_name(
+    managed_root: PathBuf,
+    mod_id: String,
+    display_name: String,
+) -> Result<ModMetadata, ManagerError> {
+    set_custom_display_name(&managed_root, &mod_id, display_name)
 }

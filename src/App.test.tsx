@@ -32,6 +32,15 @@ function makeApi(overrides: Record<string, unknown> = {}) {
     migrateExternalMod: vi.fn().mockResolvedValue({ managedModId: "mod-1", issues: [] }),
     validateCustomInstance: vi.fn().mockResolvedValue({ id: "custom-1", path: "/x", source: "custom" }),
     importArchive: vi.fn().mockResolvedValue({ modId: "m1" }),
+    renameModDisplayName: vi.fn().mockImplementation((modId: string, displayName: string) =>
+      Promise.resolve({
+        id: modId,
+        name: displayName,
+        files: ["a.package"],
+        enabled: false,
+        source: "managed"
+      })
+    ),
     ...overrides
   };
 }
@@ -255,7 +264,10 @@ describe("App redesign", () => {
     });
     fireEvent.click(screen.getByRole("button", { name: "save-mod-name" }));
 
-    expect(screen.getAllByText("MyRenamedMod").length).toBeGreaterThan(0);
+    await waitFor(() => {
+      expect(api.renameModDisplayName).toHaveBeenCalledWith("mod-1", "MyRenamedMod");
+      expect(screen.getAllByText("MyRenamedMod").length).toBeGreaterThan(0);
+    });
 
     fireEvent.click(screen.getByRole("button", { name: "close-mod-details" }));
     expect(screen.queryByRole("dialog", { name: "mod-details" })).not.toBeInTheDocument();
