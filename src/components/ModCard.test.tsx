@@ -10,7 +10,11 @@ describe("ModCard", () => {
       />
     );
 
-    expect(screen.getByLabelText("mod-card-m1")).toHaveAttribute("data-animated", "true");
+    const card = screen.getByLabelText("mod-card-m1");
+    expect(card).toHaveAttribute("data-animated", "true");
+    expect(card).toHaveClass("dark:hover:border-accent");
+    expect(card).toHaveClass("dark:hover:shadow-accent/20");
+    expect(card).toHaveClass("dark:hover:bg-slate-800/80");
     expect(screen.getByTitle("MyMod")).toHaveClass("truncate");
     expect(screen.getByText("1 files")).toBeInTheDocument();
     expect(screen.getByText("No Preview")).toBeInTheDocument();
