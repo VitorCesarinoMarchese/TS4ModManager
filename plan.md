@@ -1,394 +1,254 @@
-# Sims 4 Linux Mod Manager — Plan
+# Sims 4 Linux Mod Manager — Phase 2 Plan
 
-## Overview
+## Phase Name
 
-A Linux-first desktop application to manage The Sims 4 mods.  
-Inspired by Deadlock Mod Manager, but focused on a **local-first MVP**.
+Metadata, themes, and safe lifecycle management
 
-The application will:
+## Current State
 
-- Detect Sims 4 installations (native + Proton)
-- Scan installed mods
-- Display them in a clean UI
-- Allow enabling/disabling mods safely
-- Avoid any destructive file operations
+The project is a functional Linux-first Sims 4 mod manager with:
 
----
+- React + TypeScript frontend
+- Tauri desktop shell
+- Rust backend commands
+- Zustand store
+- TailwindCSS styling
+- Phosphor Icons
+- Framer Motion animations
+- System theme detection and persisted theme preference
+- Green accent color `#10b981`
+- Scan loading overlay and animated rescan feedback
+- Mod grid search, filtering, and pagination
+- Linux/Proton Sims 4 path detection
+- Non-mod filtering for scanned content
+- Safe symlink-based enable/disable behavior
+- TDD workflow with passing frontend and Rust tests
 
-## Philosophy
+Current validation baseline:
 
-- Filesystem is the source of truth
-- No external APIs in MVP
-- Safe and reversible operations only
-- Minimal friction UX (no manual folder handling)
-- Linux-first experience
-
----
-
-## MVP Scope
-
-### Features
-
-- Auto-detect Sims 4 installations
-- Scan Mods directory
-- Represent mods as structured entities
-- Display mods in UI
-- Enable / disable mods
-- Search installed mods
-- Basic preview image detection
-
----
-
-## Tech Stack
-
-- **Frontend:** React + TypeScript
-- **Desktop:** Tauri
-- **Backend (internal):** Rust (Tauri commands)
-- **State Management:** Zustand or React Context
-
----
-
-## Filesystem Design
-
-### Managed Directory
-
-```
-~/.local/share/sims4-mod-manager/
-  mods/
-    <mod-id>/
-      files/
-      meta.json
-      enabled
+```text
+npm run test:run       -> 71 passed
+npm run build          -> passing
+npm run test:coverage  -> 91.09%
+cargo test             -> 44 passed
+cargo check --features tauri-app -> passing
 ```
 
----
+## Phase 2 Goals
 
-### Game Mods Folder
+1. Add metadata provider architecture for CurseForge and ModTheSims.
+2. Support browser fallback links for source pages.
+3. Detect official mod names from local filenames and folders.
+4. Fetch metadata and images when possible.
+5. Store editable display names in each managed mod `meta.json`.
+6. Add a custom theme editor with JSON import/export.
+7. Improve game instance sidebar behavior.
+8. Add safe uninstall by moving managed mods to trash.
+9. Remove emoji from issue empty state.
+10. Keep strict test-first workflow.
 
-```
-~/Documents/Electronic Arts/The Sims 4/Mods
-```
+## Constraints
 
-(Proton paths also supported)
+- Tests must be written or updated before implementation.
+- Keep commits small and atomic.
+- Never permanently delete user files.
+- Do not delete unmanaged files.
+- Do not implement direct web downloads in Phase 2.
+- Do not do broad web crawling.
+- ModTheSims scraping must be URL-based only.
+- External metadata failures must not block local mod management.
+- Keep local-first architecture.
+- Store mod metadata in each mod's `meta.json`.
+- Do not expose raw technical details in the UI unless needed.
 
----
+## Metadata Model
 
-## Enable / Disable Strategy
-
-### Enabled
-- Create symlinks into Sims 4 Mods folder
-
-### Disabled
-- Remove symlinks only
-
-### Rules
-
-- Never delete original mod files
-- Never modify original files
-- Only manage symlinks
-
----
-
-## Mod Model
+Target metadata shape:
 
 ```ts
-type Mod = {
-  id: string
-  name: string
-  files: string[]
-  enabled: boolean
-  preview?: string
-}
+type ModMetadata = {
+  displayName: string;
+  detectedName?: string;
+  customName?: string;
+  source?: "local" | "curseforge" | "modthesims" | "manual";
+  sourceUrl?: string;
+  previewUrl?: string;
+  localPreviewPath?: string;
+  lockedName?: boolean;
+  updatedAt?: string;
+};
 ```
 
----
+Name priority:
 
-## Mod Detection Strategy
+1. `customName`
+2. `detectedName`
+3. fallback local folder/file name
 
-1. Scan Mods folder recursively
-2. Group files by:
-   - Folder
-   - Filename similarity (fallback)
-3. Extract:
-   - Name from filename/folder
-   - Files list
-4. Detect preview image if present
+Examples:
 
----
-
-## UI Design
-
-### Pages
-
-#### Home
-
-- Grid/list of mod cards
-- Each card contains:
-  - Name
-  - Preview image (if available)
-  - Enable/disable toggle
-  - File count
-
----
-
-#### Settings
-
-- Display detected game paths
-- Button: "Rescan Mods"
-
----
-
-### UI Style
-
-- Material Design inspired
-- Clean card-based layout
-- Minimal clutter
-
----
-
-## Linux-Specific Features (Core Requirement)
-
-### Native Path Detection
-
-```
-~/Documents/Electronic Arts/The Sims 4
+```text
+McCmdCenter_AllModules_2026_2_0 -> Mc Command Center
+wickedwhims_v182                -> WickedWhims
+random_mod_file_1_2_3           -> Random Mod File
 ```
 
----
+## Provider Architecture
 
-### Proton Detection
-
-Scan:
-
-```
-~/.steam/steam/steamapps/compatdata/*
-~/Games/*
-```
-
-Look for:
-
-```
-pfx/drive_c/users/*/Documents/Electronic Arts/The Sims 4
-```
-
----
-
-### Game Instance Model
+Provider abstraction:
 
 ```ts
-type GameInstance = {
-  path: string
-  source: "native" | "steam" | "custom"
-}
+type MetadataProvider = {
+  id: string;
+  name: string;
+  canHandleUrl(url: string): boolean;
+  fetchMetadataFromUrl(url: string): Promise<ResolvedModMetadata>;
+};
+
+type ResolvedModMetadata = {
+  displayName?: string;
+  description?: string;
+  sourceUrl: string;
+  previewUrl?: string;
+  author?: string;
+  version?: string;
+};
 ```
 
----
+Initial providers:
 
-## Image Detection (MVP Heuristic)
+- LocalNameProvider: deterministic local name cleanup and alias rules.
+- CurseForgeProvider: API-based metadata provider, graceful when API key is missing.
+- ModTheSimsProvider: user-pasted URL metadata scraping only, conservative and best-effort.
 
-Search for:
+## Theme Model
 
-- `*.png`
-- `*.jpg`
-- `preview.*`
-- `cover.*`
+Target theme shape:
+
+```ts
+type AppTheme = {
+  name: string;
+  colors: {
+    accent: string;
+    background: string;
+    surface: string;
+    text: string;
+    mutedText: string;
+    border: string;
+  };
+};
+```
 
-Use first match as preview image.
+Requirements:
 
----
+- Default accent remains `#10b981`.
+- Theme persists locally.
+- Theme applies through CSS variables.
+- Invalid imported JSON must not break UI.
+
+## Checkpoints
 
-## Safety Rules
+### Checkpoint 1: Issue text cleanup
 
-- Never delete user data
-- Only manipulate symlinks
-- Validate all paths before operations
-- Avoid overwriting files
-- Keep operations reversible
-
----
-
-## Not Included in MVP
-
-- CurseForge API integration
-- Mod downloading
-- Scraping external sources
-- Dependency resolution
-- Conflict detection
-- Version tracking
-
----
-
-## Future Expansion
-
-Planned for V2+:
-
-- CurseForge API integration
-- Scraper for non-CurseForge mods
-- Download manager
-- Mod updates tracking
-- Dependency resolution
-- Conflict detection
-- Profiles system
-- Mod metadata enrichment
-
----
-
-## Architecture (Simplified)
-
-| Layer        | Responsibility                |
-|-------------|-----------------------------|
-| React UI     | Display + user interaction   |
-| Tauri Core   | Bridge frontend/backend      |
-| Rust Commands| Filesystem + detection logic |
-
----
-
-## MVP Success Criteria
-
-- App launches and detects Sims 4 automatically
-- Mods are listed correctly
-- User can enable/disable mods
-- No manual file handling required
-- No data loss or destructive behavior
-
----
-
-## Key Design Decisions
-
-### 1. Mods are entities, not files
-Group related files into a single mod object.
-
-### 2. Use symlinks instead of copying
-- Faster
-- Reversible
-- Cleaner
-
-### 3. Proton support is mandatory
-This is a core differentiator.
-
-### 4. UX must hide filesystem complexity
-User should not think about:
-- folders
-- prefixes
-- file types
-
----
-
-
-
----
-
-## 🧪 Test-First Development (TDD Requirement)
-
-This project must follow a **test-first approach**.  
-All features should be implemented using **Test-Driven Development (TDD)** principles.
-
-### Core Rules
-
-1. **Write tests before implementation**
-   - Define expected behavior first
-   - Tests should fail initially
-
-2. **Implement minimal code to pass tests**
-   - Do not over-engineer
-   - Focus only on satisfying test conditions
-
-3. **Refactor after passing**
-   - Clean code
-   - Improve structure
-   - Maintain passing tests
-
----
-
-### Testing Strategy
-
-#### Backend (Rust / Tauri commands)
-
-- Use Rust unit tests (`#[test]`)
-- Test:
-  - Path detection
-  - Mod scanning logic
-  - Grouping algorithm
-  - Enable/disable (symlink behavior)
-
-Example areas to test:
-
-- Detecting valid Sims 4 directories
-- Correct grouping of mod files into a single mod
-- Safe symlink creation/removal
-- Handling invalid paths
-
----
-
-#### Frontend (React)
-
-- Use:
-  - Vitest or Jest
-  - React Testing Library
-
-Test:
-
-- Mod list rendering
-- Toggle behavior
-- Search filtering
-- UI state consistency
-
----
-
-### Agent Behavior Requirement
-
-When implementing any feature, the agent must:
-
-1. Create test file first
-2. Define expected inputs/outputs
-3. Run tests (expect failure)
-4. Implement feature
-5. Run tests again (must pass)
-6. Only then proceed
-
----
-
-### Example Workflow
-
-1. Create test:
-   - "should detect mods from a directory"
-
-2. Run → FAIL
-
-3. Implement scan function
-
-4. Run → PASS
-
-5. Refactor safely
-
----
-
-### Test Coverage Goals (MVP)
-
-- Core logic: high coverage (≥80%)
-- UI: focus on behavior, not styling
-- Filesystem operations: must be tested
-
----
-
-### Critical Note
-
-This project interacts with user files.
-
-**All filesystem operations must be covered by tests before execution.**
-
-No untested destructive or semi-destructive operation is allowed.
-
----
-
-
-## Next Steps
-
-1. Scaffold Tauri + React project
-2. Implement Rust commands:
-   - Detect game paths
-   - Scan Mods directory
-3. Build mod grouping logic
-4. Implement UI (Home + Settings)
-5. Add enable/disable logic via symlinks
-6. Add search functionality
+- Test empty issues state contains no emoji.
+- Replace `No issues detected ✔` with `No issues detected`.
+- Commit separately.
+
+### Checkpoint 2: Metadata model and `meta.json` persistence
+
+- Add Rust tests for reading and writing metadata.
+- Add custom name priority over detected name.
+- Missing or invalid `meta.json` must not crash scanning.
+- Commit separately.
+
+### Checkpoint 3: Official name detection
+
+- Add tests for known filename cleanup cases.
+- Implement deterministic local name detection.
+- Include alias map for known popular mods.
+- Commit separately.
+
+### Checkpoint 4: Editable display name
+
+- Add UI flow for renaming mod display name.
+- Store custom name in `meta.json`.
+- Test persistence and name priority.
+- Commit separately.
+
+### Checkpoint 5: Provider abstraction
+
+- Add provider interfaces and provider selection.
+- Add URL matching tests.
+- Do not add scraping yet.
+- Commit separately.
+
+### Checkpoint 6: URL metadata attachment
+
+- Add UI for attaching source URL to a mod.
+- Select provider from URL.
+- Store `sourceUrl` and fetched metadata when available.
+- Add browser fallback action.
+- Commit separately.
+
+### Checkpoint 7: CurseForge provider
+
+- Add API provider behind abstraction.
+- Handle missing API key gracefully.
+- Add mocked tests.
+- Do not require an API key for startup or tests.
+- Commit separately.
+
+### Checkpoint 8: ModTheSims provider
+
+- Add URL-based scraping only.
+- Add mocked HTML fixture tests.
+- Extract title, author, description, and preview image when possible.
+- Fail gracefully.
+- Commit separately.
+
+### Checkpoint 9: Theme editor
+
+- Add custom theme model.
+- Add editor UI.
+- Apply via CSS variables.
+- Add reset, export JSON, and import JSON.
+- Validate imported JSON.
+- Add persistence/import/export tests.
+- Commit separately.
+
+### Checkpoint 10: Sidebar behavior
+
+- Hide sidebar by default when one game instance exists.
+- Show sidebar when multiple instances exist.
+- Add manual collapse and expand control.
+- Persist collapsed state.
+- Keep friendly labels and avoid full paths by default.
+- Commit separately.
+
+### Checkpoint 11: Safe uninstall
+
+- Add uninstall option per mod.
+- Require confirmation.
+- Disable mod first.
+- Remove app-created symlinks.
+- Move managed folder to trash instead of deleting permanently.
+- Add tests for confirmation, trash movement, symlink removal, unmanaged file safety, and failure safety.
+- Commit separately.
+
+## Final Validation
+
+Before final Phase 2 completion report, run:
+
+```bash
+npm run test:run
+npm run build
+npm run test:coverage
+cargo test --manifest-path src-tauri/Cargo.toml
+cargo check --manifest-path src-tauri/Cargo.toml --features tauri-app
+```
+
+## Notes
+
+- CurseForge API key may be needed for real API calls, but tests must not require it.
+- ModTheSims support is best-effort metadata extraction from user-provided URLs only.
+- Downloading, installing from web, profiles, dependency management, and conflict detection remain future work unless explicitly added later.
