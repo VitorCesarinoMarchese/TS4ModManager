@@ -20,9 +20,36 @@ pub struct ModMetadata {
     pub created_by: String,
     pub mod_id: String,
     pub name: String,
+    #[serde(default)]
+    pub display_name: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub detected_name: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub custom_name: Option<String>,
     pub slug: Option<String>,
     pub files: Vec<String>,
     pub source: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_url: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub preview_url: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub local_preview_path: Option<String>,
+    #[serde(default)]
+    pub locked_name: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub updated_at: Option<String>,
+}
+
+impl ModMetadata {
+    pub fn effective_display_name(&self) -> &str {
+        self.custom_name
+            .as_deref()
+            .filter(|name| !name.trim().is_empty())
+            .or_else(|| self.detected_name.as_deref().filter(|name| !name.trim().is_empty()))
+            .or_else(|| (!self.display_name.trim().is_empty()).then_some(self.display_name.as_str()))
+            .unwrap_or(&self.name)
+    }
 }
 
 pub fn create_managed_mod(managed_root: &Path, req: ImportRequest) -> Result<ModMetadata, ManagerError> {
@@ -46,31 +73,45 @@ pub fn create_managed_mod(managed_root: &Path, req: ImportRequest) -> Result<Mod
 
     let files = copy_recursive(&req.source_dir, &files_root)?;
 
+    let name = req.name;
     let meta = ModMetadata {
         version: 1,
         created_by: "sims4-mod-manager".to_string(),
         mod_id: mod_id.clone(),
-        name: req.name,
+        display_name: name.clone(),
+        detected_name: Some(name.clone()),
+        custom_name: None,
+        name,
         slug: req.slug,
         files,
-        source: "managed".to_string(),
+        source: "local".to_string(),
+        source_url: None,
+        preview_url: None,
+        local_preview_path: None,
+        locked_name: false,
+        updated_at: None,
     };
 
-    let meta_json = serde_json::to_string_pretty(&meta).map_err(|e| {
+    write_managed_mod(managed_root, &meta)?;
+
+    Ok(meta)
+}
+
+pub fn write_managed_mod(managed_root: &Path, meta: &ModMetadata) -> Result<(), ManagerError> {
+    let meta_json = serde_json::to_string_pretty(meta).map_err(|e| {
         ManagerError::new(
             ErrorCode::InternalError,
             format!("Metadata serialize failed: {e}"),
         )
     })?;
 
-    fs::write(mod_root.join("meta.json"), meta_json).map_err(|e| {
+    let meta_path = managed_root.join("mods").join(&meta.mod_id).join("meta.json");
+    fs::write(&meta_path, meta_json).map_err(|e| {
         ManagerError::new(
             ErrorCode::IoError,
-            format!("Metadata write failed: {e}"),
+            format!("Metadata write failed {}: {e}", meta_path.display()),
         )
-    })?;
-
-    Ok(meta)
+    })
 }
 
 pub fn read_managed_mod(managed_root: &Path, mod_id: &str) -> Result<ModMetadata, ManagerError> {
@@ -98,6 +139,26 @@ pub fn read_managed_mod(managed_root: &Path, mod_id: &str) -> Result<ModMetadata
     }
 
     Ok(meta)
+}
+
+pub fn read_managed_mod_or_default(managed_root: &Path, mod_id: &str, detected_name: &str) -> ModMetadata {
+    read_managed_mod(managed_root, mod_id).unwrap_or_else(|_| ModMetadata {
+        version: 1,
+        created_by: "sims4-mod-manager".to_string(),
+        mod_id: mod_id.to_string(),
+        name: detected_name.to_string(),
+        display_name: detected_name.to_string(),
+        detected_name: Some(detected_name.to_string()),
+        custom_name: None,
+        slug: None,
+        files: vec![],
+        source: "local".to_string(),
+        source_url: None,
+        preview_url: None,
+        local_preview_path: None,
+        locked_name: false,
+        updated_at: None,
+    })
 }
 
 fn copy_recursive(from: &Path, to: &Path) -> Result<Vec<String>, ManagerError> {
@@ -165,7 +226,7 @@ mod tests {
 
     use tempfile::TempDir;
 
-    use super::{create_managed_mod, read_managed_mod, ImportRequest};
+    use super::{create_managed_mod, read_managed_mod, read_managed_mod_or_default, write_managed_mod, ImportRequest};
 
     #[test]
     fn creates_managed_mod_with_uuid_directory() {
@@ -250,6 +311,64 @@ mod tests {
 
         let meta = read_managed_mod(tmp.path(), "abc").expect("read");
         assert_eq!(meta.version, 1);
+    }
+
+    #[test]
+    fn reads_and_writes_extended_metadata_fields() {
+        let tmp = TempDir::new().expect("tmp");
+        let src = tmp.path().join("import");
+        fs::create_dir_all(&src).expect("src");
+        fs::write(src.join("a.package"), b"x").expect("file");
+
+        let mut meta = create_managed_mod(
+            tmp.path(),
+            ImportRequest {
+                name: "Detected Name".to_string(),
+                slug: None,
+                source_dir: src,
+            },
+        )
+        .expect("create");
+
+        meta.detected_name = Some("Detected Name".to_string());
+        meta.custom_name = Some("Custom Name".to_string());
+        meta.source_url = Some("https://example.test/mod".to_string());
+        write_managed_mod(tmp.path(), &meta).expect("write");
+
+        let read = read_managed_mod(tmp.path(), &meta.mod_id).expect("read");
+        assert_eq!(read.detected_name.as_deref(), Some("Detected Name"));
+        assert_eq!(read.custom_name.as_deref(), Some("Custom Name"));
+        assert_eq!(read.source_url.as_deref(), Some("https://example.test/mod"));
+    }
+
+    #[test]
+    fn custom_name_takes_priority_over_detected_name() {
+        let tmp = TempDir::new().expect("tmp");
+        let base = tmp.path().join("mods/abc");
+        fs::create_dir_all(&base).expect("base");
+        fs::write(
+            base.join("meta.json"),
+            r#"{"version":1,"createdBy":"sims4-mod-manager","modId":"abc","name":"Fallback","displayName":"Fallback","detectedName":"Detected","customName":"Custom","slug":null,"files":[],"source":"local"}"#,
+        )
+        .expect("meta");
+
+        let meta = read_managed_mod(tmp.path(), "abc").expect("read");
+        assert_eq!(meta.effective_display_name(), "Custom");
+    }
+
+    #[test]
+    fn missing_or_invalid_metadata_can_fall_back_without_crashing() {
+        let tmp = TempDir::new().expect("tmp");
+
+        let missing = read_managed_mod_or_default(tmp.path(), "missing", "Detected");
+        assert_eq!(missing.effective_display_name(), "Detected");
+
+        let base = tmp.path().join("mods/bad");
+        fs::create_dir_all(&base).expect("base");
+        fs::write(base.join("meta.json"), "{not-json}").expect("bad meta");
+
+        let malformed = read_managed_mod_or_default(tmp.path(), "bad", "Detected Bad");
+        assert_eq!(malformed.effective_display_name(), "Detected Bad");
     }
 
     #[test]
