@@ -1,5 +1,6 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
+  createCurseForgeProvider,
   curseForgeProvider,
   getMetadataProviderForUrl,
   localNameProvider,
@@ -29,6 +30,49 @@ describe("metadata providers", () => {
     );
     expect(modTheSimsProvider.canHandleUrl("https://www.modthesims.info/download.php?t=123456")).toBe(
       true
+    );
+  });
+
+  it("CurseForge fetch skips network when API key is missing", async () => {
+    const fetchFn = vi.fn();
+    const provider = createCurseForgeProvider({ apiKey: undefined, fetchFn });
+
+    const metadata = await provider.fetchMetadataFromUrl("https://www.curseforge.com/sims4/mods/example");
+
+    expect(metadata).toEqual({ sourceUrl: "https://www.curseforge.com/sims4/mods/example" });
+    expect(fetchFn).not.toHaveBeenCalled();
+  });
+
+  it("CurseForge fetch maps mocked API metadata", async () => {
+    const fetchFn = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        data: [
+          {
+            name: "Example Mod",
+            summary: "Short description",
+            logo: { url: "https://img.example/logo.png" },
+            authors: [{ name: "Creator" }],
+            latestFilesIndexes: [{ gameVersion: "1.2.3" }]
+          }
+        ]
+      })
+    });
+    const provider = createCurseForgeProvider({ apiKey: "key", fetchFn });
+
+    const metadata = await provider.fetchMetadataFromUrl("https://www.curseforge.com/sims4/mods/example");
+
+    expect(metadata).toEqual({
+      displayName: "Example Mod",
+      description: "Short description",
+      sourceUrl: "https://www.curseforge.com/sims4/mods/example",
+      previewUrl: "https://img.example/logo.png",
+      author: "Creator",
+      version: "1.2.3"
+    });
+    expect(fetchFn).toHaveBeenCalledWith(
+      "https://api.curseforge.com/v1/mods/search?gameId=7806&slug=example",
+      { headers: { "x-api-key": "key" } }
     );
   });
 

@@ -24,6 +24,19 @@ function parseUrl(raw: string): URL | null {
   }
 }
 
+type ProviderFetch = (url: string, init?: { headers?: Record<string, string> }) => Promise<{
+  ok: boolean;
+  json(): Promise<unknown>;
+}>;
+
+type CurseForgeApiMod = {
+  name?: string;
+  summary?: string;
+  logo?: { url?: string };
+  authors?: Array<{ name?: string }>;
+  latestFilesIndexes?: Array<{ gameVersion?: string }>;
+};
+
 function unsupportedFetch(providerName: string): (url: string) => Promise<ResolvedModMetadata> {
   return async (url) => ({
     sourceUrl: url,
@@ -38,17 +51,62 @@ export const localNameProvider: MetadataProvider = {
   fetchMetadataFromUrl: unsupportedFetch("Local")
 };
 
-export const curseForgeProvider: MetadataProvider = {
-  id: "curseforge",
-  name: "CurseForge",
-  canHandleUrl: (raw) => {
-    const url = parseUrl(raw);
-    if (!url) return false;
-    const host = url.hostname.replace(/^www\./, "").toLowerCase();
-    return host === "curseforge.com" && url.pathname.toLowerCase().startsWith("/sims4/mods/");
-  },
-  fetchMetadataFromUrl: unsupportedFetch("CurseForge")
-};
+function curseForgeSlug(raw: string): string | null {
+  const url = parseUrl(raw);
+  if (!url) return null;
+  const parts = url.pathname.split("/").filter(Boolean);
+  const modsIndex = parts.findIndex((part) => part.toLowerCase() === "mods");
+  return modsIndex >= 0 ? parts[modsIndex + 1] ?? null : null;
+}
+
+export function createCurseForgeProvider({
+  apiKey,
+  fetchFn = globalThis.fetch as ProviderFetch
+}: {
+  apiKey?: string;
+  fetchFn?: ProviderFetch;
+} = {}): MetadataProvider {
+  return {
+    id: "curseforge",
+    name: "CurseForge",
+    canHandleUrl: (raw) => {
+      const url = parseUrl(raw);
+      if (!url) return false;
+      const host = url.hostname.replace(/^www\./, "").toLowerCase();
+      return host === "curseforge.com" && url.pathname.toLowerCase().startsWith("/sims4/mods/");
+    },
+    async fetchMetadataFromUrl(sourceUrl) {
+      const key = apiKey?.trim();
+      const slug = curseForgeSlug(sourceUrl);
+      if (!key || !slug || !fetchFn) return { sourceUrl };
+
+      const response = await fetchFn(
+        `https://api.curseforge.com/v1/mods/search?gameId=7806&slug=${encodeURIComponent(slug)}`,
+        { headers: { "x-api-key": key } }
+      );
+      if (!response.ok) return { sourceUrl };
+
+      const json = (await response.json()) as { data?: CurseForgeApiMod[] };
+      const mod = json.data?.[0];
+      if (!mod) return { sourceUrl };
+
+      return {
+        displayName: mod.name,
+        description: mod.summary,
+        sourceUrl,
+        previewUrl: mod.logo?.url,
+        author: mod.authors?.[0]?.name,
+        version: mod.latestFilesIndexes?.[0]?.gameVersion
+      };
+    }
+  };
+}
+
+const viteEnv = import.meta as unknown as { env?: { VITE_CURSEFORGE_API_KEY?: string } };
+
+export const curseForgeProvider: MetadataProvider = createCurseForgeProvider({
+  apiKey: viteEnv.env?.VITE_CURSEFORGE_API_KEY
+});
 
 export const modTheSimsProvider: MetadataProvider = {
   id: "modthesims",
