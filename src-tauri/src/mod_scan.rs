@@ -17,6 +17,8 @@ pub enum ModSource {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct ScannedMod {
     pub key: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub id: Option<String>,
     pub name: String,
     pub files: Vec<String>,
     pub mod_files: Vec<String>,
@@ -115,6 +117,7 @@ fn build_scanned_mod(key: String, files: Vec<FileEntry>, managed_root: &Path) ->
     let group_path = key.split('/').map(ToString::to_string).collect::<Vec<_>>();
     let raw_name = group_path.last().cloned().unwrap_or_else(|| key.clone());
     let metadata = managed_metadata_from_files(&files, managed_root);
+    let id = metadata.as_ref().map(|meta| meta.mod_id.clone());
     let source_url = metadata.as_ref().and_then(|meta| meta.source_url.clone());
     let name = metadata
         .as_ref()
@@ -123,6 +126,7 @@ fn build_scanned_mod(key: String, files: Vec<FileEntry>, managed_root: &Path) ->
 
     ScannedMod {
         key,
+        id,
         name,
         files: all_files,
         mod_files,
@@ -329,6 +333,51 @@ mod tests {
 
         let scanned = scan_mods(&mods, &managed);
         assert_eq!(scanned[0].source, ModSource::External);
+    }
+
+    #[test]
+    fn managed_symlink_uses_metadata_mod_id() {
+        let root = TempDir::new().expect("tmp");
+        let mods = root.path().join("Mods");
+        let managed = root.path().join("managed");
+        let managed_file = managed.join("mods/uuid-123/files/McCmdCenter_AllModules_2026_2_0/mc_cmd_center.package");
+
+        fs::create_dir_all(&mods).expect("mods");
+        fs::create_dir_all(managed_file.parent().expect("parent")).expect("managed tree");
+        fs::write(&managed_file, b"pkg").expect("pkg");
+        write_managed_mod(
+            &managed,
+            &ModMetadata {
+                version: 1,
+                created_by: "sims4-mod-manager".to_string(),
+                mod_id: "uuid-123".to_string(),
+                name: "McCmdCenter_AllModules_2026_2_0".to_string(),
+                display_name: "Mc Command Center".to_string(),
+                detected_name: Some("Mc Command Center".to_string()),
+                custom_name: None,
+                slug: None,
+                files: vec!["McCmdCenter_AllModules_2026_2_0/mc_cmd_center.package".to_string()],
+                source: "local".to_string(),
+                source_url: None,
+                preview_url: None,
+                local_preview_path: None,
+                locked_name: false,
+                updated_at: None,
+            },
+        )
+        .expect("write meta");
+
+        fs::create_dir_all(mods.join("McCmdCenter_AllModules_2026_2_0")).expect("mod dir");
+        #[cfg(unix)]
+        std::os::unix::fs::symlink(
+            &managed_file,
+            mods.join("McCmdCenter_AllModules_2026_2_0/mc_cmd_center.package"),
+        )
+        .expect("symlink");
+
+        let scanned = scan_mods(&mods, &managed);
+        assert_eq!(scanned[0].key, "McCmdCenter_AllModules_2026_2_0");
+        assert_eq!(scanned[0].id.as_deref(), Some("uuid-123"));
     }
 
     #[test]
