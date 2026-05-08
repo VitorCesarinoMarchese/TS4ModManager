@@ -103,6 +103,11 @@ fn remove_source_url(mod_id: String) -> Result<crate::managed_storage::ModMetada
     commands::cmd_remove_source_url(managed_root()?, mod_id)
 }
 
+#[tauri::command]
+fn open_external_url(url: String) -> Result<(), ManagerError> {
+    commands::cmd_open_external_url(url)
+}
+
 pub fn run() {
     tauri::Builder::default()
         .invoke_handler(tauri::generate_handler![
@@ -116,7 +121,8 @@ pub fn run() {
             detect_orphan_symlinks,
             rename_mod_display_name,
             attach_source_url,
-            remove_source_url
+            remove_source_url,
+            open_external_url
         ])
         .run(tauri::generate_context!())
         .expect("tauri run failed");

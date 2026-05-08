@@ -1,7 +1,12 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { App } from "./App";
+import { openExternalUrl } from "./lib/openUrl";
 import { createAppStore } from "./store/appStore";
+
+vi.mock("./lib/openUrl", () => ({
+  openExternalUrl: vi.fn().mockResolvedValue(undefined)
+}));
 
 function makeApi(overrides: Record<string, unknown> = {}) {
   return {
@@ -292,6 +297,33 @@ describe("App redesign", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "dismiss-error-warning" }));
     expect(screen.queryByRole("alertdialog", { name: "error-warning" })).not.toBeInTheDocument();
+  });
+
+  it("opens saved source URL through external opener", async () => {
+    const api = makeApi({
+      scanMods: vi.fn().mockResolvedValue([
+        {
+          id: "mod-1",
+          name: "BuildPack",
+          sourceUrl: "https://www.curseforge.com/sims4/mods/mc-command-center",
+          files: ["a.package"],
+          enabled: false,
+          source: "managed",
+          groupPath: ["Build", "BuildPack"]
+        }
+      ])
+    });
+    const store = createAppStore(api);
+    render(<App store={store} />);
+
+    await waitFor(() => {
+      expect(screen.getByText("BuildPack")).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "details-mod-1" }));
+    fireEvent.click(screen.getByRole("button", { name: "open-source-url" }));
+
+    expect(openExternalUrl).toHaveBeenCalledWith("https://www.curseforge.com/sims4/mods/mc-command-center");
   });
 
   it("opens mod details and can rename mod", async () => {

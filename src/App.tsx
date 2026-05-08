@@ -14,6 +14,7 @@ import { SettingsPage } from "./components/SettingsPage";
 import { Sidebar } from "./components/Sidebar";
 import { TopBar } from "./components/TopBar";
 import { createBackendApi } from "./lib/backendApi";
+import { openExternalUrl } from "./lib/openUrl";
 import { invokeTauri } from "./lib/tauriInvoke";
 import { createAppStore, type AppState } from "./store/appStore";
 
@@ -249,7 +250,7 @@ export function App({ store = defaultStore }: AppProps) {
             const updated = await removeSourceUrl(modId);
             if (updated) setSelectedMod(updated);
           }}
-          onOpenSourceUrl={(sourceUrl) => window.open(sourceUrl, "_blank", "noopener,noreferrer")}
+          onOpenSourceUrl={(sourceUrl) => void openExternalUrl(sourceUrl)}
         />
       ) : null}
     </div>

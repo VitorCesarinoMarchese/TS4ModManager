@@ -1,7 +1,8 @@
 use std::path::PathBuf;
+use std::process::Command;
 
 use crate::archive_import::import_archive_to_managed;
-use crate::error::ManagerError;
+use crate::error::{ErrorCode, ManagerError};
 use crate::external_migration::{migrate_external_mod, MigrateResult};
 use crate::logging::append_issue_log;
 use crate::managed_storage::{remove_source_url, set_custom_display_name, set_source_url, ModMetadata};
@@ -92,4 +93,38 @@ pub fn cmd_attach_source_url(
 
 pub fn cmd_remove_source_url(managed_root: PathBuf, mod_id: String) -> Result<ModMetadata, ManagerError> {
     remove_source_url(&managed_root, &mod_id)
+}
+
+fn validate_external_url(url: &str) -> Result<(), ManagerError> {
+    let trimmed = url.trim();
+    if trimmed.starts_with("https://") || trimmed.starts_with("http://") {
+        return Ok(());
+    }
+
+    Err(ManagerError::new(
+        ErrorCode::InvalidPath,
+        "Only http(s) source URLs can be opened",
+    ))
+}
+
+pub fn cmd_open_external_url(url: String) -> Result<(), ManagerError> {
+    validate_external_url(&url)?;
+    Command::new("xdg-open")
+        .arg(url.trim())
+        .spawn()
+        .map(|_| ())
+        .map_err(|e| ManagerError::new(ErrorCode::IoError, format!("Open URL failed: {e}")))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::validate_external_url;
+
+    #[test]
+    fn external_url_open_allows_http_urls_only() {
+        assert!(validate_external_url("https://www.curseforge.com/sims4/mods/x").is_ok());
+        assert!(validate_external_url("http://example.test/mod").is_ok());
+        assert!(validate_external_url("file:///home/user/.bashrc").is_err());
+        assert!(validate_external_url("javascript:alert(1)").is_err());
+    }
 }
