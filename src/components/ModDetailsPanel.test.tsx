@@ -30,8 +30,10 @@ describe("ModDetailsPanel", () => {
       />
     );
 
-    expect(screen.getByRole("button", { name: "close-mod-details" })).toHaveClass("border-red-500");
-    expect(screen.getByRole("button", { name: "remove-source-url" })).toHaveClass("border-red-500");
+    expect(screen.getByRole("button", { name: "close-mod-details" })).toHaveClass("hover:border-red-500");
+    expect(screen.getByRole("button", { name: "close-mod-details" })).not.toHaveClass("border-red-500");
+    expect(screen.getByRole("button", { name: "remove-source-url" })).toHaveClass("hover:border-red-500");
+    expect(screen.getByRole("button", { name: "remove-source-url" })).not.toHaveClass("border-red-500");
 
     fireEvent.click(screen.getByRole("button", { name: "remove-source-url" }));
     expect(screen.getByRole("alertdialog", { name: "remove-source-warning" })).toBeInTheDocument();

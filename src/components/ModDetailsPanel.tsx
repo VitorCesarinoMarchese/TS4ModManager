@@ -20,7 +20,7 @@ export function ModDetailsPanel({ mod, onClose, onRename, onAttachSourceUrl, onR
   const buttonClass =
     "inline-flex items-center gap-2 rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm hover:border-accent hover:bg-accent/10 focus:outline-none focus:ring-2 focus:ring-accent/40 dark:border-slate-600 dark:bg-slate-800 dark:hover:border-accent dark:hover:bg-accent/10";
   const dangerButtonClass =
-    "inline-flex items-center gap-2 rounded-md border border-red-500 bg-white px-3 py-1.5 text-sm text-red-600 hover:border-red-600 hover:bg-red-50 focus:outline-none focus:ring-2 focus:ring-red-500/40 dark:border-red-500 dark:bg-slate-800 dark:text-red-300 dark:hover:bg-red-950/30";
+    "inline-flex items-center gap-2 rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm hover:border-red-500 hover:bg-red-50 hover:text-red-600 focus:outline-none focus:ring-2 focus:ring-red-500/40 dark:border-slate-600 dark:bg-slate-800 dark:hover:border-red-500 dark:hover:bg-red-950/30 dark:hover:text-red-300";
 
   useEffect(() => {
     setName(mod.name);
