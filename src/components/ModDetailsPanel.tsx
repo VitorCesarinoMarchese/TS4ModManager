@@ -16,8 +16,11 @@ type ModDetailsPanelProps = {
 export function ModDetailsPanel({ mod, onClose, onRename, onAttachSourceUrl, onRemoveSourceUrl, onOpenSourceUrl }: ModDetailsPanelProps) {
   const [name, setName] = useState(mod.name);
   const [sourceUrl, setSourceUrl] = useState(mod.sourceUrl ?? "");
+  const [confirmRemoveSource, setConfirmRemoveSource] = useState(false);
   const buttonClass =
     "inline-flex items-center gap-2 rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm hover:border-accent hover:bg-accent/10 focus:outline-none focus:ring-2 focus:ring-accent/40 dark:border-slate-600 dark:bg-slate-800 dark:hover:border-accent dark:hover:bg-accent/10";
+  const dangerButtonClass =
+    "inline-flex items-center gap-2 rounded-md border border-red-500 bg-white px-3 py-1.5 text-sm text-red-600 hover:border-red-600 hover:bg-red-50 focus:outline-none focus:ring-2 focus:ring-red-500/40 dark:border-red-500 dark:bg-slate-800 dark:text-red-300 dark:hover:bg-red-950/30";
 
   useEffect(() => {
     setName(mod.name);
@@ -50,7 +53,7 @@ export function ModDetailsPanel({ mod, onClose, onRename, onAttachSourceUrl, onR
       >
         <header className="modal-header flex items-center justify-between gap-4">
           <h2 className="truncate text-xl font-semibold">{mod.name}</h2>
-          <button type="button" aria-label="close-mod-details" className={buttonClass} onClick={onClose}>
+          <button type="button" aria-label="close-mod-details" className={dangerButtonClass} onClick={onClose}>
             <X size={16} weight="regular" aria-hidden="true" />
             Close
           </button>
@@ -120,8 +123,8 @@ export function ModDetailsPanel({ mod, onClose, onRename, onAttachSourceUrl, onR
               <button
                 type="button"
                 aria-label="remove-source-url"
-                className={buttonClass}
-                onClick={() => onRemoveSourceUrl?.(mod.id)}
+                className={dangerButtonClass}
+                onClick={() => setConfirmRemoveSource(true)}
               >
                 Remove Source
               </button>
@@ -131,6 +134,40 @@ export function ModDetailsPanel({ mod, onClose, onRename, onAttachSourceUrl, onR
         <p className="text-sm text-slate-600 dark:text-slate-300">
           Provider: {existingProvider?.name ?? selectedProvider?.name ?? "Manual"}
         </p>
+
+        {confirmRemoveSource ? (
+          <div
+            role="alertdialog"
+            aria-label="remove-source-warning"
+            className="grid gap-3 rounded-md border border-red-500 bg-red-50 p-4 text-sm dark:bg-red-950/20"
+          >
+            <p className="font-medium text-red-700 dark:text-red-300">Remove saved source URL?</p>
+            <p className="text-slate-700 dark:text-slate-300">
+              This only removes metadata. It does not delete mod files.
+            </p>
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                aria-label="confirm-remove-source"
+                className={dangerButtonClass}
+                onClick={() => {
+                  setConfirmRemoveSource(false);
+                  onRemoveSourceUrl?.(mod.id);
+                }}
+              >
+                Remove Source
+              </button>
+              <button
+                type="button"
+                aria-label="cancel-remove-source"
+                className={buttonClass}
+                onClick={() => setConfirmRemoveSource(false)}
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        ) : null}
 
         <p className="text-sm text-slate-600 dark:text-slate-300">{mod.files.length} files</p>
         <ul className="m-0 grid list-none gap-2 p-0">

@@ -20,7 +20,7 @@ describe("ModDetailsPanel", () => {
     expect(screen.getByTitle("packages/a.package")).toHaveClass("truncate");
   });
 
-  it("removes source URL", () => {
+  it("warns before removing source URL", () => {
     const onRemoveSourceUrl = vi.fn();
     render(
       <ModDetailsPanel
@@ -30,7 +30,18 @@ describe("ModDetailsPanel", () => {
       />
     );
 
+    expect(screen.getByRole("button", { name: "close-mod-details" })).toHaveClass("border-red-500");
+    expect(screen.getByRole("button", { name: "remove-source-url" })).toHaveClass("border-red-500");
+
     fireEvent.click(screen.getByRole("button", { name: "remove-source-url" }));
+    expect(screen.getByRole("alertdialog", { name: "remove-source-warning" })).toBeInTheDocument();
+    expect(onRemoveSourceUrl).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole("button", { name: "cancel-remove-source" }));
+    expect(screen.queryByRole("alertdialog", { name: "remove-source-warning" })).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "remove-source-url" }));
+    fireEvent.click(screen.getByRole("button", { name: "confirm-remove-source" }));
     expect(onRemoveSourceUrl).toHaveBeenCalledWith("m1");
   });
 

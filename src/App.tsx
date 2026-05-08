@@ -90,6 +90,9 @@ export function App({ store = defaultStore }: AppProps) {
     setToggleDisabledById((prev) => ({ ...prev, [mod.id]: !dryRun.canApply }));
   };
 
+  const dangerButtonClass =
+    "inline-flex items-center gap-2 rounded-md border border-red-500 bg-white px-3 py-1.5 text-sm text-red-600 hover:border-red-600 hover:bg-red-50 focus:outline-none focus:ring-2 focus:ring-red-500/40 dark:border-red-500 dark:bg-slate-800 dark:text-red-300 dark:hover:bg-red-950/30";
+
   const onToggleTheme = () => {
     setDarkMode((current) => {
       const next = !current;
@@ -175,7 +178,7 @@ export function App({ store = defaultStore }: AppProps) {
               <button
                 type="button"
                 aria-label="close-settings"
-                className="inline-flex items-center gap-2 rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm hover:border-accent hover:bg-accent/10 focus:outline-none focus:ring-2 focus:ring-accent/40 dark:border-slate-600 dark:bg-slate-800 dark:hover:border-accent dark:hover:bg-accent/10"
+                className={dangerButtonClass}
                 onClick={() => setSettingsOpen(false)}
               >
                 <X size={16} weight="regular" aria-hidden="true" />
@@ -221,7 +224,7 @@ export function App({ store = defaultStore }: AppProps) {
               <button
                 type="button"
                 aria-label="dismiss-error-warning"
-                className="inline-flex items-center gap-2 rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm hover:border-accent hover:bg-accent/10 focus:outline-none focus:ring-2 focus:ring-accent/40 dark:border-slate-600 dark:bg-slate-800"
+                className={dangerButtonClass}
                 onClick={() => setDismissedIssueId(popupIssue.id)}
               >
                 <X size={16} weight="regular" aria-hidden="true" />
