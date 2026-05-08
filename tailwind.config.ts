@@ -6,7 +6,7 @@ export default {
   theme: {
     extend: {
       colors: {
-        accent: "#10b981"
+        accent: "var(--color-accent, #10b981)"
       }
     }
   },

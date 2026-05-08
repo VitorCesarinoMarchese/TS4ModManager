@@ -184,6 +184,21 @@ describe("App redesign", () => {
     expect(container.querySelector(".app-shell")?.classList.contains("dark")).toBe(false);
   });
 
+  it("persists and applies custom theme variables", () => {
+    const api = makeApi();
+    const store = createAppStore(api);
+    render(<App store={store} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "open-settings" }));
+    fireEvent.change(screen.getByLabelText("Accent color"), { target: { value: "#22c55e" } });
+
+    expect(document.documentElement.style.getPropertyValue("--color-accent")).toBe("#22c55e");
+    expect(window.localStorage.setItem).toHaveBeenCalledWith(
+      "ts4mm-custom-theme",
+      expect.stringContaining('"accent":"#22c55e"')
+    );
+  });
+
   it("toggles dark mode class and persists preference", async () => {
     const api = makeApi();
     const store = createAppStore(api);

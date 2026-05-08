@@ -18,6 +18,23 @@ button {
   cursor: pointer;
 }
 
+.app-shell {
+  background: var(--color-background, #f8fafc);
+  color: var(--color-text, #020617);
+}
+
+.topbar,
+.sidebar,
+.main-content,
+.modal {
+  border-color: var(--color-border, #cbd5e1);
+}
+
+.main-content,
+.modal {
+  background: var(--color-surface, #ffffff);
+}
+
 .app-shell.dark {
   color-scheme: dark;
 }

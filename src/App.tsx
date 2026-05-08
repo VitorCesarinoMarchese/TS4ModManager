@@ -15,11 +15,18 @@ import { Sidebar } from "./components/Sidebar";
 import { TopBar } from "./components/TopBar";
 import { createBackendApi } from "./lib/backendApi";
 import { openExternalUrl } from "./lib/openUrl";
+import { applyThemeVariables, CUSTOM_THEME_STORAGE_KEY, DEFAULT_THEME, parseThemeJson, type AppTheme } from "./lib/theme";
 import { invokeTauri } from "./lib/tauriInvoke";
 import { createAppStore, type AppState } from "./store/appStore";
 
 const defaultStore = createAppStore(createBackendApi(invokeTauri));
 const THEME_STORAGE_KEY = "ts4mm-theme";
+
+function getInitialCustomTheme(): AppTheme {
+  if (typeof window === "undefined") return DEFAULT_THEME;
+  const stored = window.localStorage.getItem(CUSTOM_THEME_STORAGE_KEY);
+  return stored ? (parseThemeJson(stored) ?? DEFAULT_THEME) : DEFAULT_THEME;
+}
 
 function getInitialDarkMode() {
   if (typeof window === "undefined") return false;
@@ -54,6 +61,7 @@ export function App({ store = defaultStore }: AppProps) {
   const [search, setSearch] = useState("");
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [darkMode, setDarkMode] = useState(getInitialDarkMode);
+  const [customTheme, setCustomTheme] = useState<AppTheme>(getInitialCustomTheme);
   const [selectedMod, setSelectedMod] = useState<AppState["mods"][number] | null>(null);
   const [dismissedIssueId, setDismissedIssueId] = useState<string | null>(null);
   const [toggleDisabledById, setToggleDisabledById] = useState<Record<string, boolean>>({});
@@ -74,6 +82,11 @@ export function App({ store = defaultStore }: AppProps) {
       document.documentElement.classList.remove("dark");
     };
   }, [darkMode]);
+
+  useEffect(() => {
+    applyThemeVariables(customTheme);
+    window.localStorage.setItem(CUSTOM_THEME_STORAGE_KEY, JSON.stringify(customTheme));
+  }, [customTheme]);
 
   const effectiveSelectedMod = selectedMod
     ? (mods.find((mod) => mod.id === selectedMod.id) ?? selectedMod)
@@ -195,6 +208,9 @@ export function App({ store = defaultStore }: AppProps) {
               }}
               rescanDisabled={isScanning}
               onAddCustomPath={(path) => addCustomInstance(path)}
+              theme={customTheme}
+              onThemeChange={setCustomTheme}
+              onThemeReset={() => setCustomTheme(DEFAULT_THEME)}
             />
 
             <ImportPanel onImport={(archivePath, name, slug) => importArchive(archivePath, name, slug)} />

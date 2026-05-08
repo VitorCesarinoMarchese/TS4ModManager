@@ -1,5 +1,6 @@
 import { ArrowsClockwise, CaretDown, FolderPlus } from "@phosphor-icons/react";
 import { useState } from "react";
+import { DEFAULT_THEME, parseThemeJson, serializeTheme, type AppTheme } from "../lib/theme";
 import type { GameInstance } from "../lib/types";
 
 type SettingsPageProps = {
@@ -9,6 +10,9 @@ type SettingsPageProps = {
   onRescan: () => void;
   rescanDisabled?: boolean;
   onAddCustomPath: (path: string) => void | Promise<void>;
+  theme?: AppTheme;
+  onThemeChange?: (theme: AppTheme) => void;
+  onThemeReset?: () => void;
 };
 
 function friendlyName(instance: GameInstance, index: number) {
@@ -27,9 +31,14 @@ export function SettingsPage({
   onSelectInstance,
   onRescan,
   rescanDisabled = false,
-  onAddCustomPath
+  onAddCustomPath,
+  theme = DEFAULT_THEME,
+  onThemeChange,
+  onThemeReset
 }: SettingsPageProps) {
   const [customPath, setCustomPath] = useState("");
+  const [importJson, setImportJson] = useState("");
+  const [importError, setImportError] = useState<string | null>(null);
   const inputClass = "h-9 rounded-md border border-slate-300 bg-white px-3 py-1.5 text-slate-950 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100";
   const buttonClass =
     "inline-flex items-center gap-2 rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm hover:border-accent hover:bg-accent/10 focus:outline-none focus:ring-2 focus:ring-accent/40 disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-600 dark:bg-slate-800 dark:hover:border-accent dark:hover:bg-accent/10";
@@ -98,6 +107,56 @@ export function SettingsPage({
           Add Custom Path
         </button>
       </div>
+
+      <fieldset aria-label="theme-editor" className="grid gap-3 rounded-lg border border-slate-300 p-4 dark:border-slate-700">
+        <legend className="px-1 text-lg font-semibold">Theme Editor</legend>
+        <label className="grid max-w-xs gap-1 text-sm font-medium" htmlFor="theme-accent">
+          Accent color
+          <input
+            id="theme-accent"
+            type="color"
+            className="h-10 w-20 cursor-pointer rounded-md border border-slate-300 bg-white p-1 dark:border-slate-600 dark:bg-slate-800"
+            value={theme.colors.accent}
+            onChange={(e) => onThemeChange?.({ ...theme, colors: { ...theme.colors, accent: e.target.value } })}
+          />
+        </label>
+
+        <label className="grid gap-1 text-sm font-medium" htmlFor="theme-export">
+          Theme JSON export
+          <textarea id="theme-export" className={`${inputClass} min-h-36 font-mono text-xs`} readOnly value={serializeTheme(theme)} />
+        </label>
+
+        <label className="grid gap-1 text-sm font-medium" htmlFor="theme-import">
+          Theme JSON import
+          <textarea
+            id="theme-import"
+            className={`${inputClass} min-h-28 font-mono text-xs`}
+            value={importJson}
+            onChange={(e) => setImportJson(e.target.value)}
+          />
+        </label>
+        {importError ? <p role="alert" className="text-sm text-red-600 dark:text-red-400">{importError}</p> : null}
+        <div className="flex flex-wrap gap-2">
+          <button
+            type="button"
+            className={buttonClass}
+            onClick={() => {
+              const parsed = parseThemeJson(importJson);
+              if (!parsed) {
+                setImportError("Invalid theme JSON");
+                return;
+              }
+              setImportError(null);
+              onThemeChange?.(parsed);
+            }}
+          >
+            Import Theme
+          </button>
+          <button type="button" className={buttonClass} onClick={onThemeReset}>
+            Reset Theme
+          </button>
+        </div>
+      </fieldset>
     </section>
   );
 }

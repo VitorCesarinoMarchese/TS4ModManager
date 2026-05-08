@@ -1,5 +1,6 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
+import { DEFAULT_THEME } from "../lib/theme";
 import { SettingsPage } from "./SettingsPage";
 
 describe("SettingsPage", () => {
@@ -41,6 +42,50 @@ describe("SettingsPage", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Rescan Mods" }));
     expect(onRescan).toHaveBeenCalledTimes(1);
+  });
+
+  it("edits, imports, exports, and resets themes", () => {
+    const onThemeChange = vi.fn();
+    render(
+      <SettingsPage
+        instances={[]}
+        selectedInstanceId={null}
+        onSelectInstance={() => {}}
+        onRescan={() => {}}
+        onAddCustomPath={() => {}}
+        theme={DEFAULT_THEME}
+        onThemeChange={onThemeChange}
+        onThemeReset={() => onThemeChange(DEFAULT_THEME)}
+      />
+    );
+
+    expect(screen.getByRole("group", { name: "theme-editor" })).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("Accent color"), { target: { value: "#22c55e" } });
+    expect(onThemeChange).toHaveBeenCalledWith({
+      ...DEFAULT_THEME,
+      colors: { ...DEFAULT_THEME.colors, accent: "#22c55e" }
+    });
+
+    const exported = screen.getByLabelText("Theme JSON export") as HTMLTextAreaElement;
+    expect(exported.value).toContain('"accent": "#10b981"');
+
+    const importedTheme = {
+      ...DEFAULT_THEME,
+      name: "Purple",
+      colors: { ...DEFAULT_THEME.colors, accent: "#a855f7" }
+    };
+    fireEvent.change(screen.getByLabelText("Theme JSON import"), {
+      target: { value: JSON.stringify(importedTheme) }
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Import Theme" }));
+    expect(onThemeChange).toHaveBeenCalledWith(importedTheme);
+
+    fireEvent.change(screen.getByLabelText("Theme JSON import"), { target: { value: "bad json" } });
+    fireEvent.click(screen.getByRole("button", { name: "Import Theme" }));
+    expect(screen.getByRole("alert")).toHaveTextContent("Invalid theme JSON");
+
+    fireEvent.click(screen.getByRole("button", { name: "Reset Theme" }));
+    expect(onThemeChange).toHaveBeenCalledWith(DEFAULT_THEME);
   });
 
   it("submits custom path", () => {
