@@ -81,6 +81,7 @@ describe("SettingsPage", () => {
 
     expect(screen.getByRole("group", { name: "theme-editor" })).toBeInTheDocument();
     expect(screen.getByRole("combobox", { name: "Active theme" })).toHaveValue("Purple");
+    expect(screen.getByRole("combobox", { name: "Active theme" })).toHaveClass("theme-control");
     fireEvent.change(screen.getByRole("combobox", { name: "Active theme" }), { target: { value: "Dark" } });
     expect(onSelectTheme).toHaveBeenCalledWith("Dark");
 

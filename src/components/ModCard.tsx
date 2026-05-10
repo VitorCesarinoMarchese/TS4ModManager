@@ -15,7 +15,7 @@ export function ModCard({ mod, disabled, onToggle, onDetails }: ModCardProps) {
 
   return (
     <motion.article
-      className="mod-card grid gap-3 rounded-[14px] border border-slate-300 bg-white p-[18px] transition duration-150 ease-in hover:-translate-y-px hover:border-accent hover:shadow-md dark:border-slate-700 dark:bg-slate-900 dark:hover:border-accent dark:hover:shadow-accent/20"
+      className="mod-card theme-surface grid gap-3 rounded-[14px] border border-slate-300 p-[18px] transition duration-150 ease-in hover:-translate-y-px hover:border-accent hover:shadow-md dark:border-slate-700 dark:hover:border-accent dark:hover:shadow-accent/20"
       aria-label={`mod-card-${mod.id}`}
       data-animated="true"
       initial={{ opacity: 0, y: 8 }}

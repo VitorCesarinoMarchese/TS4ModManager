@@ -26,6 +26,7 @@ describe("ModGrid pagination", () => {
     render(<ModGrid mods={makeMods(50)} search="" />);
 
     expect(screen.getByLabelText("Mods per page")).toHaveClass("appearance-none");
+    expect(screen.getByLabelText("Mods per page")).toHaveClass("theme-control");
     expect(screen.getByTestId("mods-page-size-caret")).toBeInTheDocument();
 
     fireEvent.change(screen.getByLabelText("Mods per page"), { target: { value: "12" } });

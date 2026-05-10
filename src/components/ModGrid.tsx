@@ -64,7 +64,7 @@ export function ModGrid({ mods, search, onToggle, onDetails, toggleDisabledById 
               <span className="relative inline-flex">
                 <select
                   aria-label="Mods per page"
-                  className="h-9 appearance-none rounded-md border border-slate-300 bg-white py-1.5 pl-3 pr-9 text-slate-950 hover:border-accent focus:outline-none focus:ring-2 focus:ring-accent/40 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100 dark:hover:border-accent"
+                  className="theme-control h-9 appearance-none rounded-md border border-slate-300 bg-white py-1.5 pl-3 pr-9 text-slate-950 hover:border-accent focus:outline-none focus:ring-2 focus:ring-accent/40 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100 dark:hover:border-accent"
                   value={pageSize}
                   onChange={(e) => setPageSize(Number(e.target.value))}
                 >

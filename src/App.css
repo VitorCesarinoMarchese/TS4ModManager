@@ -36,10 +36,17 @@ button {
 .sidebar,
 .main-content,
 .modal,
+.theme-surface,
 .app-shell button,
 .app-shell input,
 .app-shell select,
 .app-shell textarea {
+  background-color: var(--color-surface, #ffffff) !important;
+  color: var(--color-text, #020617) !important;
+}
+
+.theme-control,
+.theme-control option {
   background-color: var(--color-surface, #ffffff) !important;
   color: var(--color-text, #020617) !important;
 }
@@ -70,6 +77,6 @@ button {
 
 
 .app-shell.dark select option {
-  background: #1f232b;
-  color: #e8e8e8;
+  background: var(--color-surface, #1f232b) !important;
+  color: var(--color-text, #e8e8e8) !important;
 }
