@@ -13,6 +13,8 @@ describe("IssuesPanel", () => {
       />
     );
 
+    expect(screen.getByLabelText("issues-panel")).toHaveClass("!border-[var(--color-border)]");
+    expect(screen.getAllByRole("listitem")[0]).toHaveClass("!border-[var(--color-border)]");
     expect(screen.getByText("Issues")).toBeInTheDocument();
     expect(screen.getByText("Hash duplicate")).toBeInTheDocument();
     expect(screen.getByText("Path collision")).toBeInTheDocument();
