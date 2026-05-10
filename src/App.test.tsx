@@ -413,6 +413,28 @@ describe("App redesign", () => {
     });
   });
 
+  it("dismisses stacked error popups together", async () => {
+    const api = makeApi({
+      validateCustomInstance: vi
+        .fn()
+        .mockRejectedValueOnce({ code: "NOT_FOUND", message: "First bad path" })
+        .mockRejectedValueOnce({ code: "NOT_FOUND", message: "Second bad path" })
+    });
+    const store = createAppStore(api);
+    render(<App store={store} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "open-settings" }));
+    fireEvent.change(screen.getByLabelText("Custom Sims 4 path"), { target: { value: "/bad/one" } });
+    fireEvent.click(screen.getByRole("button", { name: "Add Custom Path" }));
+    fireEvent.change(screen.getByLabelText("Custom Sims 4 path"), { target: { value: "/bad/two" } });
+    fireEvent.click(screen.getByRole("button", { name: "Add Custom Path" }));
+
+    await waitFor(() => expect(screen.getByRole("alertdialog", { name: "error-warning" })).toHaveTextContent("Second bad path"));
+
+    fireEvent.click(screen.getByRole("button", { name: "dismiss-error-warning" }));
+    expect(screen.queryByRole("alertdialog", { name: "error-warning" })).not.toBeInTheDocument();
+  });
+
   it("shows popup warning when source URL save fails", async () => {
     const api = makeApi({
       attachSourceUrl: vi.fn().mockRejectedValue({

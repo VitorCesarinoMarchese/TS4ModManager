@@ -100,7 +100,7 @@ export function App({ store = defaultStore }: AppProps) {
   const [activeThemeName, setActiveThemeName] = useState(() => getInitialActiveThemeName(getInitialCustomThemes()));
   const [selectedMod, setSelectedMod] = useState<AppState["mods"][number] | null>(null);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(getInitialSidebarCollapsed);
-  const [dismissedIssueId, setDismissedIssueId] = useState<string | null>(null);
+  const [dismissedIssueIds, setDismissedIssueIds] = useState<Set<string>>(() => new Set());
   const [toggleDisabledById, setToggleDisabledById] = useState<Record<string, boolean>>({});
 
   const activeTheme = resolveTheme(activeThemeName, customThemes, typeof window !== "undefined" ? systemPrefersDark() : false);
@@ -141,7 +141,7 @@ export function App({ store = defaultStore }: AppProps) {
   const isSidebarCollapsed = sidebarCollapsed;
   const popupIssue = [...issues]
     .reverse()
-    .find((issue) => issue.severity === "error" && issue.id !== dismissedIssueId);
+    .find((issue) => issue.severity === "error" && !dismissedIssueIds.has(issue.id));
 
   const onToggle = async (mod: AppState["mods"][number]) => {
     if (!selectedInstanceId) return;
@@ -346,7 +346,13 @@ export function App({ store = defaultStore }: AppProps) {
                 type="button"
                 aria-label="dismiss-error-warning"
                 className={dangerButtonClass}
-                onClick={() => setDismissedIssueId(popupIssue.id)}
+                onClick={() =>
+                  setDismissedIssueIds((current) => {
+                    const next = new Set(current);
+                    issues.filter((issue) => issue.severity === "error").forEach((issue) => next.add(issue.id));
+                    return next;
+                  })
+                }
               >
                 <X size={16} weight="regular" aria-hidden="true" />
                 Close
