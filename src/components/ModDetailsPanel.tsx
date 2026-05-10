@@ -137,7 +137,7 @@ export function ModDetailsPanel({ mod, onClose, onRename, onAttachSourceUrl, onR
           Provider: {existingProvider?.name ?? selectedProvider?.name ?? "Manual"}
         </p>
 
-        {mod.source === "managed" && onUninstall ? (
+        {onUninstall ? (
           <button
             type="button"
             aria-label="uninstall-mod"
@@ -156,7 +156,7 @@ export function ModDetailsPanel({ mod, onClose, onRename, onAttachSourceUrl, onR
           >
             <p className="font-medium text-red-700 dark:text-red-300">Move mod to trash?</p>
             <p className="text-slate-700 dark:text-slate-300">
-              This disables the managed mod, removes manager-created symlinks, and moves the managed copy to trash.
+              This removes manager-created symlinks when present and moves the installed mod files to trash.
             </p>
             <div className="flex flex-wrap gap-2">
               <button

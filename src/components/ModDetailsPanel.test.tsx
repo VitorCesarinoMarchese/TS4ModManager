@@ -92,10 +92,10 @@ describe("ModDetailsPanel", () => {
     expect(onUninstall).toHaveBeenCalledWith("m1");
   });
 
-  it("does not show uninstall for external mods", () => {
+  it("shows uninstall for external installed mods", () => {
     render(<ModDetailsPanel mod={{ ...mod, source: "external" }} onClose={() => {}} onUninstall={() => {}} />);
 
-    expect(screen.queryByRole("button", { name: "uninstall-mod" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "uninstall-mod" })).toBeInTheDocument();
   });
 
   it("closes and saves renamed mod", () => {

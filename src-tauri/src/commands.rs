@@ -1,5 +1,5 @@
 use std::path::PathBuf;
-use std::process::Command;
+use std::process::{Command, Stdio};
 
 use crate::archive_import::import_archive_to_managed;
 use crate::error::{ErrorCode, ManagerError};
@@ -10,7 +10,7 @@ use crate::managed_storage::{remove_source_url, set_custom_display_name, set_sou
 use crate::mod_scan::ScannedMod;
 use crate::orphan::{detect_orphan_symlinks, OrphanSymlink};
 use crate::path_detection::{detect_game_instances, validate_custom_instance, GameInstance};
-use crate::runtime_paths::{managed_mods_dir, trash_files_dir};
+use crate::runtime_paths::{managed_root, managed_mods_dir, trash_files_dir};
 use crate::toggle::{apply_toggle, dry_run_toggle, ApplyResult, DryRunResult};
 
 pub fn cmd_detect_game_instances(home: PathBuf) -> Vec<GameInstance> {
@@ -124,6 +124,10 @@ fn validate_external_url(url: &str) -> Result<(), ManagerError> {
 fn open_path(path: PathBuf) -> Result<(), ManagerError> {
     Command::new("xdg-open")
         .arg(path)
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .env("NO_AT_BRIDGE", "1")
         .spawn()
         .map(|_| ())
         .map_err(|e| ManagerError::new(ErrorCode::IoError, format!("Open folder failed: {e}")))
@@ -133,6 +137,10 @@ pub fn cmd_open_external_url(url: String) -> Result<(), ManagerError> {
     validate_external_url(&url)?;
     Command::new("xdg-open")
         .arg(url.trim())
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .env("NO_AT_BRIDGE", "1")
         .spawn()
         .map(|_| ())
         .map_err(|e| ManagerError::new(ErrorCode::IoError, format!("Open URL failed: {e}")))
@@ -140,6 +148,10 @@ pub fn cmd_open_external_url(url: String) -> Result<(), ManagerError> {
 
 pub fn cmd_open_managed_mods_folder() -> Result<(), ManagerError> {
     open_path(managed_mods_dir()?)
+}
+
+pub fn cmd_open_manager_folder() -> Result<(), ManagerError> {
+    open_path(managed_root()?)
 }
 
 pub fn cmd_open_trash_folder() -> Result<(), ManagerError> {

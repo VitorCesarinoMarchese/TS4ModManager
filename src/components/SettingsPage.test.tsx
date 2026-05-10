@@ -143,9 +143,9 @@ describe("SettingsPage", () => {
     expect(screen.getByLabelText("Accent color")).toBeDisabled();
   });
 
-  it("opens managed mod and trash folders", () => {
+  it("opens managed mod and manager folders", () => {
     const onOpenManagedModsFolder = vi.fn();
-    const onOpenTrashFolder = vi.fn();
+    const onOpenManagerFolder = vi.fn();
     render(
       <SettingsPage
         instances={[]}
@@ -154,15 +154,16 @@ describe("SettingsPage", () => {
         onRescan={() => {}}
         onAddCustomPath={() => {}}
         onOpenManagedModsFolder={onOpenManagedModsFolder}
-        onOpenTrashFolder={onOpenTrashFolder}
+        onOpenManagerFolder={onOpenManagerFolder}
       />
     );
 
     fireEvent.click(screen.getByRole("button", { name: "Open Mod Folder" }));
-    fireEvent.click(screen.getByRole("button", { name: "Open Trash Folder" }));
+    fireEvent.click(screen.getByRole("button", { name: "Open Manager Folder" }));
 
     expect(onOpenManagedModsFolder).toHaveBeenCalledTimes(1);
-    expect(onOpenTrashFolder).toHaveBeenCalledTimes(1);
+    expect(onOpenManagerFolder).toHaveBeenCalledTimes(1);
+    expect(screen.queryByRole("button", { name: "Open Trash Folder" })).not.toBeInTheDocument();
   });
 
   it("submits custom path", () => {

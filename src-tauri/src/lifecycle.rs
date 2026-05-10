@@ -1,5 +1,5 @@
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use serde::{Deserialize, Serialize};
@@ -30,10 +30,12 @@ pub fn uninstall_managed_mod(
     mod_id: &str,
 ) -> Result<UninstallResult, ManagerError> {
     let mod_root = managed_root.join("mods").join(mod_id);
-    if !mod_root.is_dir() {
+    let has_managed_meta = mod_root.is_dir();
+    let installed_targets = installed_group_targets(game_mods_dir, mod_id)?;
+    if !has_managed_meta && installed_targets.is_empty() {
         return Err(ManagerError::new(
             ErrorCode::NotFound,
-            format!("Managed mod not found: {}", mod_root.display()),
+            format!("Mod not found in managed storage or game Mods folder: {mod_id}"),
         ));
     }
 
@@ -44,7 +46,11 @@ pub fn uninstall_managed_mod(
         ));
     }
 
-    let issues = remove_manager_links(managed_root, game_mods_dir, mod_id)?;
+    let issues = if has_managed_meta {
+        remove_manager_links(managed_root, game_mods_dir, mod_id)?
+    } else {
+        vec![]
+    };
     fs::create_dir_all(trash_files_dir).map_err(|e| {
         ManagerError::new(
             ErrorCode::IoError,
@@ -54,12 +60,40 @@ pub fn uninstall_managed_mod(
 
     let trashed_name = format!("{}-{}", mod_id, unix_millis());
     let trashed = trash_files_dir.join(&trashed_name);
-    fs::rename(&mod_root, &trashed).map_err(|e| {
-        ManagerError::new(
-            ErrorCode::IoError,
-            format!("Move to trash failed {} -> {}: {e}", mod_root.display(), trashed.display()),
-        )
-    })?;
+    if !installed_targets.is_empty() {
+        fs::create_dir_all(&trashed).map_err(|e| {
+            ManagerError::new(
+                ErrorCode::IoError,
+                format!("Trash item dir create failed {}: {e}", trashed.display()),
+            )
+        })?;
+        for target in installed_targets {
+            let name = target
+                .file_name()
+                .ok_or_else(|| ManagerError::new(ErrorCode::InvalidPath, "Installed mod path has no file name"))?;
+            fs::rename(&target, trashed.join(name)).map_err(|e| {
+                ManagerError::new(
+                    ErrorCode::IoError,
+                    format!("Move installed mod to trash failed {}: {e}", target.display()),
+                )
+            })?;
+        }
+        if has_managed_meta {
+            fs::rename(&mod_root, trashed.join("metadata")).map_err(|e| {
+                ManagerError::new(
+                    ErrorCode::IoError,
+                    format!("Move metadata to trash failed {}: {e}", mod_root.display()),
+                )
+            })?;
+        }
+    } else {
+        fs::rename(&mod_root, &trashed).map_err(|e| {
+            ManagerError::new(
+                ErrorCode::IoError,
+                format!("Move to trash failed {} -> {}: {e}", mod_root.display(), trashed.display()),
+            )
+        })?;
+    }
 
     write_trashinfo(trash_files_dir, &trashed_name, &mod_root)?;
 
@@ -68,6 +102,48 @@ pub fn uninstall_managed_mod(
         trashed_path: trashed.to_string_lossy().to_string(),
         issues,
     })
+}
+
+fn installed_group_targets(game_mods_dir: &Path, mod_id: &str) -> Result<Vec<PathBuf>, ManagerError> {
+    let folder = game_mods_dir.join(mod_id);
+    if folder.is_dir() && !is_symlink(&folder)? {
+        return Ok(vec![folder]);
+    }
+
+    let mut targets = vec![];
+    let entries = match fs::read_dir(game_mods_dir) {
+        Ok(entries) => entries,
+        Err(_) => return Ok(targets),
+    };
+
+    for entry in entries.flatten() {
+        let path = entry.path();
+        let Ok(meta) = fs::symlink_metadata(&path) else {
+            continue;
+        };
+        if meta.is_dir() || meta.file_type().is_symlink() {
+            continue;
+        }
+        let Some(name) = path.file_name().and_then(|name| name.to_str()) else {
+            continue;
+        };
+        if filename_prefix(name) == mod_id {
+            targets.push(path);
+        }
+    }
+
+    Ok(targets)
+}
+
+fn is_symlink(path: &Path) -> Result<bool, ManagerError> {
+    fs::symlink_metadata(path)
+        .map(|meta| meta.file_type().is_symlink())
+        .map_err(|e| ManagerError::new(ErrorCode::IoError, format!("symlink metadata failed {}: {e}", path.display())))
+}
+
+fn filename_prefix(filename: &str) -> &str {
+    let stem = filename.split('.').next().unwrap_or(filename);
+    stem.split(['_', '-', ' ']).next().unwrap_or(stem)
 }
 
 fn remove_manager_links(
@@ -248,6 +324,42 @@ mod tests {
             .issues
             .iter()
             .any(|issue| issue.code.as_deref() == Some("EXTERNAL_LINK")));
+    }
+
+    #[test]
+    fn uninstall_existing_installed_folder_moves_real_files_not_only_metadata() {
+        let tmp = TempDir::new().expect("tmp");
+        let mods_dir = tmp.path().join("Game/Mods");
+        fs::create_dir_all(mods_dir.join("LooseMod")).expect("installed dir");
+        fs::write(mods_dir.join("LooseMod/main.package"), b"pkg").expect("pkg");
+        fs::create_dir_all(tmp.path().join("mods/LooseMod")).expect("metadata dir");
+        fs::write(tmp.path().join("mods/LooseMod/meta.json"), b"{}").expect("meta");
+        let trash_files = tmp.path().join("Trash/files");
+
+        let result = uninstall_managed_mod(tmp.path(), &mods_dir, &trash_files, "LooseMod").expect("uninstall");
+
+        assert!(!mods_dir.join("LooseMod").exists());
+        let trashed = std::path::Path::new(&result.trashed_path);
+        assert!(trashed.join("LooseMod/main.package").exists());
+        assert!(trashed.join("metadata/meta.json").exists());
+    }
+
+    #[test]
+    fn uninstall_existing_root_file_group_moves_real_files() {
+        let tmp = TempDir::new().expect("tmp");
+        let mods_dir = tmp.path().join("Game/Mods");
+        fs::create_dir_all(&mods_dir).expect("mods dir");
+        fs::write(mods_dir.join("LooseMod_a.package"), b"pkg").expect("pkg");
+        fs::write(mods_dir.join("LooseMod_b.ts4script"), b"script").expect("script");
+        let trash_files = tmp.path().join("Trash/files");
+
+        let result = uninstall_managed_mod(tmp.path(), &mods_dir, &trash_files, "LooseMod").expect("uninstall");
+
+        assert!(!mods_dir.join("LooseMod_a.package").exists());
+        assert!(!mods_dir.join("LooseMod_b.ts4script").exists());
+        let trashed = std::path::Path::new(&result.trashed_path);
+        assert!(trashed.join("LooseMod_a.package").exists());
+        assert!(trashed.join("LooseMod_b.ts4script").exists());
     }
 
     #[test]

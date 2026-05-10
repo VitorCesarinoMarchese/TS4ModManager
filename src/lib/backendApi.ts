@@ -197,9 +197,9 @@ export function createBackendApi(invoke: InvokeFn) {
       }
     },
 
-    async openTrashFolder(): Promise<void> {
+    async openManagerFolder(): Promise<void> {
       try {
-        await invoke("open_trash_folder");
+        await invoke("open_manager_folder");
       } catch (error) {
         throw normalizeError(error);
       }

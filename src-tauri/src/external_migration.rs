@@ -216,9 +216,13 @@ mod tests {
         let managed = tmp.path().join("managed");
         let game_mods = tmp.path().join("Game/Mods");
 
-        fs::create_dir_all(&managed).expect("managed");
+        let managed_file = managed.join("mods/id/files/Local_main.package");
+        fs::create_dir_all(managed_file.parent().expect("parent")).expect("managed");
         fs::create_dir_all(&game_mods).expect("mods");
-        fs::write(game_mods.join("Local_main.package"), b"PKG").expect("pkg");
+        fs::write(&managed_file, b"PKG").expect("pkg");
+
+        #[cfg(unix)]
+        std::os::unix::fs::symlink(&managed_file, game_mods.join("Local_main.package")).expect("link");
 
         let err = migrate_external_mod(&managed, &game_mods, "Local").expect_err("must fail");
         assert_eq!(err.code.as_str(), "EXTERNAL_LINK");

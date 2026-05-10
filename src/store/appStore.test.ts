@@ -417,28 +417,28 @@ describe("app store bootstrap", () => {
   it("stores open folder failures as issues", async () => {
     const api = {
       openManagedModsFolder: vi.fn().mockRejectedValue({ code: "IO_ERROR", message: "Open mods failed" }),
-      openTrashFolder: vi.fn().mockRejectedValue({ code: "IO_ERROR", message: "Open trash failed" })
+      openManagerFolder: vi.fn().mockRejectedValue({ code: "IO_ERROR", message: "Open manager failed" })
     };
     const store = createAppStore(api);
 
     await store.getState().openManagedModsFolder();
-    await store.getState().openTrashFolder();
+    await store.getState().openManagerFolder();
 
-    expect(store.getState().issues.map((issue) => issue.message)).toEqual(["Open mods failed", "Open trash failed"]);
+    expect(store.getState().issues.map((issue) => issue.message)).toEqual(["Open mods failed", "Open manager failed"]);
   });
 
-  it("opens managed mod and trash folders", async () => {
+  it("opens managed mod and manager folders", async () => {
     const api = {
       openManagedModsFolder: vi.fn().mockResolvedValue(undefined),
-      openTrashFolder: vi.fn().mockResolvedValue(undefined)
+      openManagerFolder: vi.fn().mockResolvedValue(undefined)
     };
     const store = createAppStore(api);
 
     await store.getState().openManagedModsFolder();
-    await store.getState().openTrashFolder();
+    await store.getState().openManagerFolder();
 
     expect(api.openManagedModsFolder).toHaveBeenCalledTimes(1);
-    expect(api.openTrashFolder).toHaveBeenCalledTimes(1);
+    expect(api.openManagerFolder).toHaveBeenCalledTimes(1);
   });
 
   it("custom instance validation error stored as issue", async () => {

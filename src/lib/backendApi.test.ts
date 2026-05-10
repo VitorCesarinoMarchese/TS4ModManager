@@ -250,7 +250,7 @@ describe("backend api wrapper", () => {
     const api = createBackendApi(invoke);
 
     await expect(api.openManagedModsFolder()).rejects.toMatchObject({ code: "IO_ERROR" });
-    await expect(api.openTrashFolder()).rejects.toMatchObject({ code: "IO_ERROR" });
+    await expect(api.openManagerFolder()).rejects.toMatchObject({ code: "IO_ERROR" });
   });
 
   it("calls open folder commands", async () => {
@@ -258,10 +258,10 @@ describe("backend api wrapper", () => {
     const api = createBackendApi(invoke);
 
     await api.openManagedModsFolder();
-    await api.openTrashFolder();
+    await api.openManagerFolder();
 
     expect(invoke).toHaveBeenCalledWith("open_managed_mods_folder");
-    expect(invoke).toHaveBeenCalledWith("open_trash_folder");
+    expect(invoke).toHaveBeenCalledWith("open_manager_folder");
   });
 
   it("calls import archive command", async () => {

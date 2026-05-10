@@ -41,7 +41,7 @@ export type BackendApi = {
   removeSourceUrl: (modId: string) => Promise<Mod>;
   uninstallManagedMod: (modId: string, instanceId: string) => Promise<UninstallResult>;
   openManagedModsFolder: () => Promise<void>;
-  openTrashFolder: () => Promise<void>;
+  openManagerFolder: () => Promise<void>;
 };
 
 /* c8 ignore start */
@@ -78,7 +78,7 @@ const defaultApi: BackendApi = {
   }),
   uninstallManagedMod: async (modId) => ({ modId, trashedPath: "", issues: [] }),
   openManagedModsFolder: async () => {},
-  openTrashFolder: async () => {}
+  openManagerFolder: async () => {}
 };
 /* c8 ignore stop */
 
@@ -101,7 +101,7 @@ export type AppState = {
   removeSourceUrl: (modId: string) => Promise<Mod | null>;
   uninstallManagedMod: (modId: string) => Promise<UninstallResult | null>;
   openManagedModsFolder: () => Promise<void>;
-  openTrashFolder: () => Promise<void>;
+  openManagerFolder: () => Promise<void>;
   toggleMod: (mod: Mod, targetEnabled: boolean, instanceId: string) => Promise<DryRunResult>;
 };
 
@@ -236,12 +236,12 @@ export function createAppStore(apiOverrides: Partial<BackendApi> = {}) {
         }));
       }
     },
-    openTrashFolder: async () => {
+    openManagerFolder: async () => {
       try {
-        await api.openTrashFolder();
+        await api.openManagerFolder();
       } catch (error) {
         set((state) => ({
-          issues: mergeIssueList(state.issues, toIssue(error, "open-trash-folder", "Open trash folder failed"))
+          issues: mergeIssueList(state.issues, toIssue(error, "open-manager-folder", "Open manager folder failed"))
         }));
       }
     },

@@ -85,7 +85,7 @@ export function App({ store = defaultStore }: AppProps) {
   const removeSourceUrl = useStore(store, (s) => s.removeSourceUrl);
   const uninstallManagedMod = useStore(store, (s) => s.uninstallManagedMod);
   const openManagedModsFolder = useStore(store, (s) => s.openManagedModsFolder);
-  const openTrashFolder = useStore(store, (s) => s.openTrashFolder);
+  const openManagerFolder = useStore(store, (s) => s.openManagerFolder);
 
   const [search, setSearch] = useState("");
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -297,7 +297,7 @@ export function App({ store = defaultStore }: AppProps) {
               onThemeExport={onThemeExport}
               onThemeReset={onThemeReset}
               onOpenManagedModsFolder={() => void openManagedModsFolder()}
-              onOpenTrashFolder={() => void openTrashFolder()}
+              onOpenManagerFolder={() => void openManagerFolder()}
             />
 
             <ImportPanel onImport={(archivePath, name, slug) => importArchive(archivePath, name, slug)} />

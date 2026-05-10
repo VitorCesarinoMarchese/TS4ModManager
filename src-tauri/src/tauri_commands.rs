@@ -122,6 +122,11 @@ fn open_managed_mods_folder() -> Result<(), ManagerError> {
 }
 
 #[tauri::command]
+fn open_manager_folder() -> Result<(), ManagerError> {
+    commands::cmd_open_manager_folder()
+}
+
+#[tauri::command]
 fn open_trash_folder() -> Result<(), ManagerError> {
     commands::cmd_open_trash_folder()
 }
@@ -143,6 +148,7 @@ pub fn run() {
             uninstall_managed_mod,
             open_external_url,
             open_managed_mods_folder,
+            open_manager_folder,
             open_trash_folder
         ])
         .run(tauri::generate_context!())

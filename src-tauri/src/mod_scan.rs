@@ -107,11 +107,11 @@ fn build_scanned_mod(key: String, files: Vec<FileEntry>, managed_root: &Path) ->
             && f
                 .symlink_target
                 .as_ref()
-                .is_none_or(|target| !target.starts_with(managed_root))
+                .is_some_and(|target| target.starts_with(managed_root.join("mods")))
     }) {
-        ModSource::External
-    } else {
         ModSource::Managed
+    } else {
+        ModSource::External
     };
 
     let group_path = key.split('/').map(ToString::to_string).collect::<Vec<_>>();
@@ -313,6 +313,20 @@ mod tests {
 
         let scanned = scan_mods(&mods, &managed);
         assert_eq!(scanned[0].preview.as_deref(), Some("Pack/preview_big.png"));
+    }
+
+    #[test]
+    fn marks_regular_installed_files_as_external() {
+        let root = TempDir::new().expect("tmp");
+        let mods = root.path().join("Mods");
+        let managed = root.path().join("managed");
+
+        fs::create_dir_all(mods.join("InstalledMod")).expect("mods");
+        fs::create_dir_all(&managed).expect("managed");
+        fs::write(mods.join("InstalledMod/main.package"), b"pkg").expect("pkg");
+
+        let scanned = scan_mods(&mods, &managed);
+        assert_eq!(scanned[0].source, ModSource::External);
     }
 
     #[test]
