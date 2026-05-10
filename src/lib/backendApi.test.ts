@@ -63,6 +63,72 @@ describe("backend api wrapper", () => {
     expect(invoke).toHaveBeenCalledWith("scan_mods", { instanceId: "i1" });
   });
 
+  it("normalizes scanned mod id and fallback name branches", async () => {
+    const invoke = vi.fn().mockResolvedValue([
+      {
+        id: "real-id",
+        key: "FolderA",
+        name: "FolderA",
+        files: ["FolderA/a.package"],
+        enabled: false,
+        source: "managed"
+      },
+      {
+        name: "No Key Mod",
+        files: ["b.package"],
+        enabled: false,
+        source: "external"
+      }
+    ]);
+    const api = createBackendApi(invoke);
+
+    const mods = await api.scanMods("i1");
+
+    expect(mods[0].id).toBe("real-id");
+    expect(mods[1]).toMatchObject({ id: "No Key Mod", source: "external" });
+  });
+
+  it("maps metadata fallbacks for IDs, names, files, and external source", async () => {
+    const invoke = vi.fn().mockResolvedValue({ id: "meta-id", source: "external" });
+    const api = createBackendApi(invoke);
+
+    const res = await api.renameModDisplayName("m1", "Fallback Name");
+
+    expect(res).toEqual({
+      id: "meta-id",
+      name: "Fallback Name",
+      files: [],
+      enabled: false,
+      source: "external",
+      sourceUrl: undefined
+    });
+  });
+
+  it("keeps normalized error details", async () => {
+    const invoke = vi.fn().mockRejectedValue({
+      code: "PATH_COLLISION",
+      message: "collision",
+      details: { path: "Mods/a.package" }
+    });
+    const api = createBackendApi(invoke);
+
+    await expect(api.scanMods("i1")).rejects.toMatchObject({
+      code: "PATH_COLLISION",
+      message: "collision",
+      details: { path: "Mods/a.package" }
+    });
+  });
+
+  it("normalizes malformed backend errors", async () => {
+    const invoke = vi.fn().mockRejectedValue({ code: 123, message: null });
+    const api = createBackendApi(invoke);
+
+    await expect(api.detectGameInstances()).rejects.toMatchObject({
+      code: "INTERNAL_ERROR",
+      message: "Unknown backend error"
+    });
+  });
+
   it("throws typed error for backend failure", async () => {
     const invoke = vi.fn().mockRejectedValue({ code: "PATH_COLLISION", message: "collision" });
     const api = createBackendApi(invoke);

@@ -10,7 +10,8 @@ body,
 
 button,
 input,
-select {
+select,
+textarea {
   font: inherit;
 }
 
@@ -31,8 +32,27 @@ button {
 }
 
 .main-content,
-.modal {
-  background: var(--color-surface, #ffffff);
+.modal,
+.app-shell button,
+.app-shell input,
+.app-shell select,
+.app-shell textarea {
+  background-color: var(--color-surface, #ffffff);
+  color: var(--color-text, #020617);
+}
+
+.app-shell button,
+.app-shell input,
+.app-shell select,
+.app-shell textarea,
+.app-shell fieldset {
+  border-color: var(--color-border, #cbd5e1);
+}
+
+.app-shell .text-slate-600,
+.app-shell .text-slate-500,
+.app-shell .dark\:text-slate-300 {
+  color: var(--color-muted-text, #64748b);
 }
 
 .app-shell.dark {

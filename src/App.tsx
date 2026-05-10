@@ -15,27 +15,47 @@ import { Sidebar } from "./components/Sidebar";
 import { TopBar } from "./components/TopBar";
 import { createBackendApi } from "./lib/backendApi";
 import { openExternalUrl } from "./lib/openUrl";
-import { applyThemeVariables, CUSTOM_THEME_STORAGE_KEY, DEFAULT_THEME, parseThemeJson, type AppTheme } from "./lib/theme";
+import {
+  ACTIVE_THEME_STORAGE_KEY,
+  applyThemeVariables,
+  createThemeCopy,
+  CUSTOM_THEMES_STORAGE_KEY,
+  DEFAULT_THEME,
+  LEGACY_CUSTOM_THEME_STORAGE_KEY,
+  LEGACY_THEME_STORAGE_KEY,
+  parseThemeJson,
+  parseThemesJson,
+  resolveTheme,
+  serializeTheme,
+  shouldUseDarkClass,
+  upsertTheme,
+  type AppTheme
+} from "./lib/theme";
 import { invokeTauri } from "./lib/tauriInvoke";
 import { createAppStore, type AppState } from "./store/appStore";
 
 const defaultStore = createAppStore(createBackendApi(invokeTauri));
-const THEME_STORAGE_KEY = "ts4mm-theme";
 
-function getInitialCustomTheme(): AppTheme {
-  if (typeof window === "undefined") return DEFAULT_THEME;
-  const stored = window.localStorage.getItem(CUSTOM_THEME_STORAGE_KEY);
-  return stored ? (parseThemeJson(stored) ?? DEFAULT_THEME) : DEFAULT_THEME;
+function systemPrefersDark() {
+  return window.matchMedia?.("(prefers-color-scheme: dark)").matches ?? false;
 }
 
-function getInitialDarkMode() {
-  if (typeof window === "undefined") return false;
+function getInitialCustomThemes(): AppTheme[] {
+  if (typeof window === "undefined") return [];
+  const themes = parseThemesJson(window.localStorage.getItem(CUSTOM_THEMES_STORAGE_KEY));
+  const legacyTheme = parseThemeJson(window.localStorage.getItem(LEGACY_CUSTOM_THEME_STORAGE_KEY) ?? "");
+  return legacyTheme && !themes.some((theme) => theme.name === legacyTheme.name) ? [...themes, legacyTheme] : themes;
+}
 
-  const stored = window.localStorage.getItem(THEME_STORAGE_KEY);
-  if (stored === "dark") return true;
-  if (stored === "light") return false;
+function getInitialActiveThemeName(customThemes: AppTheme[]): string {
+  if (typeof window === "undefined") return "Light";
+  const stored = window.localStorage.getItem(ACTIVE_THEME_STORAGE_KEY);
+  if (stored && (stored === "Light" || stored === "Dark" || stored === "System" || customThemes.some((theme) => theme.name === stored))) return stored;
 
-  return window.matchMedia?.("(prefers-color-scheme: dark)").matches ?? false;
+  const legacyMode = window.localStorage.getItem(LEGACY_THEME_STORAGE_KEY);
+  if (legacyMode === "dark") return "Dark";
+  if (legacyMode === "light") return "Light";
+  return "System";
 }
 
 type AppProps = {
@@ -60,11 +80,14 @@ export function App({ store = defaultStore }: AppProps) {
 
   const [search, setSearch] = useState("");
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const [darkMode, setDarkMode] = useState(getInitialDarkMode);
-  const [customTheme, setCustomTheme] = useState<AppTheme>(getInitialCustomTheme);
+  const [customThemes, setCustomThemes] = useState<AppTheme[]>(getInitialCustomThemes);
+  const [activeThemeName, setActiveThemeName] = useState(() => getInitialActiveThemeName(getInitialCustomThemes()));
   const [selectedMod, setSelectedMod] = useState<AppState["mods"][number] | null>(null);
   const [dismissedIssueId, setDismissedIssueId] = useState<string | null>(null);
   const [toggleDisabledById, setToggleDisabledById] = useState<Record<string, boolean>>({});
+
+  const activeTheme = resolveTheme(activeThemeName, customThemes, typeof window !== "undefined" ? systemPrefersDark() : false);
+  const darkMode = shouldUseDarkClass(activeThemeName, customThemes, typeof window !== "undefined" ? systemPrefersDark() : false);
 
   useEffect(() => {
     void loadInstances();
@@ -84,9 +107,10 @@ export function App({ store = defaultStore }: AppProps) {
   }, [darkMode]);
 
   useEffect(() => {
-    applyThemeVariables(customTheme);
-    window.localStorage.setItem(CUSTOM_THEME_STORAGE_KEY, JSON.stringify(customTheme));
-  }, [customTheme]);
+    applyThemeVariables(activeTheme);
+    window.localStorage.setItem(ACTIVE_THEME_STORAGE_KEY, activeThemeName);
+    window.localStorage.setItem(CUSTOM_THEMES_STORAGE_KEY, JSON.stringify(customThemes));
+  }, [activeTheme, activeThemeName, customThemes]);
 
   const effectiveSelectedMod = selectedMod
     ? (mods.find((mod) => mod.id === selectedMod.id) ?? selectedMod)
@@ -103,24 +127,33 @@ export function App({ store = defaultStore }: AppProps) {
     setToggleDisabledById((prev) => ({ ...prev, [mod.id]: !dryRun.canApply }));
   };
 
+  const onCreateTheme = () => {
+    const theme = createThemeCopy(activeTheme, customThemes);
+    setCustomThemes((current) => [...current, theme]);
+    setActiveThemeName(theme.name);
+  };
+
+  const onThemeChange = (theme: AppTheme) => {
+    setCustomThemes((current) => upsertTheme(current, theme));
+    setActiveThemeName(theme.name);
+  };
+
+  const onThemeImport = (theme: AppTheme) => {
+    const exists = customThemes.some((item) => item.name === theme.name);
+    if (exists && !window.confirm(`Replace existing theme "${theme.name}"?`)) return;
+    onThemeChange(theme);
+  };
+
+  const onThemeExport = async (theme: AppTheme) => {
+    await navigator.clipboard.writeText(serializeTheme(theme));
+  };
+
   const dangerButtonClass =
     "inline-flex items-center gap-2 rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm hover:border-red-500 hover:bg-red-50 hover:text-red-600 focus:outline-none focus:ring-2 focus:ring-red-500/40 dark:border-slate-600 dark:bg-slate-800 dark:hover:border-red-500 dark:hover:bg-red-950/30 dark:hover:text-red-300";
 
-  const onToggleTheme = () => {
-    setDarkMode((current) => {
-      const next = !current;
-      window.localStorage.setItem(THEME_STORAGE_KEY, next ? "dark" : "light");
-      return next;
-    });
-  };
-
   return (
     <div className={`app-shell flex min-h-screen flex-col bg-slate-50 font-sans text-slate-950 dark:bg-[#15171c] dark:text-slate-100 ${darkMode ? "dark" : ""}`}>
-      <TopBar
-        darkMode={darkMode}
-        onToggleTheme={onToggleTheme}
-        onSettings={() => setSettingsOpen(true)}
-      />
+      <TopBar onSettings={() => setSettingsOpen(true)} />
 
       <div className="layout grid grid-cols-[280px_1fr] gap-6 p-6">
         <Sidebar
@@ -208,9 +241,18 @@ export function App({ store = defaultStore }: AppProps) {
               }}
               rescanDisabled={isScanning}
               onAddCustomPath={(path) => addCustomInstance(path)}
-              theme={customTheme}
-              onThemeChange={setCustomTheme}
-              onThemeReset={() => setCustomTheme(DEFAULT_THEME)}
+              activeThemeName={activeThemeName}
+              activeTheme={activeTheme}
+              customThemes={customThemes}
+              onSelectTheme={setActiveThemeName}
+              onCreateTheme={onCreateTheme}
+              onThemeChange={onThemeChange}
+              onThemeImport={onThemeImport}
+              onThemeExport={onThemeExport}
+              onThemeReset={() => {
+                setCustomThemes([]);
+                setActiveThemeName("Light");
+              }}
             />
 
             <ImportPanel onImport={(archivePath, name, slug) => importArchive(archivePath, name, slug)} />

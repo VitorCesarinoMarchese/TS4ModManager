@@ -1,6 +1,6 @@
-import { ArrowsClockwise, CaretDown, FolderPlus } from "@phosphor-icons/react";
+import { ArrowsClockwise, CaretDown, ClipboardText, FolderPlus, Plus } from "@phosphor-icons/react";
 import { useState } from "react";
-import { DEFAULT_THEME, parseThemeJson, serializeTheme, type AppTheme } from "../lib/theme";
+import { DARK_THEME, DEFAULT_THEME, parseThemeJson, serializeTheme, type AppTheme } from "../lib/theme";
 import type { GameInstance } from "../lib/types";
 
 type SettingsPageProps = {
@@ -10,10 +10,25 @@ type SettingsPageProps = {
   onRescan: () => void;
   rescanDisabled?: boolean;
   onAddCustomPath: (path: string) => void | Promise<void>;
-  theme?: AppTheme;
+  activeThemeName?: string;
+  activeTheme?: AppTheme;
+  customThemes?: AppTheme[];
+  onSelectTheme?: (themeName: string) => void;
+  onCreateTheme?: () => void;
   onThemeChange?: (theme: AppTheme) => void;
+  onThemeImport?: (theme: AppTheme) => void;
+  onThemeExport?: (theme: AppTheme) => void | Promise<void>;
   onThemeReset?: () => void;
 };
+
+const colorFields: Array<[keyof AppTheme["colors"], string]> = [
+  ["accent", "Accent color"],
+  ["background", "Background color"],
+  ["surface", "Surface color"],
+  ["text", "Text color"],
+  ["mutedText", "Muted text color"],
+  ["border", "Border color"]
+];
 
 function friendlyName(instance: GameInstance, index: number) {
   const base =
@@ -32,16 +47,28 @@ export function SettingsPage({
   onRescan,
   rescanDisabled = false,
   onAddCustomPath,
-  theme = DEFAULT_THEME,
+  activeThemeName = "Light",
+  activeTheme = DEFAULT_THEME,
+  customThemes = [],
+  onSelectTheme,
+  onCreateTheme,
   onThemeChange,
+  onThemeImport,
+  onThemeExport,
   onThemeReset
 }: SettingsPageProps) {
   const [customPath, setCustomPath] = useState("");
   const [importJson, setImportJson] = useState("");
   const [importError, setImportError] = useState<string | null>(null);
+  const [copyStatus, setCopyStatus] = useState<string | null>(null);
   const inputClass = "h-9 rounded-md border border-slate-300 bg-white px-3 py-1.5 text-slate-950 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100";
   const buttonClass =
     "inline-flex items-center gap-2 rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm hover:border-accent hover:bg-accent/10 focus:outline-none focus:ring-2 focus:ring-accent/40 disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-600 dark:bg-slate-800 dark:hover:border-accent dark:hover:bg-accent/10";
+  const canEditTheme = customThemes.some((theme) => theme.name === activeThemeName);
+
+  const updateColor = (key: keyof AppTheme["colors"], value: string) => {
+    onThemeChange?.({ ...activeTheme, colors: { ...activeTheme.colors, [key]: value } });
+  };
 
   return (
     <section aria-label="settings-page" className="settings-page grid gap-4">
@@ -110,21 +137,58 @@ export function SettingsPage({
 
       <fieldset aria-label="theme-editor" className="grid gap-3 rounded-lg border border-slate-300 p-4 dark:border-slate-700">
         <legend className="px-1 text-lg font-semibold">Theme Editor</legend>
-        <label className="grid max-w-xs gap-1 text-sm font-medium" htmlFor="theme-accent">
-          Accent color
-          <input
-            id="theme-accent"
-            type="color"
-            className="h-10 w-20 cursor-pointer rounded-md border border-slate-300 bg-white p-1 dark:border-slate-600 dark:bg-slate-800"
-            value={theme.colors.accent}
-            onChange={(e) => onThemeChange?.({ ...theme, colors: { ...theme.colors, accent: e.target.value } })}
-          />
-        </label>
 
-        <label className="grid gap-1 text-sm font-medium" htmlFor="theme-export">
-          Theme JSON export
-          <textarea id="theme-export" className={`${inputClass} min-h-36 font-mono text-xs`} readOnly value={serializeTheme(theme)} />
-        </label>
+        <div className="flex flex-wrap items-end gap-3">
+          <label className="grid gap-1 text-sm font-medium" htmlFor="theme-select">
+            Active theme
+            <select
+              id="theme-select"
+              className={`${inputClass} min-w-48`}
+              value={activeThemeName}
+              onChange={(e) => onSelectTheme?.(e.target.value)}
+            >
+              <option value="Light">Light</option>
+              <option value="Dark">Dark</option>
+              <option value="System">System</option>
+              {customThemes.map((theme) => (
+                <option key={theme.name} value={theme.name}>{theme.name}</option>
+              ))}
+            </select>
+          </label>
+          <button type="button" className={buttonClass} onClick={onCreateTheme}>
+            <Plus size={16} weight="regular" aria-hidden="true" />
+            Create Custom Theme
+          </button>
+          <button
+            type="button"
+            className={buttonClass}
+            onClick={async () => {
+              await onThemeExport?.(activeTheme);
+              setCopyStatus("Copied theme JSON");
+            }}
+          >
+            <ClipboardText size={16} weight="regular" aria-hidden="true" />
+            Export Theme
+          </button>
+        </div>
+        {copyStatus ? <p role="status" className="text-sm text-slate-600 dark:text-slate-300">{copyStatus}</p> : null}
+        {!canEditTheme ? <p className="text-sm text-slate-600 dark:text-slate-300">Create or select a custom theme to edit colors.</p> : null}
+
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          {colorFields.map(([key, label]) => (
+            <label key={key} className="grid gap-1 text-sm font-medium" htmlFor={`theme-${key}`}>
+              {label}
+              <input
+                id={`theme-${key}`}
+                type="color"
+                disabled={!canEditTheme}
+                className="h-10 w-20 cursor-pointer rounded-md border border-slate-300 bg-white p-1 disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-600 dark:bg-slate-800"
+                value={activeTheme.colors[key]}
+                onChange={(e) => updateColor(key, e.target.value)}
+              />
+            </label>
+          ))}
+        </div>
 
         <label className="grid gap-1 text-sm font-medium" htmlFor="theme-import">
           Theme JSON import
@@ -133,6 +197,7 @@ export function SettingsPage({
             className={`${inputClass} min-h-28 font-mono text-xs`}
             value={importJson}
             onChange={(e) => setImportJson(e.target.value)}
+            placeholder={serializeTheme(DARK_THEME)}
           />
         </label>
         {importError ? <p role="alert" className="text-sm text-red-600 dark:text-red-400">{importError}</p> : null}
@@ -147,13 +212,13 @@ export function SettingsPage({
                 return;
               }
               setImportError(null);
-              onThemeChange?.(parsed);
+              onThemeImport?.(parsed);
             }}
           >
             Import Theme
           </button>
           <button type="button" className={buttonClass} onClick={onThemeReset}>
-            Reset Theme
+            Reset Themes
           </button>
         </div>
       </fieldset>

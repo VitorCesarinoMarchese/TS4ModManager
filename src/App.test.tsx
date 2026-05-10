@@ -69,6 +69,13 @@ function makeApi(overrides: Record<string, unknown> = {}) {
   };
 }
 
+function mockClipboard() {
+  Object.defineProperty(navigator, "clipboard", {
+    writable: true,
+    value: { writeText: vi.fn().mockResolvedValue(undefined) }
+  });
+}
+
 function mockLocalStorage() {
   let data: Record<string, string> = {};
   Object.defineProperty(window, "localStorage", {
@@ -117,8 +124,10 @@ function mockSystemTheme(prefersDark: boolean) {
 describe("App redesign", () => {
   beforeEach(() => {
     mockLocalStorage();
+    mockClipboard();
     window.localStorage.clear();
     mockSystemTheme(false);
+    vi.spyOn(window, "confirm").mockReturnValue(true);
   });
 
   it("renders top bar, sidebar, and mod grid", async () => {
@@ -153,28 +162,22 @@ describe("App redesign", () => {
     expect(screen.queryByRole("dialog", { name: "settings-modal" })).not.toBeInTheDocument();
   });
 
-  it("uses system dark theme on first launch", () => {
+  it("uses system dark theme from settings dropdown", () => {
     mockSystemTheme(true);
     const api = makeApi();
     const store = createAppStore(api);
     const { container } = render(<App store={store} />);
 
+    fireEvent.click(screen.getByRole("button", { name: "open-settings" }));
+    fireEvent.change(screen.getByRole("combobox", { name: "Active theme" }), { target: { value: "System" } });
+
+    expect(screen.queryByRole("button", { name: "toggle-theme" })).not.toBeInTheDocument();
     expect(document.documentElement.classList.contains("dark")).toBe(true);
     expect(container.querySelector(".app-shell")?.classList.contains("dark")).toBe(true);
   });
 
-  it("uses system light theme on first launch", () => {
-    mockSystemTheme(false);
-    const api = makeApi();
-    const store = createAppStore(api);
-    const { container } = render(<App store={store} />);
-
-    expect(document.documentElement.classList.contains("dark")).toBe(false);
-    expect(container.querySelector(".app-shell")?.classList.contains("dark")).toBe(false);
-  });
-
   it("uses stored theme preference over system theme", () => {
-    window.localStorage.setItem("ts4mm-theme", "light");
+    window.localStorage.setItem("ts4mm-active-theme", "Light");
     mockSystemTheme(true);
     const api = makeApi();
     const store = createAppStore(api);
@@ -184,38 +187,68 @@ describe("App redesign", () => {
     expect(container.querySelector(".app-shell")?.classList.contains("dark")).toBe(false);
   });
 
-  it("persists and applies custom theme variables", () => {
+  it("creates, persists, exports, and imports custom themes", async () => {
     const api = makeApi();
     const store = createAppStore(api);
     render(<App store={store} />);
 
     fireEvent.click(screen.getByRole("button", { name: "open-settings" }));
+    fireEvent.click(screen.getByRole("button", { name: "Create Custom Theme" }));
     fireEvent.change(screen.getByLabelText("Accent color"), { target: { value: "#22c55e" } });
+    fireEvent.change(screen.getByLabelText("Background color"), { target: { value: "#020617" } });
 
     expect(document.documentElement.style.getPropertyValue("--color-accent")).toBe("#22c55e");
+    expect(document.documentElement.style.getPropertyValue("--color-background")).toBe("#020617");
     expect(window.localStorage.setItem).toHaveBeenCalledWith(
-      "ts4mm-custom-theme",
-      expect.stringContaining('"accent":"#22c55e"')
+      "ts4mm-custom-themes",
+      expect.stringContaining('"background":"#020617"')
     );
+
+    fireEvent.click(screen.getByRole("button", { name: "Export Theme" }));
+    await waitFor(() => expect(navigator.clipboard.writeText).toHaveBeenCalledWith(expect.stringContaining('"background": "#020617"')));
+
+    const importedTheme = {
+      name: "Imported",
+      colors: {
+        accent: "#a855f7",
+        background: "#111827",
+        surface: "#1f2937",
+        text: "#f8fafc",
+        mutedText: "#c4b5fd",
+        border: "#6d28d9"
+      }
+    };
+    fireEvent.change(screen.getByLabelText("Theme JSON import"), { target: { value: JSON.stringify(importedTheme) } });
+    fireEvent.click(screen.getByRole("button", { name: "Import Theme" }));
+    expect(document.documentElement.style.getPropertyValue("--color-border")).toBe("#6d28d9");
   });
 
-  it("toggles dark mode class and persists preference", async () => {
+  it("asks before overwriting imported theme", () => {
+    const existingTheme = {
+      name: "Purple",
+      colors: {
+        accent: "#a855f7",
+        background: "#111827",
+        surface: "#1f2937",
+        text: "#f8fafc",
+        mutedText: "#c4b5fd",
+        border: "#6d28d9"
+      }
+    };
+    window.localStorage.setItem("ts4mm-custom-themes", JSON.stringify([existingTheme]));
+    vi.mocked(window.confirm).mockReturnValue(false);
     const api = makeApi();
     const store = createAppStore(api);
-    const { container } = render(<App store={store} />);
+    render(<App store={store} />);
 
-    expect(document.documentElement.classList.contains("dark")).toBe(false);
-    expect(container.querySelector(".app-shell")?.classList.contains("dark")).toBe(false);
-
-    fireEvent.click(screen.getByRole("button", { name: "toggle-theme" }));
-
-    expect(document.documentElement.classList.contains("dark")).toBe(true);
-    expect(container.querySelector(".app-shell")?.classList.contains("dark")).toBe(true);
-    expect(window.localStorage.getItem("ts4mm-theme")).toBe("dark");
-
-    await waitFor(() => {
-      expect(screen.getByRole("button", { name: "Native Instance 1" })).toHaveClass("border-accent");
+    fireEvent.click(screen.getByRole("button", { name: "open-settings" }));
+    fireEvent.change(screen.getByLabelText("Theme JSON import"), {
+      target: { value: JSON.stringify({ ...existingTheme, colors: { ...existingTheme.colors, accent: "#22c55e" } }) }
     });
+    fireEvent.click(screen.getByRole("button", { name: "Import Theme" }));
+
+    expect(window.confirm).toHaveBeenCalledWith('Replace existing theme "Purple"?');
+    expect(document.documentElement.style.getPropertyValue("--color-accent")).not.toBe("#22c55e");
   });
 
   it("shows loading overlay and disables rescan while scan is pending", async () => {

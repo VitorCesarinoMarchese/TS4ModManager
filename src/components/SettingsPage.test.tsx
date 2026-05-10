@@ -1,7 +1,19 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { DEFAULT_THEME } from "../lib/theme";
 import { SettingsPage } from "./SettingsPage";
+
+const purpleTheme = {
+  name: "Purple",
+  colors: {
+    accent: "#a855f7",
+    background: "#111827",
+    surface: "#1f2937",
+    text: "#f8fafc",
+    mutedText: "#c4b5fd",
+    border: "#6d28d9"
+  }
+};
 
 describe("SettingsPage", () => {
   it("renders friendly instance names and hides raw paths", () => {
@@ -21,10 +33,7 @@ describe("SettingsPage", () => {
     expect(screen.getByText("Detected Game Paths")).toBeInTheDocument();
     expect(screen.getByDisplayValue("Steam Instance 2")).toBeInTheDocument();
     expect(screen.queryByText("/steam/path")).not.toBeInTheDocument();
-    expect(screen.getByRole("option", { name: "Steam Instance 2" })).toHaveAttribute(
-      "title",
-      "/steam/path"
-    );
+    expect(screen.getByRole("option", { name: "Steam Instance 2" })).toHaveAttribute("title", "/steam/path");
     expect(screen.getByRole("combobox", { name: "Active instance" })).toHaveClass("appearance-none");
   });
 
@@ -44,8 +53,13 @@ describe("SettingsPage", () => {
     expect(onRescan).toHaveBeenCalledTimes(1);
   });
 
-  it("edits, imports, exports, and resets themes", () => {
+  it("selects, creates, edits, imports, exports, and resets themes", async () => {
+    const onSelectTheme = vi.fn();
+    const onCreateTheme = vi.fn();
     const onThemeChange = vi.fn();
+    const onThemeImport = vi.fn();
+    const onThemeExport = vi.fn().mockResolvedValue(undefined);
+    const onThemeReset = vi.fn();
     render(
       <SettingsPage
         instances={[]}
@@ -53,39 +67,62 @@ describe("SettingsPage", () => {
         onSelectInstance={() => {}}
         onRescan={() => {}}
         onAddCustomPath={() => {}}
-        theme={DEFAULT_THEME}
+        activeThemeName="Purple"
+        activeTheme={purpleTheme}
+        customThemes={[purpleTheme]}
+        onSelectTheme={onSelectTheme}
+        onCreateTheme={onCreateTheme}
         onThemeChange={onThemeChange}
-        onThemeReset={() => onThemeChange(DEFAULT_THEME)}
+        onThemeImport={onThemeImport}
+        onThemeExport={onThemeExport}
+        onThemeReset={onThemeReset}
       />
     );
 
     expect(screen.getByRole("group", { name: "theme-editor" })).toBeInTheDocument();
+    expect(screen.getByRole("combobox", { name: "Active theme" })).toHaveValue("Purple");
+    fireEvent.change(screen.getByRole("combobox", { name: "Active theme" }), { target: { value: "Dark" } });
+    expect(onSelectTheme).toHaveBeenCalledWith("Dark");
+
+    fireEvent.click(screen.getByRole("button", { name: "Create Custom Theme" }));
+    expect(onCreateTheme).toHaveBeenCalledTimes(1);
+
     fireEvent.change(screen.getByLabelText("Accent color"), { target: { value: "#22c55e" } });
-    expect(onThemeChange).toHaveBeenCalledWith({
-      ...DEFAULT_THEME,
-      colors: { ...DEFAULT_THEME.colors, accent: "#22c55e" }
-    });
+    expect(onThemeChange).toHaveBeenCalledWith({ ...purpleTheme, colors: { ...purpleTheme.colors, accent: "#22c55e" } });
+    fireEvent.change(screen.getByLabelText("Background color"), { target: { value: "#020617" } });
+    expect(onThemeChange).toHaveBeenCalledWith({ ...purpleTheme, colors: { ...purpleTheme.colors, background: "#020617" } });
 
-    const exported = screen.getByLabelText("Theme JSON export") as HTMLTextAreaElement;
-    expect(exported.value).toContain('"accent": "#10b981"');
+    fireEvent.click(screen.getByRole("button", { name: "Export Theme" }));
+    await waitFor(() => expect(onThemeExport).toHaveBeenCalledWith(purpleTheme));
+    expect(screen.getByRole("status")).toHaveTextContent("Copied theme JSON");
 
-    const importedTheme = {
-      ...DEFAULT_THEME,
-      name: "Purple",
-      colors: { ...DEFAULT_THEME.colors, accent: "#a855f7" }
-    };
-    fireEvent.change(screen.getByLabelText("Theme JSON import"), {
-      target: { value: JSON.stringify(importedTheme) }
-    });
+    fireEvent.change(screen.getByLabelText("Theme JSON import"), { target: { value: JSON.stringify(purpleTheme) } });
     fireEvent.click(screen.getByRole("button", { name: "Import Theme" }));
-    expect(onThemeChange).toHaveBeenCalledWith(importedTheme);
+    expect(onThemeImport).toHaveBeenCalledWith(purpleTheme);
 
     fireEvent.change(screen.getByLabelText("Theme JSON import"), { target: { value: "bad json" } });
     fireEvent.click(screen.getByRole("button", { name: "Import Theme" }));
     expect(screen.getByRole("alert")).toHaveTextContent("Invalid theme JSON");
 
-    fireEvent.click(screen.getByRole("button", { name: "Reset Theme" }));
-    expect(onThemeChange).toHaveBeenCalledWith(DEFAULT_THEME);
+    fireEvent.click(screen.getByRole("button", { name: "Reset Themes" }));
+    expect(onThemeReset).toHaveBeenCalledTimes(1);
+  });
+
+  it("disables color editing for built-in themes", () => {
+    render(
+      <SettingsPage
+        instances={[]}
+        selectedInstanceId={null}
+        onSelectInstance={() => {}}
+        onRescan={() => {}}
+        onAddCustomPath={() => {}}
+        activeThemeName="Light"
+        activeTheme={DEFAULT_THEME}
+      />
+    );
+
+    expect(screen.getByText("Create or select a custom theme to edit colors.")).toBeInTheDocument();
+    expect(screen.getByLabelText("Accent color")).toBeDisabled();
   });
 
   it("submits custom path", () => {
