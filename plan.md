@@ -12,7 +12,8 @@ Phase 2 checkpoints 1-11 are complete. Latest lifecycle hardening adds:
 - Move to Trash moves installed files/folders plus metadata, not metadata alone.
 - Settings can open `sims4-mod-manager`, managed mods folder, list trash, and restore trash entries.
 - External mods can be migrated into managed storage with live files replaced by manager symlinks.
-- Folder opening detaches `xdg-open` and silences stdio to avoid DBus/GLFW noise.
+- Folder opening detaches `xdg-open`, silences stdio, and applies Linux desktop env workarounds to avoid DBus/GLFW/Wayland noise.
+- Tauri startup sets `WEBKIT_DISABLE_DMABUF_RENDERER=1` by default to avoid common WebKitGTK Wayland protocol crashes; set `TS4MM_DISABLE_WAYLAND_WORKAROUNDS=1` to opt out.
 - Uninstall/restore success feedback appears as a toast.
 
 The project is a functional Linux-first Sims 4 mod manager with:

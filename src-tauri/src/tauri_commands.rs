@@ -145,6 +145,7 @@ fn open_trash_folder() -> Result<(), ManagerError> {
 }
 
 pub fn run() {
+    crate::runtime_env::configure_runtime_environment();
     tauri::Builder::default()
         .invoke_handler(tauri::generate_handler![
             detect_game_instances,

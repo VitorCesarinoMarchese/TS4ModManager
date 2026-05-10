@@ -9,6 +9,7 @@ pub mod metadata_names;
 pub mod mod_scan;
 pub mod orphan;
 pub mod path_detection;
+pub mod runtime_env;
 pub mod runtime_paths;
 #[cfg(feature = "tauri-app")]
 pub mod tauri_commands;

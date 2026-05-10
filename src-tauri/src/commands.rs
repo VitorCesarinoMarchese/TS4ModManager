@@ -10,6 +10,7 @@ use crate::managed_storage::{remove_source_url, set_custom_display_name, set_sou
 use crate::mod_scan::ScannedMod;
 use crate::orphan::{detect_orphan_symlinks, OrphanSymlink};
 use crate::path_detection::{detect_game_instances, validate_custom_instance, GameInstance};
+use crate::runtime_env::desktop_open_env;
 use crate::runtime_paths::{managed_root, managed_mods_dir, trash_files_dir};
 use crate::toggle::{apply_toggle, dry_run_toggle, ApplyResult, DryRunResult};
 
@@ -139,7 +140,7 @@ fn open_path(path: PathBuf) -> Result<(), ManagerError> {
         .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::null())
-        .env("NO_AT_BRIDGE", "1")
+        .envs(desktop_open_env())
         .spawn()
         .map(|_| ())
         .map_err(|e| ManagerError::new(ErrorCode::IoError, format!("Open folder failed: {e}")))
@@ -152,7 +153,7 @@ pub fn cmd_open_external_url(url: String) -> Result<(), ManagerError> {
         .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::null())
-        .env("NO_AT_BRIDGE", "1")
+        .envs(desktop_open_env())
         .spawn()
         .map(|_| ())
         .map_err(|e| ManagerError::new(ErrorCode::IoError, format!("Open URL failed: {e}")))
