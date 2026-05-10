@@ -92,10 +92,13 @@ describe("ModDetailsPanel", () => {
     expect(onUninstall).toHaveBeenCalledWith("m1");
   });
 
-  it("shows uninstall for external installed mods", () => {
-    render(<ModDetailsPanel mod={{ ...mod, source: "external" }} onClose={() => {}} onUninstall={() => {}} />);
+  it("shows manage and uninstall for external installed mods", () => {
+    const onManageExternal = vi.fn();
+    render(<ModDetailsPanel mod={{ ...mod, source: "external" }} onClose={() => {}} onUninstall={() => {}} onManageExternal={onManageExternal} />);
 
     expect(screen.getByRole("button", { name: "uninstall-mod" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "manage-external-mod" }));
+    expect(onManageExternal).toHaveBeenCalledWith("m1");
   });
 
   it("closes and saves renamed mod", () => {

@@ -17,6 +17,19 @@ pub struct UninstallResult {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
+pub struct TrashEntry {
+    pub name: String,
+    pub path: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct RestoreResult {
+    pub restored_path: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
 struct LinkSidecar {
     version: u32,
     mod_id: String,
@@ -67,7 +80,7 @@ pub fn uninstall_managed_mod(
                 format!("Trash item dir create failed {}: {e}", trashed.display()),
             )
         })?;
-        for target in installed_targets {
+        for target in &installed_targets {
             let name = target
                 .file_name()
                 .ok_or_else(|| ManagerError::new(ErrorCode::InvalidPath, "Installed mod path has no file name"))?;
@@ -95,13 +108,119 @@ pub fn uninstall_managed_mod(
         })?;
     }
 
-    write_trashinfo(trash_files_dir, &trashed_name, &mod_root)?;
+    let original_path = if !installed_targets.is_empty() {
+        game_mods_dir.join(mod_id)
+    } else {
+        mod_root.clone()
+    };
+    write_trashinfo(trash_files_dir, &trashed_name, &original_path)?;
 
     Ok(UninstallResult {
         mod_id: mod_id.to_string(),
         trashed_path: trashed.to_string_lossy().to_string(),
         issues,
     })
+}
+
+pub fn list_trash_entries(trash_files_dir: &Path) -> Result<Vec<TrashEntry>, ManagerError> {
+    if !trash_files_dir.exists() {
+        return Ok(vec![]);
+    }
+
+    let mut entries = fs::read_dir(trash_files_dir)
+        .map_err(|e| ManagerError::new(ErrorCode::IoError, format!("Read trash failed {}: {e}", trash_files_dir.display())))?
+        .flatten()
+        .filter_map(|entry| {
+            let path = entry.path();
+            let name = path.file_name()?.to_string_lossy().to_string();
+            Some(TrashEntry { name, path: path.to_string_lossy().to_string() })
+        })
+        .collect::<Vec<_>>();
+    entries.sort_by(|a, b| b.name.cmp(&a.name));
+    Ok(entries)
+}
+
+pub fn restore_trashed_mod(
+    managed_root: &Path,
+    game_mods_dir: &Path,
+    trash_files_dir: &Path,
+    trash_name: &str,
+) -> Result<RestoreResult, ManagerError> {
+    if trash_name.contains('/') || trash_name.contains('\\') || trash_name == "." || trash_name == ".." {
+        return Err(ManagerError::new(ErrorCode::InvalidPath, "Invalid trash entry name"));
+    }
+
+    let entry = trash_files_dir.join(trash_name);
+    if !entry.exists() {
+        return Err(ManagerError::new(ErrorCode::NotFound, format!("Trash entry not found: {}", entry.display())));
+    }
+
+    fs::create_dir_all(game_mods_dir).map_err(|e| {
+        ManagerError::new(ErrorCode::IoError, format!("Create game Mods dir failed {}: {e}", game_mods_dir.display()))
+    })?;
+
+    let restored_path = if entry.join("metadata").is_dir() {
+        let mut last = game_mods_dir.to_path_buf();
+        for child in fs::read_dir(&entry).map_err(|e| ManagerError::new(ErrorCode::IoError, format!("Read trash entry failed: {e}")))?.flatten() {
+            let path = child.path();
+            let Some(name) = path.file_name() else { continue; };
+            if name == "metadata" { continue; }
+            let dst = game_mods_dir.join(name);
+            if dst.exists() {
+                return Err(ManagerError::new(ErrorCode::PathCollision, format!("Restore target exists: {}", dst.display())));
+            }
+            fs::rename(&path, &dst).map_err(|e| ManagerError::new(ErrorCode::IoError, format!("Restore failed {}: {e}", dst.display())))?;
+            last = dst;
+        }
+        last
+    } else if entry.join("meta.json").is_file() {
+        let meta_raw = fs::read_to_string(entry.join("meta.json")).unwrap_or_default();
+        let mod_id = serde_json::from_str::<serde_json::Value>(&meta_raw)
+            .ok()
+            .and_then(|value| value.get("modId").and_then(|id| id.as_str()).map(ToString::to_string))
+            .unwrap_or_else(|| trash_name.rsplit_once('-').map(|(name, _)| name.to_string()).unwrap_or_else(|| trash_name.to_string()));
+        let dst = managed_root.join("mods").join(mod_id);
+        if dst.exists() {
+            return Err(ManagerError::new(ErrorCode::PathCollision, format!("Restore target exists: {}", dst.display())));
+        }
+        if let Some(parent) = dst.parent() {
+            fs::create_dir_all(parent).map_err(|e| ManagerError::new(ErrorCode::IoError, format!("Create restore parent failed: {e}")))?;
+        }
+        fs::rename(&entry, &dst).map_err(|e| ManagerError::new(ErrorCode::IoError, format!("Restore failed {}: {e}", dst.display())))?;
+        dst
+    } else {
+        let mut last = game_mods_dir.to_path_buf();
+        if entry.is_dir() {
+            for child in fs::read_dir(&entry).map_err(|e| ManagerError::new(ErrorCode::IoError, format!("Read trash entry failed: {e}")))?.flatten() {
+                let path = child.path();
+                let Some(name) = path.file_name() else { continue; };
+                let dst = game_mods_dir.join(name);
+                if dst.exists() {
+                    return Err(ManagerError::new(ErrorCode::PathCollision, format!("Restore target exists: {}", dst.display())));
+                }
+                fs::rename(&path, &dst).map_err(|e| ManagerError::new(ErrorCode::IoError, format!("Restore failed {}: {e}", dst.display())))?;
+                last = dst;
+            }
+            last
+        } else {
+            let dst = game_mods_dir.join(trash_name.rsplit_once('-').map(|(name, _)| name).unwrap_or(trash_name));
+            if dst.exists() {
+                return Err(ManagerError::new(ErrorCode::PathCollision, format!("Restore target exists: {}", dst.display())));
+            }
+            fs::rename(&entry, &dst).map_err(|e| ManagerError::new(ErrorCode::IoError, format!("Restore failed {}: {e}", dst.display())))?;
+            dst
+        }
+    };
+
+    let info = trash_files_dir
+        .parent()
+        .map(|root| root.join("info").join(format!("{trash_name}.trashinfo")));
+    if let Some(info) = info {
+        let _ = fs::remove_file(info);
+    }
+    let _ = fs::remove_dir(&entry);
+
+    Ok(RestoreResult { restored_path: restored_path.to_string_lossy().to_string() })
 }
 
 fn installed_group_targets(game_mods_dir: &Path, mod_id: &str) -> Result<Vec<PathBuf>, ManagerError> {
@@ -257,7 +376,7 @@ mod tests {
     use crate::managed_storage::{create_managed_mod, ImportRequest};
     use crate::toggle::apply_toggle;
 
-    use super::uninstall_managed_mod;
+    use super::{list_trash_entries, restore_trashed_mod, uninstall_managed_mod};
 
     fn setup(tmp: &TempDir) -> (String, std::path::PathBuf) {
         let import = tmp.path().join("import/modA");
@@ -360,6 +479,24 @@ mod tests {
         let trashed = std::path::Path::new(&result.trashed_path);
         assert!(trashed.join("LooseMod_a.package").exists());
         assert!(trashed.join("LooseMod_b.ts4script").exists());
+    }
+
+    #[test]
+    fn restore_trash_entry_moves_installed_files_back() {
+        let tmp = TempDir::new().expect("tmp");
+        let mods_dir = tmp.path().join("Game/Mods");
+        fs::create_dir_all(mods_dir.join("LooseMod")).expect("installed dir");
+        fs::write(mods_dir.join("LooseMod/main.package"), b"pkg").expect("pkg");
+        let trash_files = tmp.path().join("Trash/files");
+        let trashed = uninstall_managed_mod(tmp.path(), &mods_dir, &trash_files, "LooseMod").expect("uninstall");
+        let trash_name = std::path::Path::new(&trashed.trashed_path).file_name().unwrap().to_string_lossy().to_string();
+
+        let entries = list_trash_entries(&trash_files).expect("list");
+        assert_eq!(entries[0].name, trash_name);
+        restore_trashed_mod(tmp.path(), &mods_dir, &trash_files, &trash_name).expect("restore");
+
+        assert!(mods_dir.join("LooseMod/main.package").exists());
+        assert!(!trash_files.join(trash_name).exists());
     }
 
     #[test]

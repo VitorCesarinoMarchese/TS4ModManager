@@ -143,6 +143,30 @@ describe("SettingsPage", () => {
     expect(screen.getByLabelText("Accent color")).toBeDisabled();
   });
 
+  it("renders trash entries and restores one", () => {
+    const onRefreshTrash = vi.fn();
+    const onRestoreTrash = vi.fn();
+    render(
+      <SettingsPage
+        instances={[]}
+        selectedInstanceId={null}
+        onSelectInstance={() => {}}
+        onRescan={() => {}}
+        onAddCustomPath={() => {}}
+        trashEntries={[{ name: "mod-1-123", path: "/trash/mod-1-123" }]}
+        onRefreshTrash={onRefreshTrash}
+        onRestoreTrash={onRestoreTrash}
+      />
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Refresh Trash" }));
+    fireEvent.click(screen.getByRole("button", { name: "Restore" }));
+
+    expect(screen.getByText("mod-1-123")).toBeInTheDocument();
+    expect(onRefreshTrash).toHaveBeenCalledTimes(1);
+    expect(onRestoreTrash).toHaveBeenCalledWith("mod-1-123");
+  });
+
   it("opens managed mod and manager folders", () => {
     const onOpenManagedModsFolder = vi.fn();
     const onOpenManagerFolder = vi.fn();

@@ -65,6 +65,7 @@ pub fn migrate_external_mod(
     )?;
 
     let _ = fs::remove_dir_all(&staging);
+    replace_live_files_with_managed_links(game_mods_dir, managed_root, &imported.mod_id, &external.files)?;
 
     Ok(MigrateResult {
         managed_mod_id: imported.mod_id,
@@ -75,6 +76,39 @@ pub fn migrate_external_mod(
             code: None,
         }],
     })
+}
+
+fn replace_live_files_with_managed_links(
+    game_mods_dir: &Path,
+    managed_root: &Path,
+    mod_id: &str,
+    files: &[String],
+) -> Result<(), ManagerError> {
+    let links_path = managed_root.join("mods").join(mod_id).join("links.json");
+    let content = serde_json::json!({ "version": 1, "mod_id": mod_id, "links": files }).to_string();
+    fs::write(&links_path, content).map_err(|e| {
+        ManagerError::new(ErrorCode::IoError, format!("Write links sidecar failed {}: {e}", links_path.display()))
+    })?;
+
+    for rel in files {
+        let live = game_mods_dir.join(rel);
+        let managed_file = managed_root.join("mods").join(mod_id).join("files").join(rel);
+        if let Some(parent) = live.parent() {
+            fs::create_dir_all(parent).map_err(|e| ManagerError::new(ErrorCode::IoError, format!("Create link parent failed: {e}")))?;
+        }
+        let meta = fs::symlink_metadata(&live).map_err(|e| ManagerError::new(ErrorCode::IoError, format!("Live file metadata failed {}: {e}", live.display())))?;
+        if meta.file_type().is_symlink() || meta.is_file() {
+            fs::remove_file(&live).map_err(|e| ManagerError::new(ErrorCode::IoError, format!("Remove live file failed {}: {e}", live.display())))?;
+        } else {
+            return Err(ManagerError::new(ErrorCode::InvalidPath, format!("Cannot replace non-file path: {}", live.display())));
+        }
+        #[cfg(unix)]
+        std::os::unix::fs::symlink(&managed_file, &live).map_err(|e| {
+            ManagerError::new(ErrorCode::IoError, format!("Create managed symlink failed {}: {e}", live.display()))
+        })?;
+    }
+
+    Ok(())
 }
 
 fn copy_external_contents(
@@ -187,7 +221,7 @@ mod tests {
     }
 
     #[test]
-    fn migration_does_not_edit_external_links_in_place() {
+    fn migration_replaces_external_links_with_managed_links() {
         let tmp = TempDir::new().expect("tmp");
         let managed = tmp.path().join("managed");
         let game_mods = tmp.path().join("Game/Mods");
@@ -204,10 +238,10 @@ mod tests {
         #[cfg(unix)]
         std::os::unix::fs::symlink(&src, &link).expect("link");
 
-        let _ = migrate_external_mod(&managed, &game_mods, "SkinPack").expect("migrate");
+        let migrated = migrate_external_mod(&managed, &game_mods, "SkinPack").expect("migrate");
 
         let target = fs::read_link(&link).expect("still symlink");
-        assert_eq!(target, src);
+        assert!(target.starts_with(managed.join("mods").join(migrated.managed_mod_id).join("files")));
     }
 
     #[test]

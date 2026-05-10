@@ -12,9 +12,10 @@ type ModDetailsPanelProps = {
   onRemoveSourceUrl?: (modId: string) => void | Promise<void>;
   onOpenSourceUrl?: (sourceUrl: string) => void;
   onUninstall?: (modId: string) => void | Promise<void>;
+  onManageExternal?: (modId: string) => void | Promise<void>;
 };
 
-export function ModDetailsPanel({ mod, onClose, onRename, onAttachSourceUrl, onRemoveSourceUrl, onOpenSourceUrl, onUninstall }: ModDetailsPanelProps) {
+export function ModDetailsPanel({ mod, onClose, onRename, onAttachSourceUrl, onRemoveSourceUrl, onOpenSourceUrl, onUninstall, onManageExternal }: ModDetailsPanelProps) {
   const [name, setName] = useState(mod.name);
   const [sourceUrl, setSourceUrl] = useState(mod.sourceUrl ?? "");
   const [confirmRemoveSource, setConfirmRemoveSource] = useState(false);
@@ -136,6 +137,17 @@ export function ModDetailsPanel({ mod, onClose, onRename, onAttachSourceUrl, onR
         <p className="text-sm text-slate-600 dark:text-slate-300">
           Provider: {existingProvider?.name ?? selectedProvider?.name ?? "Manual"}
         </p>
+
+        {mod.source === "external" && onManageExternal ? (
+          <button
+            type="button"
+            aria-label="manage-external-mod"
+            className={buttonClass}
+            onClick={() => onManageExternal(mod.id)}
+          >
+            Manage this mod
+          </button>
+        ) : null}
 
         {onUninstall ? (
           <button

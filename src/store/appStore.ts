@@ -1,5 +1,5 @@
 import { createStore } from "zustand/vanilla";
-import type { DryRunResult, GameInstance, Issue, Mod } from "../lib/types";
+import type { DryRunResult, GameInstance, Issue, Mod, RestoreResult, TrashEntry } from "../lib/types";
 
 export type ApplyResult = {
   applied: boolean;
@@ -40,6 +40,8 @@ export type BackendApi = {
   attachSourceUrl: (modId: string, sourceUrl: string, providerId?: string) => Promise<Mod>;
   removeSourceUrl: (modId: string) => Promise<Mod>;
   uninstallManagedMod: (modId: string, instanceId: string) => Promise<UninstallResult>;
+  listTrashEntries: () => Promise<TrashEntry[]>;
+  restoreTrashedMod: (trashName: string, instanceId: string) => Promise<RestoreResult>;
   openManagedModsFolder: () => Promise<void>;
   openManagerFolder: () => Promise<void>;
 };
@@ -77,6 +79,8 @@ const defaultApi: BackendApi = {
     source: "managed"
   }),
   uninstallManagedMod: async (modId) => ({ modId, trashedPath: "", issues: [] }),
+  listTrashEntries: async () => [],
+  restoreTrashedMod: async () => ({ restoredPath: "" }),
   openManagedModsFolder: async () => {},
   openManagerFolder: async () => {}
 };
@@ -87,6 +91,8 @@ export type AppState = {
   selectedInstanceId: string | null;
   mods: Mod[];
   issues: Issue[];
+  trashEntries: TrashEntry[];
+  lastSuccess: string | null;
   lastDryRun: DryRunResult | null;
   scanStatus: "idle" | "scanning";
   selectInstance: (id: string | null) => void;
@@ -100,6 +106,10 @@ export type AppState = {
   attachSourceUrl: (modId: string, sourceUrl: string, providerId?: string) => Promise<Mod | null>;
   removeSourceUrl: (modId: string) => Promise<Mod | null>;
   uninstallManagedMod: (modId: string) => Promise<UninstallResult | null>;
+  loadTrashEntries: () => Promise<void>;
+  restoreTrashedMod: (trashName: string) => Promise<RestoreResult | null>;
+  manageExternalMod: (modId: string) => Promise<MigrateResult | null>;
+  clearSuccess: () => void;
   openManagedModsFolder: () => Promise<void>;
   openManagerFolder: () => Promise<void>;
   toggleMod: (mod: Mod, targetEnabled: boolean, instanceId: string) => Promise<DryRunResult>;
@@ -167,6 +177,8 @@ export function createAppStore(apiOverrides: Partial<BackendApi> = {}) {
     selectedInstanceId: null,
     mods: [],
     issues: [],
+    trashEntries: [],
+    lastSuccess: null,
     lastDryRun: null,
     scanStatus: "idle",
     selectInstance: (id) => set({ selectedInstanceId: id }),
@@ -215,6 +227,7 @@ export function createAppStore(apiOverrides: Partial<BackendApi> = {}) {
       }
     },
     addIssue: (issue) => set((state) => ({ issues: mergeIssueList(state.issues, issue) })),
+    clearSuccess: () => set({ lastSuccess: null }),
     addCustomInstance: async (path) => {
       try {
         const instance = await api.validateCustomInstance(path);
@@ -252,12 +265,59 @@ export function createAppStore(apiOverrides: Partial<BackendApi> = {}) {
         const result = await api.uninstallManagedMod(modId, instanceId);
         set((state) => ({
           mods: state.mods.filter((mod) => mod.id !== modId),
+          lastSuccess: `Moved ${modId} to trash`,
           issues: result.issues.length > 0 ? mergeIssues(state.issues, result.issues) : state.issues
         }));
         return result;
       } catch (error) {
         set((state) => ({
           issues: mergeIssueList(state.issues, toIssue(error, "uninstall", "Uninstall failed"))
+        }));
+        return null;
+      }
+    },
+    loadTrashEntries: async () => {
+      try {
+        const trashEntries = await api.listTrashEntries();
+        set({ trashEntries });
+      } catch (error) {
+        set((state) => ({
+          issues: mergeIssueList(state.issues, toIssue(error, "trash-list", "Trash list failed"))
+        }));
+      }
+    },
+    manageExternalMod: async (modId) => {
+      const instanceId = get().selectedInstanceId;
+      if (!instanceId) return null;
+      try {
+        const result = await api.migrateExternalMod(modId, instanceId);
+        const mods = await api.scanMods(instanceId);
+        set((state) => ({
+          mods,
+          lastSuccess: `Managing ${modId}`,
+          issues: result.issues.length > 0 ? mergeIssues(state.issues, result.issues) : state.issues
+        }));
+        return result;
+      } catch (error) {
+        set((state) => ({
+          issues: mergeIssueList(state.issues, toIssue(error, "manage-mod", "Manage mod failed"))
+        }));
+        return null;
+      }
+    },
+    restoreTrashedMod: async (trashName) => {
+      const instanceId = get().selectedInstanceId;
+      if (!instanceId) return null;
+      try {
+        const result = await api.restoreTrashedMod(trashName, instanceId);
+        const trashEntries = await api.listTrashEntries();
+        set({ trashEntries, lastSuccess: `Restored ${trashName}` });
+        const mods = await api.scanMods(instanceId);
+        set({ mods });
+        return result;
+      } catch (error) {
+        set((state) => ({
+          issues: mergeIssueList(state.issues, toIssue(error, "trash-restore", "Restore failed"))
         }));
         return null;
       }

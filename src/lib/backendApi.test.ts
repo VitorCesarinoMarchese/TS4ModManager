@@ -253,6 +253,20 @@ describe("backend api wrapper", () => {
     await expect(api.openManagerFolder()).rejects.toMatchObject({ code: "IO_ERROR" });
   });
 
+  it("calls trash list and restore commands", async () => {
+    const invoke = vi
+      .fn()
+      .mockResolvedValueOnce([{ name: "mod-1-123", path: "/trash/mod-1-123" }])
+      .mockResolvedValueOnce({ restoredPath: "/mods/mod-1" });
+    const api = createBackendApi(invoke);
+
+    await expect(api.listTrashEntries()).resolves.toEqual([{ name: "mod-1-123", path: "/trash/mod-1-123" }]);
+    await expect(api.restoreTrashedMod("mod-1-123", "inst-1")).resolves.toEqual({ restoredPath: "/mods/mod-1" });
+
+    expect(invoke).toHaveBeenCalledWith("list_trash_entries");
+    expect(invoke).toHaveBeenCalledWith("restore_trashed_mod", { trashName: "mod-1-123", instanceId: "inst-1" });
+  });
+
   it("calls open folder commands", async () => {
     const invoke = vi.fn().mockResolvedValue(undefined);
     const api = createBackendApi(invoke);

@@ -12,6 +12,7 @@ import { ModScanOverlay } from "./components/ModScanOverlay";
 import { SearchBar } from "./components/SearchBar";
 import { SettingsPage } from "./components/SettingsPage";
 import { Sidebar } from "./components/Sidebar";
+import { Toast } from "./components/Toast";
 import { TopBar } from "./components/TopBar";
 import { createBackendApi } from "./lib/backendApi";
 import { openExternalUrl } from "./lib/openUrl";
@@ -73,6 +74,8 @@ export function App({ store = defaultStore }: AppProps) {
   const selectedInstanceId = useStore(store, (s) => s.selectedInstanceId);
   const mods = useStore(store, (s) => s.mods);
   const issues = useStore(store, (s) => s.issues);
+  const trashEntries = useStore(store, (s) => s.trashEntries);
+  const lastSuccess = useStore(store, (s) => s.lastSuccess);
   const scanStatus = useStore(store, (s) => s.scanStatus);
   const loadInstances = useStore(store, (s) => s.loadInstances);
   const selectInstanceAndScan = useStore(store, (s) => s.selectInstanceAndScan);
@@ -84,6 +87,10 @@ export function App({ store = defaultStore }: AppProps) {
   const attachSourceUrl = useStore(store, (s) => s.attachSourceUrl);
   const removeSourceUrl = useStore(store, (s) => s.removeSourceUrl);
   const uninstallManagedMod = useStore(store, (s) => s.uninstallManagedMod);
+  const loadTrashEntries = useStore(store, (s) => s.loadTrashEntries);
+  const restoreTrashedMod = useStore(store, (s) => s.restoreTrashedMod);
+  const manageExternalMod = useStore(store, (s) => s.manageExternalMod);
+  const clearSuccess = useStore(store, (s) => s.clearSuccess);
   const openManagedModsFolder = useStore(store, (s) => s.openManagedModsFolder);
   const openManagerFolder = useStore(store, (s) => s.openManagerFolder);
 
@@ -102,6 +109,10 @@ export function App({ store = defaultStore }: AppProps) {
   useEffect(() => {
     void loadInstances();
   }, [loadInstances]);
+
+  useEffect(() => {
+    if (settingsOpen) void loadTrashEntries();
+  }, [settingsOpen, loadTrashEntries]);
 
   useEffect(() => {
     if (selectedInstanceId) return;
@@ -290,6 +301,7 @@ export function App({ store = defaultStore }: AppProps) {
               activeThemeName={activeThemeName}
               activeTheme={activeTheme}
               customThemes={customThemes}
+              trashEntries={trashEntries}
               onSelectTheme={setActiveThemeName}
               onCreateTheme={onCreateTheme}
               onThemeChange={onThemeChange}
@@ -298,12 +310,18 @@ export function App({ store = defaultStore }: AppProps) {
               onThemeReset={onThemeReset}
               onOpenManagedModsFolder={() => void openManagedModsFolder()}
               onOpenManagerFolder={() => void openManagerFolder()}
+              onRefreshTrash={() => void loadTrashEntries()}
+              onRestoreTrash={(trashName) => void restoreTrashedMod(trashName)}
             />
 
             <ImportPanel onImport={(archivePath, name, slug) => importArchive(archivePath, name, slug)} />
           </motion.section>
         </motion.div>
       ) : null}
+
+      <div className="fixed bottom-4 right-4 z-40" onAnimationEnd={clearSuccess}>
+        <Toast issue={lastSuccess ? { id: "success", severity: "info", message: lastSuccess } : null} />
+      </div>
 
       {popupIssue ? (
         <motion.div
@@ -357,6 +375,10 @@ export function App({ store = defaultStore }: AppProps) {
             if (updated) setSelectedMod(updated);
           }}
           onOpenSourceUrl={(sourceUrl) => void openExternalUrl(sourceUrl)}
+          onManageExternal={async (modId) => {
+            const result = await manageExternalMod(modId);
+            if (result) setSelectedMod(null);
+          }}
           onUninstall={async (modId) => {
             const result = await uninstallManagedMod(modId);
             if (result) setSelectedMod(null);

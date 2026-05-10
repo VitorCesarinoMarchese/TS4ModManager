@@ -112,6 +112,19 @@ fn uninstall_managed_mod(
 }
 
 #[tauri::command]
+fn list_trash_entries() -> Result<Vec<crate::lifecycle::TrashEntry>, ManagerError> {
+    commands::cmd_list_trash_entries()
+}
+
+#[tauri::command]
+fn restore_trashed_mod(
+    trash_name: String,
+    instance_id: String,
+) -> Result<crate::lifecycle::RestoreResult, ManagerError> {
+    commands::cmd_restore_trashed_mod(managed_root()?, mods_dir_from_instance_id(&instance_id)?, trash_name)
+}
+
+#[tauri::command]
 fn open_external_url(url: String) -> Result<(), ManagerError> {
     commands::cmd_open_external_url(url)
 }
@@ -146,6 +159,8 @@ pub fn run() {
             attach_source_url,
             remove_source_url,
             uninstall_managed_mod,
+            list_trash_entries,
+            restore_trashed_mod,
             open_external_url,
             open_managed_mods_folder,
             open_manager_folder,

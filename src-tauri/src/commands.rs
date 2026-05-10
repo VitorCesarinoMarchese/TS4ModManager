@@ -5,7 +5,7 @@ use crate::archive_import::import_archive_to_managed;
 use crate::error::{ErrorCode, ManagerError};
 use crate::external_migration::{migrate_external_mod, MigrateResult};
 use crate::logging::append_issue_log;
-use crate::lifecycle::{uninstall_managed_mod, UninstallResult};
+use crate::lifecycle::{list_trash_entries, restore_trashed_mod, uninstall_managed_mod, RestoreResult, TrashEntry, UninstallResult};
 use crate::managed_storage::{remove_source_url, set_custom_display_name, set_source_url, ModMetadata};
 use crate::mod_scan::ScannedMod;
 use crate::orphan::{detect_orphan_symlinks, OrphanSymlink};
@@ -107,6 +107,18 @@ pub fn cmd_uninstall_managed_mod(
         let _ = append_issue_log(&managed_root, issue);
     }
     Ok(result)
+}
+
+pub fn cmd_list_trash_entries() -> Result<Vec<TrashEntry>, ManagerError> {
+    list_trash_entries(&trash_files_dir()?)
+}
+
+pub fn cmd_restore_trashed_mod(
+    managed_root: PathBuf,
+    game_mods_dir: PathBuf,
+    trash_name: String,
+) -> Result<RestoreResult, ManagerError> {
+    restore_trashed_mod(&managed_root, &game_mods_dir, &trash_files_dir()?, &trash_name)
 }
 
 fn validate_external_url(url: &str) -> Result<(), ManagerError> {

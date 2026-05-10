@@ -33,6 +33,15 @@ export type GameInstance = {
   source: "native" | "steam" | "custom";
 };
 
+export type TrashEntry = {
+  name: string;
+  path: string;
+};
+
+export type RestoreResult = {
+  restoredPath: string;
+};
+
 export type Issue = {
   id: string;
   severity: "info" | "warning" | "error";

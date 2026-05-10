@@ -6,6 +6,15 @@ Metadata, themes, and safe lifecycle management
 
 ## Current State
 
+Phase 2 checkpoints 1-11 are complete. Latest lifecycle hardening adds:
+
+- Existing local Mods entries scan as external until managed.
+- Move to Trash moves installed files/folders plus metadata, not metadata alone.
+- Settings can open `sims4-mod-manager`, managed mods folder, list trash, and restore trash entries.
+- External mods can be migrated into managed storage with live files replaced by manager symlinks.
+- Folder opening detaches `xdg-open` and silences stdio to avoid DBus/GLFW noise.
+- Uninstall/restore success feedback appears as a toast.
+
 The project is a functional Linux-first Sims 4 mod manager with:
 
 - React + TypeScript frontend
@@ -232,7 +241,9 @@ Requirements:
 - Disable mod first.
 - Remove app-created symlinks.
 - Move managed folder to trash instead of deleting permanently.
-- Add tests for confirmation, trash movement, symlink removal, unmanaged file safety, and failure safety.
+- Move existing installed external files/folders to trash when uninstalling before migration.
+- Add trash listing and restore workflow.
+- Add tests for confirmation, trash movement, symlink removal, unmanaged file safety, restore, and failure safety.
 - Commit separately.
 
 ## Final Validation

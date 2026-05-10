@@ -427,6 +427,24 @@ describe("app store bootstrap", () => {
     expect(store.getState().issues.map((issue) => issue.message)).toEqual(["Open mods failed", "Open manager failed"]);
   });
 
+  it("loads and restores trash entries", async () => {
+    const api = {
+      listTrashEntries: vi.fn().mockResolvedValueOnce([{ name: "mod-1-123", path: "/trash/mod-1-123" }]).mockResolvedValueOnce([]),
+      restoreTrashedMod: vi.fn().mockResolvedValue({ restoredPath: "/mods/mod-1" }),
+      scanMods: vi.fn().mockResolvedValue([{ id: "mod-1", name: "Restored", files: [], enabled: false, source: "managed" }])
+    };
+    const store = createAppStore(api);
+    store.getState().selectInstance("inst-1");
+
+    await store.getState().loadTrashEntries();
+    expect(store.getState().trashEntries).toEqual([{ name: "mod-1-123", path: "/trash/mod-1-123" }]);
+
+    await store.getState().restoreTrashedMod("mod-1-123");
+    expect(api.restoreTrashedMod).toHaveBeenCalledWith("mod-1-123", "inst-1");
+    expect(store.getState().trashEntries).toEqual([]);
+    expect(store.getState().mods[0].name).toBe("Restored");
+  });
+
   it("opens managed mod and manager folders", async () => {
     const api = {
       openManagedModsFolder: vi.fn().mockResolvedValue(undefined),

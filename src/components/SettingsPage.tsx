@@ -1,7 +1,7 @@
 import { ArrowsClockwise, ClipboardText, FolderOpen, FolderPlus, Plus } from "@phosphor-icons/react";
 import { useState } from "react";
 import { DARK_THEME, DEFAULT_THEME, parseThemeJson, serializeTheme, type AppTheme } from "../lib/theme";
-import type { GameInstance } from "../lib/types";
+import type { GameInstance, TrashEntry } from "../lib/types";
 import { ThemedSelect } from "./ThemedSelect";
 
 type SettingsPageProps = {
@@ -14,6 +14,7 @@ type SettingsPageProps = {
   activeThemeName?: string;
   activeTheme?: AppTheme;
   customThemes?: AppTheme[];
+  trashEntries?: TrashEntry[];
   onSelectTheme?: (themeName: string) => void;
   onCreateTheme?: () => void;
   onThemeChange?: (theme: AppTheme) => void;
@@ -22,6 +23,8 @@ type SettingsPageProps = {
   onThemeReset?: () => void;
   onOpenManagedModsFolder?: () => void | Promise<void>;
   onOpenManagerFolder?: () => void | Promise<void>;
+  onRefreshTrash?: () => void | Promise<void>;
+  onRestoreTrash?: (trashName: string) => void | Promise<void>;
 };
 
 const colorFields: Array<[keyof AppTheme["colors"], string]> = [
@@ -53,6 +56,7 @@ export function SettingsPage({
   activeThemeName = "Light",
   activeTheme = DEFAULT_THEME,
   customThemes = [],
+  trashEntries = [],
   onSelectTheme,
   onCreateTheme,
   onThemeChange,
@@ -60,7 +64,9 @@ export function SettingsPage({
   onThemeExport,
   onThemeReset,
   onOpenManagedModsFolder,
-  onOpenManagerFolder
+  onOpenManagerFolder,
+  onRefreshTrash,
+  onRestoreTrash
 }: SettingsPageProps) {
   const [customPath, setCustomPath] = useState("");
   const [importJson, setImportJson] = useState("");
@@ -137,6 +143,25 @@ export function SettingsPage({
           Open Manager Folder
         </button>
       </div>
+
+      <fieldset aria-label="trash-manager" className="grid gap-3 rounded-lg border !border-[var(--color-border)] p-4">
+        <legend className="px-1 text-lg font-semibold">Trash</legend>
+        <button type="button" className={buttonClass} onClick={() => void onRefreshTrash?.()}>
+          <ArrowsClockwise size={16} weight="regular" aria-hidden="true" />
+          Refresh Trash
+        </button>
+        {trashEntries.length === 0 ? <p className="text-sm text-slate-600 dark:text-slate-300">Trash is empty.</p> : null}
+        <ul className="grid list-none gap-2 p-0">
+          {trashEntries.map((entry) => (
+            <li key={entry.name} className="flex flex-wrap items-center justify-between gap-2 rounded-md border !border-[var(--color-border)] px-3 py-2 text-sm">
+              <span className="truncate" title={entry.path}>{entry.name}</span>
+              <button type="button" className={buttonClass} onClick={() => void onRestoreTrash?.(entry.name)}>
+                Restore
+              </button>
+            </li>
+          ))}
+        </ul>
+      </fieldset>
 
       <fieldset aria-label="theme-editor" className="grid gap-3 rounded-lg border !border-[var(--color-border)] p-4">
         <legend className="px-1 text-lg font-semibold">Theme Editor</legend>
