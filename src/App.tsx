@@ -83,6 +83,7 @@ export function App({ store = defaultStore }: AppProps) {
   const renameModDisplayName = useStore(store, (s) => s.renameModDisplayName);
   const attachSourceUrl = useStore(store, (s) => s.attachSourceUrl);
   const removeSourceUrl = useStore(store, (s) => s.removeSourceUrl);
+  const uninstallManagedMod = useStore(store, (s) => s.uninstallManagedMod);
 
   const [search, setSearch] = useState("");
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -352,6 +353,10 @@ export function App({ store = defaultStore }: AppProps) {
             if (updated) setSelectedMod(updated);
           }}
           onOpenSourceUrl={(sourceUrl) => void openExternalUrl(sourceUrl)}
+          onUninstall={async (modId) => {
+            const result = await uninstallManagedMod(modId);
+            if (result) setSelectedMod(null);
+          }}
         />
       ) : null}
     </div>

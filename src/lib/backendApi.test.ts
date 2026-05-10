@@ -232,6 +232,19 @@ describe("backend api wrapper", () => {
     });
   });
 
+  it("calls uninstall managed mod command", async () => {
+    const invoke = vi.fn().mockResolvedValue({ modId: "m1", trashedPath: "/trash/m1", issues: [] });
+    const api = createBackendApi(invoke);
+
+    const res = await api.uninstallManagedMod("m1", "inst-1");
+
+    expect(res.trashedPath).toBe("/trash/m1");
+    expect(invoke).toHaveBeenCalledWith("uninstall_managed_mod", {
+      modId: "m1",
+      instanceId: "inst-1"
+    });
+  });
+
   it("calls import archive command", async () => {
     const invoke = vi.fn().mockResolvedValue({ modId: "m7" });
     const api = createBackendApi(invoke);

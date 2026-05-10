@@ -276,6 +276,53 @@ describe("app store bootstrap", () => {
     expect(store.getState().mods[0].sourceUrl).toBe("https://modthesims.info/d/123456/example");
   });
 
+  it("uninstalls managed mod and removes it from store", async () => {
+    const api = {
+      detectGameInstances: vi.fn().mockResolvedValue([]),
+      scanMods: vi.fn().mockResolvedValue([
+        { id: "m1", name: "Detected", files: ["a.package"], enabled: true, source: "managed" },
+        { id: "m2", name: "Keep", files: ["b.package"], enabled: false, source: "managed" }
+      ]),
+      detectOrphanSymlinks: vi.fn().mockResolvedValue([]),
+      dryRunToggle: vi.fn().mockResolvedValue({ canApply: true, operations: [], issues: [] }),
+      applyToggle: vi.fn().mockResolvedValue({ applied: true, issues: [] }),
+      migrateExternalMod: vi.fn().mockResolvedValue({ managedModId: "m1", issues: [] }),
+      validateCustomInstance: vi.fn().mockResolvedValue({ id: "c", path: "/x", source: "custom" }),
+      importArchive: vi.fn().mockResolvedValue({ modId: "m2" }),
+      uninstallManagedMod: vi.fn().mockResolvedValue({ modId: "m1", trashedPath: "/trash/m1", issues: [] })
+    };
+
+    const store = createAppStore(api);
+    await store.getState().selectInstanceAndScan("inst-1");
+    const result = await store.getState().uninstallManagedMod("m1");
+
+    expect(api.uninstallManagedMod).toHaveBeenCalledWith("m1", "inst-1");
+    expect(result?.trashedPath).toBe("/trash/m1");
+    expect(store.getState().mods.map((mod) => mod.id)).toEqual(["m2"]);
+  });
+
+  it("stores uninstall failure as issue", async () => {
+    const api = {
+      detectGameInstances: vi.fn().mockResolvedValue([]),
+      scanMods: vi.fn().mockResolvedValue([{ id: "m1", name: "Detected", files: ["a.package"], enabled: false, source: "managed" }]),
+      detectOrphanSymlinks: vi.fn().mockResolvedValue([]),
+      dryRunToggle: vi.fn().mockResolvedValue({ canApply: true, operations: [], issues: [] }),
+      applyToggle: vi.fn().mockResolvedValue({ applied: true, issues: [] }),
+      migrateExternalMod: vi.fn().mockResolvedValue({ managedModId: "m1", issues: [] }),
+      validateCustomInstance: vi.fn().mockResolvedValue({ id: "c", path: "/x", source: "custom" }),
+      importArchive: vi.fn().mockResolvedValue({ modId: "m2" }),
+      uninstallManagedMod: vi.fn().mockRejectedValue({ code: "IO_ERROR", message: "Trash failed" })
+    };
+
+    const store = createAppStore(api);
+    await store.getState().selectInstanceAndScan("inst-1");
+    const result = await store.getState().uninstallManagedMod("m1");
+
+    expect(result).toBeNull();
+    expect(store.getState().mods).toHaveLength(1);
+    expect(store.getState().issues.at(-1)?.message).toBe("Trash failed");
+  });
+
   it("removes source URL without clearing existing files", async () => {
     const api = {
       detectGameInstances: vi.fn().mockResolvedValue([]),

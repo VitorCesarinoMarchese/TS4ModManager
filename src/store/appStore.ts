@@ -13,6 +13,12 @@ export type MigrateResult = {
 
 export type ImportResult = { modId: string };
 
+export type UninstallResult = {
+  modId: string;
+  trashedPath: string;
+  issues: Issue[];
+};
+
 export type BackendApi = {
   detectGameInstances: () => Promise<GameInstance[]>;
   scanMods: (instanceId: string) => Promise<Mod[]>;
@@ -33,6 +39,7 @@ export type BackendApi = {
   renameModDisplayName: (modId: string, displayName: string) => Promise<Mod>;
   attachSourceUrl: (modId: string, sourceUrl: string, providerId?: string) => Promise<Mod>;
   removeSourceUrl: (modId: string) => Promise<Mod>;
+  uninstallManagedMod: (modId: string, instanceId: string) => Promise<UninstallResult>;
 };
 
 /* c8 ignore start */
@@ -66,7 +73,8 @@ const defaultApi: BackendApi = {
     files: [],
     enabled: false,
     source: "managed"
-  })
+  }),
+  uninstallManagedMod: async (modId) => ({ modId, trashedPath: "", issues: [] })
 };
 /* c8 ignore stop */
 
@@ -87,6 +95,7 @@ export type AppState = {
   renameModDisplayName: (modId: string, displayName: string) => Promise<Mod | null>;
   attachSourceUrl: (modId: string, sourceUrl: string, providerId?: string) => Promise<Mod | null>;
   removeSourceUrl: (modId: string) => Promise<Mod | null>;
+  uninstallManagedMod: (modId: string) => Promise<UninstallResult | null>;
   toggleMod: (mod: Mod, targetEnabled: boolean, instanceId: string) => Promise<DryRunResult>;
 };
 
@@ -210,6 +219,23 @@ export function createAppStore(apiOverrides: Partial<BackendApi> = {}) {
         set((state) => ({
           issues: mergeIssueList(state.issues, toIssue(error, "custom-path", "Custom path invalid"))
         }));
+      }
+    },
+    uninstallManagedMod: async (modId) => {
+      const instanceId = get().selectedInstanceId;
+      if (!instanceId) return null;
+      try {
+        const result = await api.uninstallManagedMod(modId, instanceId);
+        set((state) => ({
+          mods: state.mods.filter((mod) => mod.id !== modId),
+          issues: result.issues.length > 0 ? mergeIssues(state.issues, result.issues) : state.issues
+        }));
+        return result;
+      } catch (error) {
+        set((state) => ({
+          issues: mergeIssueList(state.issues, toIssue(error, "uninstall", "Uninstall failed"))
+        }));
+        return null;
       }
     },
     removeSourceUrl: async (modId) => {

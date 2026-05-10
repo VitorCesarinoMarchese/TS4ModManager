@@ -76,6 +76,28 @@ describe("ModDetailsPanel", () => {
     expect(onOpenSourceUrl).toHaveBeenCalledWith("https://modthesims.info/d/123456/example");
   });
 
+  it("warns before uninstalling managed mod", () => {
+    const onUninstall = vi.fn();
+    render(<ModDetailsPanel mod={mod} onClose={() => {}} onUninstall={onUninstall} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "uninstall-mod" }));
+    expect(screen.getByRole("alertdialog", { name: "uninstall-warning" })).toHaveTextContent("Move mod to trash?");
+    expect(onUninstall).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole("button", { name: "cancel-uninstall" }));
+    expect(screen.queryByRole("alertdialog", { name: "uninstall-warning" })).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "uninstall-mod" }));
+    fireEvent.click(screen.getByRole("button", { name: "confirm-uninstall" }));
+    expect(onUninstall).toHaveBeenCalledWith("m1");
+  });
+
+  it("does not show uninstall for external mods", () => {
+    render(<ModDetailsPanel mod={{ ...mod, source: "external" }} onClose={() => {}} onUninstall={() => {}} />);
+
+    expect(screen.queryByRole("button", { name: "uninstall-mod" })).not.toBeInTheDocument();
+  });
+
   it("closes and saves renamed mod", () => {
     const onClose = vi.fn();
     const onRename = vi.fn();

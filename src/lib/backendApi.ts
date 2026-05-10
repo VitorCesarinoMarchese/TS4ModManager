@@ -28,6 +28,12 @@ type MigrateResult = {
   issues: Issue[];
 };
 
+type UninstallResult = {
+  modId: string;
+  trashedPath: string;
+  issues: Issue[];
+};
+
 function modFromMetadata(mod: ModMetadataDto, fallbackId: string, fallbackName: string): Mod {
   return {
     id: mod.id ?? mod.modId ?? fallbackId,
@@ -170,6 +176,14 @@ export function createBackendApi(invoke: InvokeFn) {
       try {
         const mod = await invoke<ModMetadataDto>("remove_source_url", { modId });
         return modFromMetadata(mod, modId, mod.displayName ?? mod.name ?? modId);
+      } catch (error) {
+        throw normalizeError(error);
+      }
+    },
+
+    async uninstallManagedMod(modId: string, instanceId: string): Promise<UninstallResult> {
+      try {
+        return await invoke<UninstallResult>("uninstall_managed_mod", { modId, instanceId });
       } catch (error) {
         throw normalizeError(error);
       }

@@ -104,6 +104,14 @@ fn remove_source_url(mod_id: String) -> Result<crate::managed_storage::ModMetada
 }
 
 #[tauri::command]
+fn uninstall_managed_mod(
+    mod_id: String,
+    instance_id: String,
+) -> Result<crate::lifecycle::UninstallResult, ManagerError> {
+    commands::cmd_uninstall_managed_mod(managed_root()?, mods_dir_from_instance_id(&instance_id)?, mod_id)
+}
+
+#[tauri::command]
 fn open_external_url(url: String) -> Result<(), ManagerError> {
     commands::cmd_open_external_url(url)
 }
@@ -122,6 +130,7 @@ pub fn run() {
             rename_mod_display_name,
             attach_source_url,
             remove_source_url,
+            uninstall_managed_mod,
             open_external_url
         ])
         .run(tauri::generate_context!())

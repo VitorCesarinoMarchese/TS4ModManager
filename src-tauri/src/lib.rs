@@ -3,6 +3,7 @@ pub mod commands;
 pub mod error;
 pub mod external_migration;
 pub mod logging;
+pub mod lifecycle;
 pub mod managed_storage;
 pub mod metadata_names;
 pub mod mod_scan;

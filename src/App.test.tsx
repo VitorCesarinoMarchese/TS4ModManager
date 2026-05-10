@@ -65,6 +65,7 @@ function makeApi(overrides: Record<string, unknown> = {}) {
         source: "managed"
       })
     ),
+    uninstallManagedMod: vi.fn().mockResolvedValue({ modId: "mod-1", trashedPath: "/trash/mod-1", issues: [] }),
     ...overrides
   };
 }
@@ -441,6 +442,23 @@ describe("App redesign", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "dismiss-error-warning" }));
     expect(screen.queryByRole("alertdialog", { name: "error-warning" })).not.toBeInTheDocument();
+  });
+
+  it("confirms uninstall and removes mod from grid", async () => {
+    const api = makeApi();
+    const store = createAppStore(api);
+    render(<App store={store} />);
+
+    await waitFor(() => expect(screen.getByText("BuildPack")).toBeInTheDocument());
+    fireEvent.click(screen.getByRole("button", { name: "details-mod-1" }));
+    fireEvent.click(screen.getByRole("button", { name: "uninstall-mod" }));
+    expect(screen.getByRole("alertdialog", { name: "uninstall-warning" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "confirm-uninstall" }));
+
+    await waitFor(() => {
+      expect(api.uninstallManagedMod).toHaveBeenCalledWith("mod-1", "inst-1");
+      expect(screen.queryByText("BuildPack")).not.toBeInTheDocument();
+    });
   });
 
   it("opens saved source URL through external opener", async () => {

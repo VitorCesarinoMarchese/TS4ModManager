@@ -11,12 +11,14 @@ type ModDetailsPanelProps = {
   onAttachSourceUrl?: (modId: string, sourceUrl: string, providerId?: string) => void | Promise<void>;
   onRemoveSourceUrl?: (modId: string) => void | Promise<void>;
   onOpenSourceUrl?: (sourceUrl: string) => void;
+  onUninstall?: (modId: string) => void | Promise<void>;
 };
 
-export function ModDetailsPanel({ mod, onClose, onRename, onAttachSourceUrl, onRemoveSourceUrl, onOpenSourceUrl }: ModDetailsPanelProps) {
+export function ModDetailsPanel({ mod, onClose, onRename, onAttachSourceUrl, onRemoveSourceUrl, onOpenSourceUrl, onUninstall }: ModDetailsPanelProps) {
   const [name, setName] = useState(mod.name);
   const [sourceUrl, setSourceUrl] = useState(mod.sourceUrl ?? "");
   const [confirmRemoveSource, setConfirmRemoveSource] = useState(false);
+  const [confirmUninstall, setConfirmUninstall] = useState(false);
   const buttonClass =
     "inline-flex items-center gap-2 rounded-md border !border-[var(--color-border)] bg-white px-3 py-1.5 text-sm hover:border-accent hover:bg-accent/10 focus:outline-none focus:ring-2 focus:ring-accent/40 dark:bg-slate-800 dark:hover:border-accent dark:hover:bg-accent/10";
   const dangerButtonClass =
@@ -134,6 +136,51 @@ export function ModDetailsPanel({ mod, onClose, onRename, onAttachSourceUrl, onR
         <p className="text-sm text-slate-600 dark:text-slate-300">
           Provider: {existingProvider?.name ?? selectedProvider?.name ?? "Manual"}
         </p>
+
+        {mod.source === "managed" && onUninstall ? (
+          <button
+            type="button"
+            aria-label="uninstall-mod"
+            className={dangerButtonClass}
+            onClick={() => setConfirmUninstall(true)}
+          >
+            Move to Trash
+          </button>
+        ) : null}
+
+        {confirmUninstall ? (
+          <div
+            role="alertdialog"
+            aria-label="uninstall-warning"
+            className="grid gap-3 rounded-md border border-red-500 bg-red-50 p-4 text-sm dark:bg-red-950/20"
+          >
+            <p className="font-medium text-red-700 dark:text-red-300">Move mod to trash?</p>
+            <p className="text-slate-700 dark:text-slate-300">
+              This disables the managed mod, removes manager-created symlinks, and moves the managed copy to trash.
+            </p>
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                aria-label="confirm-uninstall"
+                className={dangerButtonClass}
+                onClick={() => {
+                  setConfirmUninstall(false);
+                  onUninstall?.(mod.id);
+                }}
+              >
+                Move to Trash
+              </button>
+              <button
+                type="button"
+                aria-label="cancel-uninstall"
+                className={buttonClass}
+                onClick={() => setConfirmUninstall(false)}
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        ) : null}
 
         {confirmRemoveSource ? (
           <div
