@@ -4,6 +4,7 @@ import { useState } from "react";
 type ThemedSelectOption = {
   value: string;
   label: string;
+  title?: string;
 };
 
 type ThemedSelectProps = {
@@ -48,6 +49,7 @@ export function ThemedSelect({ label, value, options, onChange, className = "" }
                 type="button"
                 role="option"
                 aria-selected={option.value === value}
+                title={option.title}
                 className="rounded px-2 py-1.5 text-left text-sm hover:bg-accent/10 hover:text-accent"
                 onClick={() => {
                   onChange(option.value);

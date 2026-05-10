@@ -31,23 +31,33 @@ describe("SettingsPage", () => {
     );
 
     expect(screen.getByText("Detected Game Paths")).toBeInTheDocument();
-    expect(screen.getByDisplayValue("Steam Instance 2")).toBeInTheDocument();
+    expect(screen.getByRole("combobox", { name: "Active instance" })).toHaveTextContent("Steam Instance 2");
+    expect(screen.getByRole("combobox", { name: "Active instance" })).toHaveClass("theme-control");
     expect(screen.queryByText("/steam/path")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("combobox", { name: "Active instance" }));
+    expect(screen.getByRole("listbox")).toHaveClass("theme-surface");
     expect(screen.getByRole("option", { name: "Steam Instance 2" })).toHaveAttribute("title", "/steam/path");
-    expect(screen.getByRole("combobox", { name: "Active instance" })).toHaveClass("appearance-none");
   });
 
-  it("fires rescan click", () => {
+  it("selects active instance and fires rescan click", () => {
     const onRescan = vi.fn();
+    const onSelectInstance = vi.fn();
     render(
       <SettingsPage
-        instances={[]}
-        selectedInstanceId={null}
-        onSelectInstance={() => {}}
+        instances={[
+          { id: "n1", path: "/native/path", source: "native" },
+          { id: "s1", path: "/steam/path", source: "steam" }
+        ]}
+        selectedInstanceId="n1"
+        onSelectInstance={onSelectInstance}
         onRescan={onRescan}
         onAddCustomPath={() => {}}
       />
     );
+
+    fireEvent.click(screen.getByRole("combobox", { name: "Active instance" }));
+    fireEvent.click(screen.getByRole("option", { name: "Steam Instance 2" }));
+    expect(onSelectInstance).toHaveBeenCalledWith("s1");
 
     fireEvent.click(screen.getByRole("button", { name: "Rescan Mods" }));
     expect(onRescan).toHaveBeenCalledTimes(1);

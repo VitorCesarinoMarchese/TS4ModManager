@@ -1,4 +1,4 @@
-import { ArrowsClockwise, CaretDown, ClipboardText, FolderPlus, Plus } from "@phosphor-icons/react";
+import { ArrowsClockwise, ClipboardText, FolderPlus, Plus } from "@phosphor-icons/react";
 import { useState } from "react";
 import { DARK_THEME, DEFAULT_THEME, parseThemeJson, serializeTheme, type AppTheme } from "../lib/theme";
 import type { GameInstance } from "../lib/types";
@@ -75,30 +75,17 @@ export function SettingsPage({
     <section aria-label="settings-page" className="settings-page grid gap-4">
       <h2 className="text-xl font-semibold">Detected Game Paths</h2>
 
-      <div className="form-row flex flex-wrap items-center gap-3">
-        <label className="text-sm font-medium" htmlFor="instance-select">
-          Active instance
-        </label>
-        <div className="relative">
-          <select
-            id="instance-select"
-            className={`${inputClass} appearance-none pr-9`}
-            value={selectedInstanceId ?? ""}
-            onChange={(e) => onSelectInstance(e.target.value)}
-          >
-            {instances.map((instance, index) => (
-              <option key={instance.id} value={instance.id} title={instance.path}>
-                {friendlyName(instance, index)}
-              </option>
-            ))}
-          </select>
-          <CaretDown
-            className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 dark:text-slate-300"
-            size={14}
-            weight="regular"
-            aria-hidden="true"
-          />
-        </div>
+      <div className="form-row flex flex-wrap items-end gap-3">
+        <ThemedSelect
+          label="Active instance"
+          value={selectedInstanceId ?? ""}
+          options={instances.map((instance, index) => ({
+            value: instance.id,
+            label: friendlyName(instance, index),
+            title: instance.path
+          }))}
+          onChange={onSelectInstance}
+        />
         <button type="button" className={buttonClass} disabled={rescanDisabled} onClick={onRescan}>
           <ArrowsClockwise
             className={rescanDisabled ? "animate-spin" : ""}
