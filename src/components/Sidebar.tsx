@@ -1,4 +1,4 @@
-import { CaretLeft, Folder } from "@phosphor-icons/react";
+import { Folder, X } from "@phosphor-icons/react";
 import type { GameInstance } from "../lib/types";
 
 type SidebarProps = {
@@ -28,12 +28,12 @@ export function Sidebar({ instances, selectedInstanceId, onSelectInstance, onCol
         <h2 className="text-lg font-semibold">Game Instances</h2>
         <button
           type="button"
-          aria-label="collapse-game-instances"
+          aria-label="close-game-instances"
           className="inline-flex items-center gap-2 rounded-md border !border-[var(--color-border)] px-2 py-1 text-sm hover:border-accent hover:bg-accent/10 focus:outline-none focus:ring-2 focus:ring-accent/40"
           onClick={onCollapse}
         >
-          <CaretLeft size={14} weight="regular" aria-hidden="true" />
-          Hide
+          <X size={14} weight="regular" aria-hidden="true" />
+          Close
         </button>
       </div>
       <ul className="m-0 grid list-none gap-3 p-0">

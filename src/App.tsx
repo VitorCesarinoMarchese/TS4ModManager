@@ -48,12 +48,9 @@ function getInitialCustomThemes(): AppTheme[] {
   return legacyTheme && !themes.some((theme) => theme.name === legacyTheme.name) ? [...themes, legacyTheme] : themes;
 }
 
-function getInitialSidebarCollapsed(): boolean | null {
-  if (typeof window === "undefined") return null;
-  const stored = window.localStorage.getItem(SIDEBAR_COLLAPSED_STORAGE_KEY);
-  if (stored === "true") return true;
-  if (stored === "false") return false;
-  return null;
+function getInitialSidebarCollapsed(): boolean {
+  if (typeof window === "undefined") return true;
+  return window.localStorage.getItem(SIDEBAR_COLLAPSED_STORAGE_KEY) !== "false";
 }
 
 function getInitialActiveThemeName(customThemes: AppTheme[]): string {
@@ -92,7 +89,7 @@ export function App({ store = defaultStore }: AppProps) {
   const [customThemes, setCustomThemes] = useState<AppTheme[]>(getInitialCustomThemes);
   const [activeThemeName, setActiveThemeName] = useState(() => getInitialActiveThemeName(getInitialCustomThemes()));
   const [selectedMod, setSelectedMod] = useState<AppState["mods"][number] | null>(null);
-  const [sidebarCollapsed, setSidebarCollapsed] = useState<boolean | null>(getInitialSidebarCollapsed);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(getInitialSidebarCollapsed);
   const [dismissedIssueId, setDismissedIssueId] = useState<string | null>(null);
   const [toggleDisabledById, setToggleDisabledById] = useState<Record<string, boolean>>({});
 
@@ -127,7 +124,7 @@ export function App({ store = defaultStore }: AppProps) {
     : null;
 
   const isScanning = scanStatus === "scanning";
-  const isSidebarCollapsed = sidebarCollapsed ?? instances.length <= 1;
+  const isSidebarCollapsed = sidebarCollapsed;
   const popupIssue = [...issues]
     .reverse()
     .find((issue) => issue.severity === "error" && issue.id !== dismissedIssueId);

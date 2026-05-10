@@ -149,29 +149,7 @@ describe("App redesign", () => {
     expect(window.localStorage.setItem).toHaveBeenCalledWith("ts4mm-sidebar-collapsed", "false");
   });
 
-  it("shows sidebar by default for multiple instances and persists collapse", async () => {
-    const api = makeApi({
-      detectGameInstances: vi.fn().mockResolvedValue([
-        { id: "inst-1", path: "/native", source: "native" },
-        { id: "inst-2", path: "/steam", source: "steam" }
-      ])
-    });
-    const store = createAppStore(api);
-    render(<App store={store} />);
-
-    await waitFor(() => {
-      expect(screen.getByLabelText("game-instances-sidebar")).toBeInTheDocument();
-      expect(screen.getByRole("button", { name: "Steam Instance 2" })).toBeInTheDocument();
-    });
-
-    fireEvent.click(screen.getByRole("button", { name: "collapse-game-instances" }));
-    expect(screen.queryByLabelText("game-instances-sidebar")).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "expand-game-instances" })).toBeInTheDocument();
-    expect(window.localStorage.setItem).toHaveBeenCalledWith("ts4mm-sidebar-collapsed", "true");
-  });
-
-  it("uses persisted collapsed sidebar state", async () => {
-    window.localStorage.setItem("ts4mm-sidebar-collapsed", "true");
+  it("hides sidebar by default for multiple instances and persists expand", async () => {
     const api = makeApi({
       detectGameInstances: vi.fn().mockResolvedValue([
         { id: "inst-1", path: "/native", source: "native" },
@@ -185,6 +163,32 @@ describe("App redesign", () => {
       expect(screen.queryByLabelText("game-instances-sidebar")).not.toBeInTheDocument();
       expect(screen.getByRole("button", { name: "expand-game-instances" })).toBeInTheDocument();
     });
+
+    fireEvent.click(screen.getByRole("button", { name: "expand-game-instances" }));
+    expect(screen.getByLabelText("game-instances-sidebar")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Steam Instance 2" })).toBeInTheDocument();
+    expect(window.localStorage.setItem).toHaveBeenCalledWith("ts4mm-sidebar-collapsed", "false");
+  });
+
+  it("uses persisted expanded sidebar state", async () => {
+    window.localStorage.setItem("ts4mm-sidebar-collapsed", "false");
+    const api = makeApi({
+      detectGameInstances: vi.fn().mockResolvedValue([
+        { id: "inst-1", path: "/native", source: "native" },
+        { id: "inst-2", path: "/steam", source: "steam" }
+      ])
+    });
+    const store = createAppStore(api);
+    render(<App store={store} />);
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("game-instances-sidebar")).toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: "expand-game-instances" })).not.toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "close-game-instances" }));
+    expect(screen.queryByLabelText("game-instances-sidebar")).not.toBeInTheDocument();
+    expect(window.localStorage.setItem).toHaveBeenCalledWith("ts4mm-sidebar-collapsed", "true");
   });
 
   it("opens and closes settings modal from top bar", () => {
