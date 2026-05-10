@@ -2,6 +2,7 @@ import { ArrowsClockwise, CaretDown, ClipboardText, FolderPlus, Plus } from "@ph
 import { useState } from "react";
 import { DARK_THEME, DEFAULT_THEME, parseThemeJson, serializeTheme, type AppTheme } from "../lib/theme";
 import type { GameInstance } from "../lib/types";
+import { ThemedSelect } from "./ThemedSelect";
 
 type SettingsPageProps = {
   instances: GameInstance[];
@@ -139,23 +140,17 @@ export function SettingsPage({
         <legend className="px-1 text-lg font-semibold">Theme Editor</legend>
 
         <div className="flex flex-wrap items-end gap-3">
-          <label className="grid gap-1 text-sm font-medium" htmlFor="theme-select">
-            Active theme
-            <select
-              id="theme-select"
-              className={`${inputClass} min-w-48`}
-              style={{ backgroundColor: "var(--color-surface)", color: "var(--color-text)", borderColor: "var(--color-border)" }}
-              value={activeThemeName}
-              onChange={(e) => onSelectTheme?.(e.target.value)}
-            >
-              <option style={{ backgroundColor: "var(--color-surface)", color: "var(--color-text)" }} value="Light">Light</option>
-              <option style={{ backgroundColor: "var(--color-surface)", color: "var(--color-text)" }} value="Dark">Dark</option>
-              <option style={{ backgroundColor: "var(--color-surface)", color: "var(--color-text)" }} value="System">System</option>
-              {customThemes.map((theme) => (
-                <option style={{ backgroundColor: "var(--color-surface)", color: "var(--color-text)" }} key={theme.name} value={theme.name}>{theme.name}</option>
-              ))}
-            </select>
-          </label>
+          <ThemedSelect
+            label="Active theme"
+            value={activeThemeName}
+            options={[
+              { value: "Light", label: "Light" },
+              { value: "Dark", label: "Dark" },
+              { value: "System", label: "System" },
+              ...customThemes.map((theme) => ({ value: theme.name, label: theme.name }))
+            ]}
+            onChange={(value) => onSelectTheme?.(value)}
+          />
           <button type="button" className={buttonClass} onClick={onCreateTheme}>
             <Plus size={16} weight="regular" aria-hidden="true" />
             Create Custom Theme

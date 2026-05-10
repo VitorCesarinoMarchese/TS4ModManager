@@ -169,7 +169,8 @@ describe("App redesign", () => {
     const { container } = render(<App store={store} />);
 
     fireEvent.click(screen.getByRole("button", { name: "open-settings" }));
-    fireEvent.change(screen.getByRole("combobox", { name: "Active theme" }), { target: { value: "System" } });
+    fireEvent.click(screen.getByRole("combobox", { name: "Active theme" }));
+    fireEvent.click(screen.getByRole("option", { name: "System" }));
 
     expect(screen.queryByRole("button", { name: "toggle-theme" })).not.toBeInTheDocument();
     expect(document.documentElement.classList.contains("dark")).toBe(true);
@@ -199,7 +200,7 @@ describe("App redesign", () => {
     fireEvent.change(screen.getByLabelText("Accent color"), { target: { value: "#22c55e" } });
     fireEvent.change(screen.getByLabelText("Background color"), { target: { value: "#020617" } });
 
-    expect(screen.getByRole("combobox", { name: "Active theme" })).toHaveValue("Green Night");
+    expect(screen.getByRole("combobox", { name: "Active theme" })).toHaveTextContent("Green Night");
     expect(document.documentElement.style.getPropertyValue("--color-accent")).toBe("#22c55e");
     expect(document.documentElement.style.getPropertyValue("--color-background")).toBe("#020617");
     expect(window.localStorage.setItem).toHaveBeenCalledWith(
@@ -232,7 +233,8 @@ describe("App redesign", () => {
     render(<App store={store} />);
 
     fireEvent.click(screen.getByRole("button", { name: "open-settings" }));
-    fireEvent.change(screen.getByRole("combobox", { name: "Active theme" }), { target: { value: "Dark" } });
+    fireEvent.click(screen.getByRole("combobox", { name: "Active theme" }));
+    fireEvent.click(screen.getByRole("option", { name: "Dark" }));
     fireEvent.click(screen.getByRole("button", { name: "Create Custom Theme" }));
 
     expect(document.documentElement.classList.contains("dark")).toBe(false);
@@ -261,7 +263,7 @@ describe("App redesign", () => {
     fireEvent.click(screen.getByRole("button", { name: "open-settings" }));
     fireEvent.click(screen.getByRole("button", { name: "Reset Current Theme" }));
 
-    expect(screen.getByRole("combobox", { name: "Active theme" })).toHaveValue("Purple");
+    expect(screen.getByRole("combobox", { name: "Active theme" })).toHaveTextContent("Purple");
     expect(document.documentElement.style.getPropertyValue("--color-accent")).toBe("#10b981");
     expect(window.localStorage.getItem("ts4mm-custom-themes")).toContain('"name":"Purple"');
   });

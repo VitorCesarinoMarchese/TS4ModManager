@@ -1,8 +1,8 @@
-import { CaretDown } from "@phosphor-icons/react";
 import { useEffect, useMemo, useState } from "react";
 import { getPagination } from "../lib/pagination";
 import type { Mod } from "../lib/types";
 import { ModCard } from "./ModCard";
+import { ThemedSelect } from "./ThemedSelect";
 
 type ModGridProps = {
   mods: Mod[];
@@ -59,29 +59,17 @@ export function ModGrid({ mods, search, onToggle, onDetails, toggleDisabledById 
             <p>
               Showing {pagination.startItem}–{pagination.endItem} of {filtered.length} mods
             </p>
-            <label className="inline-flex items-center gap-2">
-              Mods per page
-              <span className="relative inline-flex">
-                <select
-                  aria-label="Mods per page"
-                  className="theme-control h-9 appearance-none rounded-md border !border-[var(--color-border)] !bg-[var(--color-surface)] py-1.5 pl-3 pr-9 !text-[var(--color-text)] hover:border-accent focus:outline-none focus:ring-2 focus:ring-accent/40 dark:hover:border-accent"
-                  style={{ backgroundColor: "var(--color-surface)", color: "var(--color-text)", borderColor: "var(--color-border)" }}
-                  value={pageSize}
-                  onChange={(e) => setPageSize(Number(e.target.value))}
-                >
-                  <option style={{ backgroundColor: "var(--color-surface)", color: "var(--color-text)" }} value={12}>12</option>
-                  <option style={{ backgroundColor: "var(--color-surface)", color: "var(--color-text)" }} value={24}>24</option>
-                  <option style={{ backgroundColor: "var(--color-surface)", color: "var(--color-text)" }} value={48}>48</option>
-                </select>
-                <CaretDown
-                  data-testid="mods-page-size-caret"
-                  className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 dark:text-slate-300"
-                  size={14}
-                  weight="regular"
-                  aria-hidden="true"
-                />
-              </span>
-            </label>
+            <ThemedSelect
+              label="Mods per page"
+              value={String(pageSize)}
+              options={[
+                { value: "12", label: "12" },
+                { value: "24", label: "24" },
+                { value: "48", label: "48" }
+              ]}
+              onChange={(value) => setPageSize(Number(value))}
+              className="inline-flex items-center gap-2"
+            />
           </div>
 
           <div className="mod-grid grid grid-cols-[repeat(auto-fill,minmax(260px,1fr))] gap-5">

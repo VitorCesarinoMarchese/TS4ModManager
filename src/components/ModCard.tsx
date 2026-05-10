@@ -24,7 +24,7 @@ export function ModCard({ mod, disabled, onToggle, onDetails }: ModCardProps) {
       transition={{ duration: 0.18, ease: "easeOut" }}
       whileTap={{ scale: 0.995 }}
     >
-      <div className="preview grid h-[140px] place-items-center overflow-hidden rounded-[10px] border border-dashed border-slate-300 text-slate-500 dark:border-slate-700 dark:text-slate-300">
+      <div className="preview grid h-[140px] place-items-center overflow-hidden rounded-[10px] border border-dashed !border-[var(--color-border)] text-slate-500 dark:text-slate-300">
         {mod.preview ? (
           <img className="h-full w-full object-cover" src={mod.preview} alt={mod.name} loading="lazy" />
         ) : (

@@ -80,11 +80,12 @@ describe("SettingsPage", () => {
     );
 
     expect(screen.getByRole("group", { name: "theme-editor" })).toBeInTheDocument();
-    expect(screen.getByRole("combobox", { name: "Active theme" })).toHaveValue("Purple");
+    expect(screen.getByRole("combobox", { name: "Active theme" })).toHaveTextContent("Purple");
     expect(screen.getByRole("combobox", { name: "Active theme" })).toHaveClass("theme-control");
     expect(screen.getByRole("combobox", { name: "Active theme" })).toHaveClass("!bg-[var(--color-surface)]");
-    expect(screen.getByRole("combobox", { name: "Active theme" })).toHaveStyle({ color: "var(--color-text)" });
-    fireEvent.change(screen.getByRole("combobox", { name: "Active theme" }), { target: { value: "Dark" } });
+    fireEvent.click(screen.getByRole("combobox", { name: "Active theme" }));
+    expect(screen.getByRole("listbox")).toHaveClass("theme-surface");
+    fireEvent.click(screen.getByRole("option", { name: "Dark" }));
     expect(onSelectTheme).toHaveBeenCalledWith("Dark");
 
     fireEvent.click(screen.getByRole("button", { name: "Create Custom Theme" }));

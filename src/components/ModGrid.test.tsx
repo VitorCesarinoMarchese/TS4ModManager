@@ -25,17 +25,17 @@ describe("ModGrid pagination", () => {
   it("allows switching page size to 12 and 48", () => {
     render(<ModGrid mods={makeMods(50)} search="" />);
 
-    expect(screen.getByLabelText("Mods per page")).toHaveClass("appearance-none");
-    expect(screen.getByLabelText("Mods per page")).toHaveClass("theme-control");
-    expect(screen.getByLabelText("Mods per page")).toHaveClass("!bg-[var(--color-surface)]");
-    expect(screen.getByLabelText("Mods per page")).toHaveStyle({ color: "var(--color-text)" });
-    expect(screen.getByTestId("mods-page-size-caret")).toBeInTheDocument();
+    expect(screen.getByRole("combobox", { name: "Mods per page" })).toHaveClass("theme-control");
+    expect(screen.getByRole("combobox", { name: "Mods per page" })).toHaveClass("!bg-[var(--color-surface)]");
 
-    fireEvent.change(screen.getByLabelText("Mods per page"), { target: { value: "12" } });
+    fireEvent.click(screen.getByRole("combobox", { name: "Mods per page" }));
+    expect(screen.getByRole("listbox")).toHaveClass("theme-surface");
+    fireEvent.click(screen.getByRole("option", { name: "12" }));
     expect(screen.getByText("Mod 12")).toBeInTheDocument();
     expect(screen.queryByText("Mod 13")).not.toBeInTheDocument();
 
-    fireEvent.change(screen.getByLabelText("Mods per page"), { target: { value: "48" } });
+    fireEvent.click(screen.getByRole("combobox", { name: "Mods per page" }));
+    fireEvent.click(screen.getByRole("option", { name: "48" }));
     expect(screen.getByText("Mod 48")).toBeInTheDocument();
     expect(screen.queryByText("Mod 49")).not.toBeInTheDocument();
   });
