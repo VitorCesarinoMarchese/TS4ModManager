@@ -130,7 +130,7 @@ describe("App redesign", () => {
     vi.spyOn(window, "confirm").mockReturnValue(true);
   });
 
-  it("renders top bar, sidebar, and mod grid", async () => {
+  it("hides sidebar by default for one instance and can expand it", async () => {
     const api = makeApi();
     const store = createAppStore(api);
     render(<App store={store} />);
@@ -138,9 +138,52 @@ describe("App redesign", () => {
     expect(screen.getByText("Sims 4 Mod Manager")).toBeInTheDocument();
 
     await waitFor(() => {
-      expect(screen.getByLabelText("game-instances-sidebar")).toBeInTheDocument();
+      expect(screen.queryByLabelText("game-instances-sidebar")).not.toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "expand-game-instances" })).toBeInTheDocument();
       expect(screen.getByLabelText("mods-grid")).toBeInTheDocument();
       expect(screen.getByText("BuildPack")).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "expand-game-instances" }));
+    expect(screen.getByLabelText("game-instances-sidebar")).toBeInTheDocument();
+    expect(window.localStorage.setItem).toHaveBeenCalledWith("ts4mm-sidebar-collapsed", "false");
+  });
+
+  it("shows sidebar by default for multiple instances and persists collapse", async () => {
+    const api = makeApi({
+      detectGameInstances: vi.fn().mockResolvedValue([
+        { id: "inst-1", path: "/native", source: "native" },
+        { id: "inst-2", path: "/steam", source: "steam" }
+      ])
+    });
+    const store = createAppStore(api);
+    render(<App store={store} />);
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("game-instances-sidebar")).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Steam Instance 2" })).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "collapse-game-instances" }));
+    expect(screen.queryByLabelText("game-instances-sidebar")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "expand-game-instances" })).toBeInTheDocument();
+    expect(window.localStorage.setItem).toHaveBeenCalledWith("ts4mm-sidebar-collapsed", "true");
+  });
+
+  it("uses persisted collapsed sidebar state", async () => {
+    window.localStorage.setItem("ts4mm-sidebar-collapsed", "true");
+    const api = makeApi({
+      detectGameInstances: vi.fn().mockResolvedValue([
+        { id: "inst-1", path: "/native", source: "native" },
+        { id: "inst-2", path: "/steam", source: "steam" }
+      ])
+    });
+    const store = createAppStore(api);
+    render(<App store={store} />);
+
+    await waitFor(() => {
+      expect(screen.queryByLabelText("game-instances-sidebar")).not.toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "expand-game-instances" })).toBeInTheDocument();
     });
   });
 

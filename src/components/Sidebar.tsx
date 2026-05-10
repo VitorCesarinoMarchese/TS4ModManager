@@ -1,10 +1,11 @@
-import { Folder } from "@phosphor-icons/react";
+import { CaretLeft, Folder } from "@phosphor-icons/react";
 import type { GameInstance } from "../lib/types";
 
 type SidebarProps = {
   instances: GameInstance[];
   selectedInstanceId: string | null;
   onSelectInstance: (id: string) => void;
+  onCollapse?: () => void;
 };
 
 function friendlyName(instance: GameInstance, index: number) {
@@ -17,13 +18,24 @@ function friendlyName(instance: GameInstance, index: number) {
   return `${base} ${index + 1}`;
 }
 
-export function Sidebar({ instances, selectedInstanceId, onSelectInstance }: SidebarProps) {
+export function Sidebar({ instances, selectedInstanceId, onSelectInstance, onCollapse }: SidebarProps) {
   return (
     <aside
-      className="sidebar rounded-[14px] border border-slate-300 p-5 dark:border-slate-700"
+      className="sidebar theme-surface rounded-[14px] border !border-[var(--color-border)] p-5"
       aria-label="game-instances-sidebar"
     >
-      <h2 className="mb-4 text-lg font-semibold">Game Instances</h2>
+      <div className="mb-4 flex items-center justify-between gap-3">
+        <h2 className="text-lg font-semibold">Game Instances</h2>
+        <button
+          type="button"
+          aria-label="collapse-game-instances"
+          className="inline-flex items-center gap-2 rounded-md border !border-[var(--color-border)] px-2 py-1 text-sm hover:border-accent hover:bg-accent/10 focus:outline-none focus:ring-2 focus:ring-accent/40"
+          onClick={onCollapse}
+        >
+          <CaretLeft size={14} weight="regular" aria-hidden="true" />
+          Hide
+        </button>
+      </div>
       <ul className="m-0 grid list-none gap-3 p-0">
         {instances.map((instance, index) => {
           const isSelected = instance.id === selectedInstanceId;

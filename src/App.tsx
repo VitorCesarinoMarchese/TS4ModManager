@@ -1,4 +1,4 @@
-import { ArrowsClockwise, X } from "@phosphor-icons/react";
+import { ArrowsClockwise, SidebarSimple, X } from "@phosphor-icons/react";
 import { motion } from "framer-motion";
 import { useEffect, useState } from "react";
 import { useStore } from "zustand";
@@ -35,6 +35,7 @@ import { invokeTauri } from "./lib/tauriInvoke";
 import { createAppStore, type AppState } from "./store/appStore";
 
 const defaultStore = createAppStore(createBackendApi(invokeTauri));
+const SIDEBAR_COLLAPSED_STORAGE_KEY = "ts4mm-sidebar-collapsed";
 
 function systemPrefersDark() {
   return window.matchMedia?.("(prefers-color-scheme: dark)").matches ?? false;
@@ -45,6 +46,14 @@ function getInitialCustomThemes(): AppTheme[] {
   const themes = parseThemesJson(window.localStorage.getItem(CUSTOM_THEMES_STORAGE_KEY));
   const legacyTheme = parseThemeJson(window.localStorage.getItem(LEGACY_CUSTOM_THEME_STORAGE_KEY) ?? "");
   return legacyTheme && !themes.some((theme) => theme.name === legacyTheme.name) ? [...themes, legacyTheme] : themes;
+}
+
+function getInitialSidebarCollapsed(): boolean | null {
+  if (typeof window === "undefined") return null;
+  const stored = window.localStorage.getItem(SIDEBAR_COLLAPSED_STORAGE_KEY);
+  if (stored === "true") return true;
+  if (stored === "false") return false;
+  return null;
 }
 
 function getInitialActiveThemeName(customThemes: AppTheme[]): string {
@@ -83,6 +92,7 @@ export function App({ store = defaultStore }: AppProps) {
   const [customThemes, setCustomThemes] = useState<AppTheme[]>(getInitialCustomThemes);
   const [activeThemeName, setActiveThemeName] = useState(() => getInitialActiveThemeName(getInitialCustomThemes()));
   const [selectedMod, setSelectedMod] = useState<AppState["mods"][number] | null>(null);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState<boolean | null>(getInitialSidebarCollapsed);
   const [dismissedIssueId, setDismissedIssueId] = useState<string | null>(null);
   const [toggleDisabledById, setToggleDisabledById] = useState<Record<string, boolean>>({});
 
@@ -117,6 +127,7 @@ export function App({ store = defaultStore }: AppProps) {
     : null;
 
   const isScanning = scanStatus === "scanning";
+  const isSidebarCollapsed = sidebarCollapsed ?? instances.length <= 1;
   const popupIssue = [...issues]
     .reverse()
     .find((issue) => issue.severity === "error" && issue.id !== dismissedIssueId);
@@ -164,6 +175,11 @@ export function App({ store = defaultStore }: AppProps) {
     await navigator.clipboard.writeText(serializeTheme(theme));
   };
 
+  const setPersistedSidebarCollapsed = (collapsed: boolean) => {
+    setSidebarCollapsed(collapsed);
+    window.localStorage.setItem(SIDEBAR_COLLAPSED_STORAGE_KEY, String(collapsed));
+  };
+
   const dangerButtonClass =
     "inline-flex items-center gap-2 rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm hover:border-red-500 hover:bg-red-50 hover:text-red-600 focus:outline-none focus:ring-2 focus:ring-red-500/40 dark:border-slate-600 dark:bg-slate-800 dark:hover:border-red-500 dark:hover:bg-red-950/30 dark:hover:text-red-300";
 
@@ -171,17 +187,31 @@ export function App({ store = defaultStore }: AppProps) {
     <div className={`app-shell flex min-h-screen flex-col bg-slate-50 font-sans text-slate-950 dark:bg-[#15171c] dark:text-slate-100 ${darkMode ? "dark" : ""}`}>
       <TopBar onSettings={() => setSettingsOpen(true)} />
 
-      <div className="layout grid grid-cols-[280px_1fr] gap-6 p-6">
-        <Sidebar
-          instances={instances}
-          selectedInstanceId={selectedInstanceId}
-          onSelectInstance={(id) => void selectInstanceAndScan(id)}
-        />
+      <div className={`layout grid gap-6 p-6 ${isSidebarCollapsed ? "grid-cols-1" : "grid-cols-[280px_1fr]"}`}>
+        {isSidebarCollapsed ? null : (
+          <Sidebar
+            instances={instances}
+            selectedInstanceId={selectedInstanceId}
+            onSelectInstance={(id) => void selectInstanceAndScan(id)}
+            onCollapse={() => setPersistedSidebarCollapsed(true)}
+          />
+        )}
 
         <main className="main-content grid gap-6 rounded-2xl border border-slate-300 bg-white p-6 dark:border-slate-700 dark:bg-slate-900">
           <header className="main-header flex items-center justify-between gap-4">
             <h2 className="text-xl font-semibold">Mods ({mods.length})</h2>
             <div className="controls flex gap-4">
+              {isSidebarCollapsed ? (
+                <button
+                  type="button"
+                  aria-label="expand-game-instances"
+                  className="inline-flex items-center gap-2 rounded-md border !border-[var(--color-border)] px-3 py-1.5 text-sm hover:border-accent hover:bg-accent/10 focus:outline-none focus:ring-2 focus:ring-accent/40"
+                  onClick={() => setPersistedSidebarCollapsed(false)}
+                >
+                  <SidebarSimple size={16} weight="regular" aria-hidden="true" />
+                  Instances
+                </button>
+              ) : null}
               <SearchBar value={search} onChange={setSearch} />
               <button
                 type="button"

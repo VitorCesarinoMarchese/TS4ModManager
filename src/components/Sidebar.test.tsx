@@ -13,9 +13,12 @@ describe("Sidebar", () => {
         ]}
         selectedInstanceId="i1"
         onSelectInstance={onSelect}
+        onCollapse={() => {}}
       />
     );
 
+    expect(screen.getByRole("button", { name: "collapse-game-instances" })).toBeInTheDocument();
+    expect(screen.getByLabelText("game-instances-sidebar")).toHaveClass("!border-[var(--color-border)]");
     expect(screen.getByText("Steam Instance 1")).toBeInTheDocument();
     expect(screen.getByText("Custom Instance 2")).toBeInTheDocument();
     expect(screen.queryByText("/long/path/one")).not.toBeInTheDocument();
@@ -28,5 +31,20 @@ describe("Sidebar", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Custom Instance 2" }));
     expect(onSelect).toHaveBeenCalledWith("i2");
+  });
+
+  it("fires collapse action", () => {
+    const onCollapse = vi.fn();
+    render(
+      <Sidebar
+        instances={[{ id: "i1", source: "native", path: "/native/path" }]}
+        selectedInstanceId="i1"
+        onSelectInstance={() => {}}
+        onCollapse={onCollapse}
+      />
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "collapse-game-instances" }));
+    expect(onCollapse).toHaveBeenCalledTimes(1);
   });
 });
