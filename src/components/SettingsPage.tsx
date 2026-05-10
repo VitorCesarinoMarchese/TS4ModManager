@@ -61,7 +61,7 @@ export function SettingsPage({
   const [importJson, setImportJson] = useState("");
   const [importError, setImportError] = useState<string | null>(null);
   const [copyStatus, setCopyStatus] = useState<string | null>(null);
-  const inputClass = "theme-control h-9 rounded-md border border-slate-300 bg-white px-3 py-1.5 text-slate-950 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100";
+  const inputClass = "theme-control h-9 rounded-md border !border-[var(--color-border)] !bg-[var(--color-surface)] px-3 py-1.5 !text-[var(--color-text)]";
   const buttonClass =
     "inline-flex items-center gap-2 rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm hover:border-accent hover:bg-accent/10 focus:outline-none focus:ring-2 focus:ring-accent/40 disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-600 dark:bg-slate-800 dark:hover:border-accent dark:hover:bg-accent/10";
   const canEditTheme = customThemes.some((theme) => theme.name === activeThemeName);
@@ -144,14 +144,15 @@ export function SettingsPage({
             <select
               id="theme-select"
               className={`${inputClass} min-w-48`}
+              style={{ backgroundColor: "var(--color-surface)", color: "var(--color-text)", borderColor: "var(--color-border)" }}
               value={activeThemeName}
               onChange={(e) => onSelectTheme?.(e.target.value)}
             >
-              <option value="Light">Light</option>
-              <option value="Dark">Dark</option>
-              <option value="System">System</option>
+              <option style={{ backgroundColor: "var(--color-surface)", color: "var(--color-text)" }} value="Light">Light</option>
+              <option style={{ backgroundColor: "var(--color-surface)", color: "var(--color-text)" }} value="Dark">Dark</option>
+              <option style={{ backgroundColor: "var(--color-surface)", color: "var(--color-text)" }} value="System">System</option>
               {customThemes.map((theme) => (
-                <option key={theme.name} value={theme.name}>{theme.name}</option>
+                <option style={{ backgroundColor: "var(--color-surface)", color: "var(--color-text)" }} key={theme.name} value={theme.name}>{theme.name}</option>
               ))}
             </select>
           </label>

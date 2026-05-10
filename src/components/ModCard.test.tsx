@@ -13,6 +13,8 @@ describe("ModCard", () => {
     const card = screen.getByLabelText("mod-card-m1");
     expect(card).toHaveAttribute("data-animated", "true");
     expect(card).toHaveClass("theme-surface");
+    expect(card).toHaveClass("!border-[var(--color-border)]");
+    expect(card).toHaveClass("!bg-[var(--color-surface)]");
     expect(card).not.toHaveClass("bg-white");
     expect(card).not.toHaveClass("dark:bg-slate-900");
     expect(card).toHaveClass("dark:hover:border-accent");

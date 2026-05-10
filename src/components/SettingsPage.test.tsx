@@ -82,6 +82,8 @@ describe("SettingsPage", () => {
     expect(screen.getByRole("group", { name: "theme-editor" })).toBeInTheDocument();
     expect(screen.getByRole("combobox", { name: "Active theme" })).toHaveValue("Purple");
     expect(screen.getByRole("combobox", { name: "Active theme" })).toHaveClass("theme-control");
+    expect(screen.getByRole("combobox", { name: "Active theme" })).toHaveClass("!bg-[var(--color-surface)]");
+    expect(screen.getByRole("combobox", { name: "Active theme" })).toHaveStyle({ color: "var(--color-text)" });
     fireEvent.change(screen.getByRole("combobox", { name: "Active theme" }), { target: { value: "Dark" } });
     expect(onSelectTheme).toHaveBeenCalledWith("Dark");
 

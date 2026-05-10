@@ -27,6 +27,8 @@ describe("ModGrid pagination", () => {
 
     expect(screen.getByLabelText("Mods per page")).toHaveClass("appearance-none");
     expect(screen.getByLabelText("Mods per page")).toHaveClass("theme-control");
+    expect(screen.getByLabelText("Mods per page")).toHaveClass("!bg-[var(--color-surface)]");
+    expect(screen.getByLabelText("Mods per page")).toHaveStyle({ color: "var(--color-text)" });
     expect(screen.getByTestId("mods-page-size-caret")).toBeInTheDocument();
 
     fireEvent.change(screen.getByLabelText("Mods per page"), { target: { value: "12" } });
