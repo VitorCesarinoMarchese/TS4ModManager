@@ -178,7 +178,7 @@ export function App({ store = defaultStore }: AppProps) {
   };
 
   const dangerButtonClass =
-    "inline-flex items-center gap-2 rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm hover:border-red-500 hover:bg-red-50 hover:text-red-600 focus:outline-none focus:ring-2 focus:ring-red-500/40 dark:border-slate-600 dark:bg-slate-800 dark:hover:border-red-500 dark:hover:bg-red-950/30 dark:hover:text-red-300";
+    "inline-flex items-center gap-2 rounded-md border !border-[var(--color-border)] bg-white px-3 py-1.5 text-sm hover:!border-red-500 hover:bg-red-50 hover:text-red-600 focus:outline-none focus:ring-2 focus:ring-red-500/40 dark:bg-slate-800 dark:hover:!border-red-500 dark:hover:bg-red-950/30 dark:hover:text-red-300";
 
   return (
     <div className={`app-shell flex min-h-screen flex-col bg-slate-50 font-sans text-slate-950 dark:bg-[#15171c] dark:text-slate-100 ${darkMode ? "dark" : ""}`}>
@@ -194,7 +194,7 @@ export function App({ store = defaultStore }: AppProps) {
           />
         )}
 
-        <main className="main-content grid gap-6 rounded-2xl border border-slate-300 bg-white p-6 dark:border-slate-700 dark:bg-slate-900">
+        <main className="main-content grid gap-6 rounded-2xl border !border-[var(--color-border)] bg-white p-6 dark:bg-slate-900">
           <header className="main-header flex items-center justify-between gap-4">
             <h2 className="text-xl font-semibold">Mods ({mods.length})</h2>
             <div className="controls flex gap-4">
@@ -212,7 +212,7 @@ export function App({ store = defaultStore }: AppProps) {
               <SearchBar value={search} onChange={setSearch} />
               <button
                 type="button"
-                className="inline-flex items-center gap-2 rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm hover:border-accent hover:bg-accent/10 focus:outline-none focus:ring-2 focus:ring-accent/40 dark:border-slate-600 dark:bg-slate-800 dark:hover:border-accent dark:hover:bg-accent/10"
+                className="inline-flex items-center gap-2 rounded-md border !border-[var(--color-border)] bg-white px-3 py-1.5 text-sm hover:border-accent hover:bg-accent/10 focus:outline-none focus:ring-2 focus:ring-accent/40 dark:bg-slate-800 dark:hover:border-accent dark:hover:bg-accent/10"
                 disabled={isScanning}
                 onClick={() => void rescanSelected()}
               >
@@ -253,7 +253,7 @@ export function App({ store = defaultStore }: AppProps) {
           onClick={() => setSettingsOpen(false)}
         >
           <motion.section
-            className="modal grid max-h-[calc(100vh-2rem)] w-[min(760px,calc(100vw-2rem))] gap-4 overflow-y-auto rounded-[14px] border border-slate-300 bg-white p-5 dark:border-slate-700 dark:bg-slate-900"
+            className="modal grid max-h-[calc(100vh-2rem)] w-[min(760px,calc(100vw-2rem))] gap-4 overflow-y-auto rounded-[14px] border !border-[var(--color-border)] bg-white p-5 dark:bg-slate-900"
             role="dialog"
             aria-label="settings-modal"
             data-animated="true"

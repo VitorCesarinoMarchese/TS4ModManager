@@ -64,7 +64,7 @@ export function SettingsPage({
   const [copyStatus, setCopyStatus] = useState<string | null>(null);
   const inputClass = "theme-control h-9 rounded-md border !border-[var(--color-border)] !bg-[var(--color-surface)] px-3 py-1.5 !text-[var(--color-text)]";
   const buttonClass =
-    "inline-flex items-center gap-2 rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm hover:border-accent hover:bg-accent/10 focus:outline-none focus:ring-2 focus:ring-accent/40 disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-600 dark:bg-slate-800 dark:hover:border-accent dark:hover:bg-accent/10";
+    "inline-flex items-center gap-2 rounded-md border !border-[var(--color-border)] bg-white px-3 py-1.5 text-sm hover:border-accent hover:bg-accent/10 focus:outline-none focus:ring-2 focus:ring-accent/40 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-slate-800 dark:hover:border-accent dark:hover:bg-accent/10";
   const canEditTheme = customThemes.some((theme) => theme.name === activeThemeName);
 
   const updateColor = (key: keyof AppTheme["colors"], value: string) => {
@@ -123,7 +123,7 @@ export function SettingsPage({
         </button>
       </div>
 
-      <fieldset aria-label="theme-editor" className="grid gap-3 rounded-lg border border-slate-300 p-4 dark:border-slate-700">
+      <fieldset aria-label="theme-editor" className="grid gap-3 rounded-lg border !border-[var(--color-border)] p-4">
         <legend className="px-1 text-lg font-semibold">Theme Editor</legend>
 
         <div className="flex flex-wrap items-end gap-3">
@@ -177,7 +177,7 @@ export function SettingsPage({
                 id={`theme-${key}`}
                 type="color"
                 disabled={!canEditTheme}
-                className="h-10 w-20 cursor-pointer rounded-md border border-slate-300 bg-white p-1 disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-600 dark:bg-slate-800"
+                className="h-10 w-20 cursor-pointer rounded-md border !border-[var(--color-border)] bg-white p-1 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-slate-800"
                 value={activeTheme.colors[key]}
                 onChange={(e) => updateColor(key, e.target.value)}
               />

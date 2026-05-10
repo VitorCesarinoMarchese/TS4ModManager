@@ -202,7 +202,7 @@ describe("App redesign", () => {
     expect(modal).toHaveAttribute("data-animated", "true");
     expect(modal).toHaveClass("max-h-[calc(100vh-2rem)]");
     expect(modal).toHaveClass("overflow-y-auto");
-    expect(screen.getByRole("button", { name: "close-settings" })).toHaveClass("hover:border-red-500");
+    expect(screen.getByRole("button", { name: "close-settings" })).toHaveClass("hover:!border-red-500");
     expect(screen.getByRole("button", { name: "close-settings" })).not.toHaveClass("border-red-500");
 
     fireEvent.click(screen.getByRole("button", { name: "close-settings" }));
@@ -434,7 +434,7 @@ describe("App redesign", () => {
 
     await waitFor(() => {
       expect(screen.getByRole("alertdialog", { name: "error-warning" })).toBeInTheDocument();
-      expect(screen.getByRole("button", { name: "dismiss-error-warning" })).toHaveClass("hover:border-red-500");
+      expect(screen.getByRole("button", { name: "dismiss-error-warning" })).toHaveClass("hover:!border-red-500");
       expect(screen.getByRole("button", { name: "dismiss-error-warning" })).not.toHaveClass("border-red-500");
       expect(screen.getAllByText(/Metadata not found/).length).toBeGreaterThan(0);
     });

@@ -11,7 +11,7 @@ type ModCardProps = {
 
 export function ModCard({ mod, disabled, onToggle, onDetails }: ModCardProps) {
   const buttonClass =
-    "inline-flex items-center gap-2 rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm hover:border-accent hover:bg-accent/10 disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-600 dark:bg-slate-800 dark:hover:border-accent dark:hover:bg-accent/10";
+    "inline-flex items-center gap-2 rounded-md border !border-[var(--color-border)] bg-white px-3 py-1.5 text-sm hover:border-accent hover:bg-accent/10 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-slate-800 dark:hover:border-accent dark:hover:bg-accent/10";
 
   return (
     <motion.article
@@ -39,7 +39,7 @@ export function ModCard({ mod, disabled, onToggle, onDetails }: ModCardProps) {
       </h3>
       <p className="truncate text-sm text-slate-600 dark:text-slate-300">{mod.files.length} files</p>
       {mod.source === "external" ? (
-        <span className="inline-flex w-fit items-center gap-1 rounded-full border border-amber-300 bg-amber-50 px-2 py-0.5 text-xs text-amber-800 dark:border-amber-700 dark:bg-amber-950 dark:text-amber-200">
+        <span className="inline-flex w-fit items-center gap-1 rounded-full border !border-[var(--color-border)] bg-amber-50 px-2 py-0.5 text-xs text-amber-800 dark:bg-amber-950 dark:text-amber-200">
           <WarningCircle size={14} weight="regular" aria-hidden="true" />
           External
         </span>

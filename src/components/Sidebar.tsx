@@ -48,7 +48,7 @@ export function Sidebar({ instances, selectedInstanceId, onSelectInstance, onCol
                 className={`inline-flex w-full items-center gap-2 rounded-md border px-3 py-2 text-left text-sm ${
                   isSelected
                     ? "active border-accent bg-accent/10 dark:border-accent dark:bg-accent/10"
-                    : "border-slate-300 bg-white hover:border-accent hover:bg-accent/10 dark:border-slate-600 dark:bg-slate-800 dark:hover:border-accent dark:hover:bg-accent/10"
+                    : "!border-[var(--color-border)] bg-white hover:border-accent hover:bg-accent/10 dark:bg-slate-800 dark:hover:border-accent dark:hover:bg-accent/10"
                 }`}
                 onClick={() => onSelectInstance(instance.id)}
               >

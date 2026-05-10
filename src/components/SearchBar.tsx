@@ -15,7 +15,7 @@ export function SearchBar({ value, onChange }: SearchBarProps) {
         aria-hidden="true"
       />
       <input
-        className="w-full rounded-md border border-slate-300 bg-white py-1.5 pl-9 pr-3 dark:border-slate-600 dark:bg-slate-800"
+        className="w-full rounded-md border !border-[var(--color-border)] bg-white py-1.5 pl-9 pr-3 dark:bg-slate-800"
         aria-label="Search mods"
         value={value}
         onChange={(e) => onChange(e.target.value)}

@@ -86,6 +86,7 @@ describe("ModGrid pagination", () => {
     render(<ModGrid mods={makeMods(5)} search="zzz" />);
 
     expect(screen.getByText("No mods match your search.")).toBeInTheDocument();
+    expect(screen.getByText("No mods match your search.")).toHaveClass("!border-[var(--color-border)]");
   });
 
   it("uses filtered result count for pagination range", () => {

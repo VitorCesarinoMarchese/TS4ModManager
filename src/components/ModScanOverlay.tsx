@@ -10,7 +10,7 @@ export function ModScanOverlay() {
       exit={{ opacity: 0 }}
       transition={{ duration: 0.16 }}
     >
-      <div className="grid justify-items-center gap-3 rounded-xl border border-accent/30 bg-white/90 px-6 py-5 shadow-sm dark:bg-slate-900/90">
+      <div className="grid justify-items-center gap-3 rounded-xl border !border-[var(--color-border)] bg-white/90 px-6 py-5 shadow-sm dark:bg-slate-900/90">
         <motion.div
           className="h-7 w-7 rotate-45 rounded-sm border-2 border-accent bg-accent/20"
           animate={{ y: [0, -4, 0], opacity: [0.7, 1, 0.7] }}

@@ -18,9 +18,9 @@ export function ModDetailsPanel({ mod, onClose, onRename, onAttachSourceUrl, onR
   const [sourceUrl, setSourceUrl] = useState(mod.sourceUrl ?? "");
   const [confirmRemoveSource, setConfirmRemoveSource] = useState(false);
   const buttonClass =
-    "inline-flex items-center gap-2 rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm hover:border-accent hover:bg-accent/10 focus:outline-none focus:ring-2 focus:ring-accent/40 dark:border-slate-600 dark:bg-slate-800 dark:hover:border-accent dark:hover:bg-accent/10";
+    "inline-flex items-center gap-2 rounded-md border !border-[var(--color-border)] bg-white px-3 py-1.5 text-sm hover:border-accent hover:bg-accent/10 focus:outline-none focus:ring-2 focus:ring-accent/40 dark:bg-slate-800 dark:hover:border-accent dark:hover:bg-accent/10";
   const dangerButtonClass =
-    "inline-flex items-center gap-2 rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm hover:border-red-500 hover:bg-red-50 hover:text-red-600 focus:outline-none focus:ring-2 focus:ring-red-500/40 dark:border-slate-600 dark:bg-slate-800 dark:hover:border-red-500 dark:hover:bg-red-950/30 dark:hover:text-red-300";
+    "inline-flex items-center gap-2 rounded-md border !border-[var(--color-border)] bg-white px-3 py-1.5 text-sm hover:!border-red-500 hover:bg-red-50 hover:text-red-600 focus:outline-none focus:ring-2 focus:ring-red-500/40 dark:bg-slate-800 dark:hover:!border-red-500 dark:hover:bg-red-950/30 dark:hover:text-red-300";
 
   useEffect(() => {
     setName(mod.name);
@@ -42,7 +42,7 @@ export function ModDetailsPanel({ mod, onClose, onRename, onAttachSourceUrl, onR
       }}
     >
       <motion.section
-        className="modal grid max-h-[90vh] w-[min(860px,100%)] gap-5 overflow-auto rounded-[14px] border border-slate-300 bg-white p-6 dark:border-slate-700 dark:bg-slate-900"
+        className="modal grid max-h-[90vh] w-[min(860px,100%)] gap-5 overflow-auto rounded-[14px] border !border-[var(--color-border)] bg-white p-6 dark:bg-slate-900"
         role="dialog"
         aria-label="mod-details"
         data-animated="true"
@@ -66,7 +66,7 @@ export function ModDetailsPanel({ mod, onClose, onRename, onAttachSourceUrl, onR
           <input
             id="edit-mod-name"
             aria-label="edit-mod-name"
-            className="min-w-0 flex-1 rounded-md border border-slate-300 bg-white px-3 py-1.5 dark:border-slate-600 dark:bg-slate-800"
+            className="min-w-0 flex-1 rounded-md border !border-[var(--color-border)] bg-white px-3 py-1.5 dark:bg-slate-800"
             value={name}
             onChange={(e) => setName(e.target.value)}
           />
@@ -92,7 +92,7 @@ export function ModDetailsPanel({ mod, onClose, onRename, onAttachSourceUrl, onR
           <input
             id="edit-source-url"
             aria-label="edit-source-url"
-            className="min-w-0 flex-1 rounded-md border border-slate-300 bg-white px-3 py-1.5 dark:border-slate-600 dark:bg-slate-800"
+            className="min-w-0 flex-1 rounded-md border !border-[var(--color-border)] bg-white px-3 py-1.5 dark:bg-slate-800"
             value={sourceUrl}
             onChange={(e) => setSourceUrl(e.target.value)}
             placeholder="https://www.curseforge.com/sims4/mods/..."
@@ -174,7 +174,7 @@ export function ModDetailsPanel({ mod, onClose, onRename, onAttachSourceUrl, onR
           {mod.files.map((file) => (
             <li
               key={file}
-              className="truncate rounded-md border border-slate-200 px-3 py-2 text-sm dark:border-slate-700"
+              className="truncate rounded-md border !border-[var(--color-border)] px-3 py-2 text-sm"
               title={file}
             >
               {file}

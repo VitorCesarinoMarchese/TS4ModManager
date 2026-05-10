@@ -42,15 +42,15 @@ export function ModGrid({ mods, search, onToggle, onDetails, toggleDisabledById 
     `rounded-md border px-3 py-1.5 text-sm ${
       page === pagination.currentPage
         ? "border-accent bg-accent text-white"
-        : "border-slate-300 bg-white hover:border-accent hover:bg-accent/10 dark:border-slate-600 dark:bg-slate-800 dark:hover:border-accent dark:hover:bg-accent/10"
+        : "!border-[var(--color-border)] bg-white hover:border-accent hover:bg-accent/10 dark:bg-slate-800 dark:hover:border-accent dark:hover:bg-accent/10"
     }`;
   const navButtonClass =
-    "rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm hover:border-accent hover:bg-accent/10 disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-600 dark:bg-slate-800 dark:hover:border-accent dark:hover:bg-accent/10";
+    "rounded-md border !border-[var(--color-border)] bg-white px-3 py-1.5 text-sm hover:border-accent hover:bg-accent/10 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-slate-800 dark:hover:border-accent dark:hover:bg-accent/10";
 
   return (
     <section className="grid gap-4" aria-label="mods-grid">
       {filtered.length === 0 ? (
-        <div className="rounded-xl border border-dashed border-slate-300 p-8 text-center text-slate-600 dark:border-slate-700 dark:text-slate-300">
+        <div className="rounded-xl border border-dashed !border-[var(--color-border)] p-8 text-center text-slate-600 dark:text-slate-300">
           No mods match your search.
         </div>
       ) : (

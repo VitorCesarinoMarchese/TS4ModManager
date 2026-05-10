@@ -9,7 +9,7 @@ export function ImportPanel({ onImport }: ImportPanelProps) {
   const [archivePath, setArchivePath] = useState("");
   const [name, setName] = useState("");
   const [slug, setSlug] = useState("");
-  const inputClass = "h-9 rounded-md border border-slate-300 bg-white px-3 py-1.5 text-slate-950 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100";
+  const inputClass = "h-9 rounded-md border !border-[var(--color-border)] bg-white px-3 py-1.5 text-slate-950 dark:bg-slate-800 dark:text-slate-100";
 
   return (
     <section aria-label="import-panel" className="import-panel grid gap-4">
@@ -51,7 +51,7 @@ export function ImportPanel({ onImport }: ImportPanelProps) {
       </div>
 
       <div
-        className="dropzone flex min-h-12 items-center gap-2 rounded-[10px] border border-dashed border-slate-500 p-3.5 text-slate-600 dark:border-slate-600 dark:text-slate-300"
+        className="dropzone flex min-h-12 items-center gap-2 rounded-[10px] border border-dashed !border-[var(--color-border)] p-3.5 text-slate-600 dark:text-slate-300"
         aria-label="Drop archive here"
         onDragOver={(e) => e.preventDefault()}
         onDrop={(e) => {
@@ -67,7 +67,7 @@ export function ImportPanel({ onImport }: ImportPanelProps) {
 
       <button
         type="button"
-        className="inline-flex w-fit items-center gap-2 rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm hover:border-accent hover:bg-accent/10 focus:outline-none focus:ring-2 focus:ring-accent/40 dark:border-slate-600 dark:bg-slate-800 dark:hover:border-accent dark:hover:bg-accent/10"
+        className="inline-flex w-fit items-center gap-2 rounded-md border !border-[var(--color-border)] bg-white px-3 py-1.5 text-sm hover:border-accent hover:bg-accent/10 focus:outline-none focus:ring-2 focus:ring-accent/40 dark:bg-slate-800 dark:hover:border-accent dark:hover:bg-accent/10"
         onClick={() => {
           const p = archivePath.trim();
           const n = name.trim();

@@ -7,6 +7,8 @@ describe("ImportPanel", () => {
     const onImport = vi.fn();
     render(<ImportPanel onImport={onImport} />);
 
+    expect(screen.getByLabelText("Drop archive here")).toHaveClass("!border-[var(--color-border)]");
+
     fireEvent.change(screen.getByLabelText("Archive path"), {
       target: { value: "/tmp/mod.zip" }
     });

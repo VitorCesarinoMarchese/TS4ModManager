@@ -18,6 +18,8 @@ describe("ModDetailsPanel", () => {
     expect(screen.getByText("MyMod")).toBeInTheDocument();
     expect(screen.getByText("2 files")).toBeInTheDocument();
     expect(screen.getByTitle("packages/a.package")).toHaveClass("truncate");
+    expect(screen.getByTitle("packages/a.package")).toHaveClass("!border-[var(--color-border)]");
+    expect(screen.getByRole("dialog", { name: "mod-details" })).toHaveClass("!border-[var(--color-border)]");
   });
 
   it("warns before removing source URL", () => {
@@ -30,9 +32,9 @@ describe("ModDetailsPanel", () => {
       />
     );
 
-    expect(screen.getByRole("button", { name: "close-mod-details" })).toHaveClass("hover:border-red-500");
+    expect(screen.getByRole("button", { name: "close-mod-details" })).toHaveClass("hover:!border-red-500");
     expect(screen.getByRole("button", { name: "close-mod-details" })).not.toHaveClass("border-red-500");
-    expect(screen.getByRole("button", { name: "remove-source-url" })).toHaveClass("hover:border-red-500");
+    expect(screen.getByRole("button", { name: "remove-source-url" })).toHaveClass("hover:!border-red-500");
     expect(screen.getByRole("button", { name: "remove-source-url" })).not.toHaveClass("border-red-500");
 
     fireEvent.click(screen.getByRole("button", { name: "remove-source-url" }));
