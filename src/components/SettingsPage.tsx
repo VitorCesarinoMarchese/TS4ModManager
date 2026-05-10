@@ -1,4 +1,4 @@
-import { ArrowsClockwise, ClipboardText, FolderPlus, Plus } from "@phosphor-icons/react";
+import { ArrowsClockwise, ClipboardText, FolderOpen, FolderPlus, Plus, Trash } from "@phosphor-icons/react";
 import { useState } from "react";
 import { DARK_THEME, DEFAULT_THEME, parseThemeJson, serializeTheme, type AppTheme } from "../lib/theme";
 import type { GameInstance } from "../lib/types";
@@ -20,6 +20,8 @@ type SettingsPageProps = {
   onThemeImport?: (theme: AppTheme) => void;
   onThemeExport?: (theme: AppTheme) => void | Promise<void>;
   onThemeReset?: () => void;
+  onOpenManagedModsFolder?: () => void | Promise<void>;
+  onOpenTrashFolder?: () => void | Promise<void>;
 };
 
 const colorFields: Array<[keyof AppTheme["colors"], string]> = [
@@ -56,7 +58,9 @@ export function SettingsPage({
   onThemeChange,
   onThemeImport,
   onThemeExport,
-  onThemeReset
+  onThemeReset,
+  onOpenManagedModsFolder,
+  onOpenTrashFolder
 }: SettingsPageProps) {
   const [customPath, setCustomPath] = useState("");
   const [importJson, setImportJson] = useState("");
@@ -120,6 +124,17 @@ export function SettingsPage({
         >
           <FolderPlus size={16} weight="regular" aria-hidden="true" />
           Add Custom Path
+        </button>
+      </div>
+
+      <div className="flex flex-wrap gap-2">
+        <button type="button" className={buttonClass} onClick={() => void onOpenManagedModsFolder?.()}>
+          <FolderOpen size={16} weight="regular" aria-hidden="true" />
+          Open Mod Folder
+        </button>
+        <button type="button" className={buttonClass} onClick={() => void onOpenTrashFolder?.()}>
+          <Trash size={16} weight="regular" aria-hidden="true" />
+          Open Trash Folder
         </button>
       </div>
 

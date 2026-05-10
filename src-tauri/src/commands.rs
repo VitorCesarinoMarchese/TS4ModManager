@@ -10,6 +10,7 @@ use crate::managed_storage::{remove_source_url, set_custom_display_name, set_sou
 use crate::mod_scan::ScannedMod;
 use crate::orphan::{detect_orphan_symlinks, OrphanSymlink};
 use crate::path_detection::{detect_game_instances, validate_custom_instance, GameInstance};
+use crate::runtime_paths::{managed_mods_dir, trash_files_dir};
 use crate::toggle::{apply_toggle, dry_run_toggle, ApplyResult, DryRunResult};
 
 pub fn cmd_detect_game_instances(home: PathBuf) -> Vec<GameInstance> {
@@ -101,7 +102,7 @@ pub fn cmd_uninstall_managed_mod(
     game_mods_dir: PathBuf,
     mod_id: String,
 ) -> Result<UninstallResult, ManagerError> {
-    let result = uninstall_managed_mod(&managed_root, &game_mods_dir, &mod_id)?;
+    let result = uninstall_managed_mod(&managed_root, &game_mods_dir, &trash_files_dir()?, &mod_id)?;
     for issue in &result.issues {
         let _ = append_issue_log(&managed_root, issue);
     }
@@ -120,6 +121,14 @@ fn validate_external_url(url: &str) -> Result<(), ManagerError> {
     ))
 }
 
+fn open_path(path: PathBuf) -> Result<(), ManagerError> {
+    Command::new("xdg-open")
+        .arg(path)
+        .spawn()
+        .map(|_| ())
+        .map_err(|e| ManagerError::new(ErrorCode::IoError, format!("Open folder failed: {e}")))
+}
+
 pub fn cmd_open_external_url(url: String) -> Result<(), ManagerError> {
     validate_external_url(&url)?;
     Command::new("xdg-open")
@@ -127,6 +136,14 @@ pub fn cmd_open_external_url(url: String) -> Result<(), ManagerError> {
         .spawn()
         .map(|_| ())
         .map_err(|e| ManagerError::new(ErrorCode::IoError, format!("Open URL failed: {e}")))
+}
+
+pub fn cmd_open_managed_mods_folder() -> Result<(), ManagerError> {
+    open_path(managed_mods_dir()?)
+}
+
+pub fn cmd_open_trash_folder() -> Result<(), ManagerError> {
+    open_path(trash_files_dir()?)
 }
 
 #[cfg(test)]

@@ -40,6 +40,8 @@ export type BackendApi = {
   attachSourceUrl: (modId: string, sourceUrl: string, providerId?: string) => Promise<Mod>;
   removeSourceUrl: (modId: string) => Promise<Mod>;
   uninstallManagedMod: (modId: string, instanceId: string) => Promise<UninstallResult>;
+  openManagedModsFolder: () => Promise<void>;
+  openTrashFolder: () => Promise<void>;
 };
 
 /* c8 ignore start */
@@ -74,7 +76,9 @@ const defaultApi: BackendApi = {
     enabled: false,
     source: "managed"
   }),
-  uninstallManagedMod: async (modId) => ({ modId, trashedPath: "", issues: [] })
+  uninstallManagedMod: async (modId) => ({ modId, trashedPath: "", issues: [] }),
+  openManagedModsFolder: async () => {},
+  openTrashFolder: async () => {}
 };
 /* c8 ignore stop */
 
@@ -96,6 +100,8 @@ export type AppState = {
   attachSourceUrl: (modId: string, sourceUrl: string, providerId?: string) => Promise<Mod | null>;
   removeSourceUrl: (modId: string) => Promise<Mod | null>;
   uninstallManagedMod: (modId: string) => Promise<UninstallResult | null>;
+  openManagedModsFolder: () => Promise<void>;
+  openTrashFolder: () => Promise<void>;
   toggleMod: (mod: Mod, targetEnabled: boolean, instanceId: string) => Promise<DryRunResult>;
 };
 
@@ -218,6 +224,24 @@ export function createAppStore(apiOverrides: Partial<BackendApi> = {}) {
       } catch (error) {
         set((state) => ({
           issues: mergeIssueList(state.issues, toIssue(error, "custom-path", "Custom path invalid"))
+        }));
+      }
+    },
+    openManagedModsFolder: async () => {
+      try {
+        await api.openManagedModsFolder();
+      } catch (error) {
+        set((state) => ({
+          issues: mergeIssueList(state.issues, toIssue(error, "open-mod-folder", "Open mod folder failed"))
+        }));
+      }
+    },
+    openTrashFolder: async () => {
+      try {
+        await api.openTrashFolder();
+      } catch (error) {
+        set((state) => ({
+          issues: mergeIssueList(state.issues, toIssue(error, "open-trash-folder", "Open trash folder failed"))
         }));
       }
     },

@@ -116,6 +116,16 @@ fn open_external_url(url: String) -> Result<(), ManagerError> {
     commands::cmd_open_external_url(url)
 }
 
+#[tauri::command]
+fn open_managed_mods_folder() -> Result<(), ManagerError> {
+    commands::cmd_open_managed_mods_folder()
+}
+
+#[tauri::command]
+fn open_trash_folder() -> Result<(), ManagerError> {
+    commands::cmd_open_trash_folder()
+}
+
 pub fn run() {
     tauri::Builder::default()
         .invoke_handler(tauri::generate_handler![
@@ -131,7 +141,9 @@ pub fn run() {
             attach_source_url,
             remove_source_url,
             uninstall_managed_mod,
-            open_external_url
+            open_external_url,
+            open_managed_mods_folder,
+            open_trash_folder
         ])
         .run(tauri::generate_context!())
         .expect("tauri run failed");

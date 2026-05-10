@@ -189,6 +189,22 @@ export function createBackendApi(invoke: InvokeFn) {
       }
     },
 
+    async openManagedModsFolder(): Promise<void> {
+      try {
+        await invoke("open_managed_mods_folder");
+      } catch (error) {
+        throw normalizeError(error);
+      }
+    },
+
+    async openTrashFolder(): Promise<void> {
+      try {
+        await invoke("open_trash_folder");
+      } catch (error) {
+        throw normalizeError(error);
+      }
+    },
+
     async attachSourceUrl(modId: string, sourceUrl: string, providerId?: string): Promise<Mod> {
       try {
         const mod = await invoke<ModMetadataDto>("attach_source_url", {

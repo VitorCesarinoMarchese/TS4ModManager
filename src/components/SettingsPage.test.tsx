@@ -143,6 +143,28 @@ describe("SettingsPage", () => {
     expect(screen.getByLabelText("Accent color")).toBeDisabled();
   });
 
+  it("opens managed mod and trash folders", () => {
+    const onOpenManagedModsFolder = vi.fn();
+    const onOpenTrashFolder = vi.fn();
+    render(
+      <SettingsPage
+        instances={[]}
+        selectedInstanceId={null}
+        onSelectInstance={() => {}}
+        onRescan={() => {}}
+        onAddCustomPath={() => {}}
+        onOpenManagedModsFolder={onOpenManagedModsFolder}
+        onOpenTrashFolder={onOpenTrashFolder}
+      />
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Open Mod Folder" }));
+    fireEvent.click(screen.getByRole("button", { name: "Open Trash Folder" }));
+
+    expect(onOpenManagedModsFolder).toHaveBeenCalledTimes(1);
+    expect(onOpenTrashFolder).toHaveBeenCalledTimes(1);
+  });
+
   it("submits custom path", () => {
     const onAddCustomPath = vi.fn();
     render(

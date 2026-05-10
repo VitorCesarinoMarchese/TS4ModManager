@@ -245,6 +245,25 @@ describe("backend api wrapper", () => {
     });
   });
 
+  it("normalizes open folder command failures", async () => {
+    const invoke = vi.fn().mockRejectedValue({ code: "IO_ERROR", message: "xdg-open failed" });
+    const api = createBackendApi(invoke);
+
+    await expect(api.openManagedModsFolder()).rejects.toMatchObject({ code: "IO_ERROR" });
+    await expect(api.openTrashFolder()).rejects.toMatchObject({ code: "IO_ERROR" });
+  });
+
+  it("calls open folder commands", async () => {
+    const invoke = vi.fn().mockResolvedValue(undefined);
+    const api = createBackendApi(invoke);
+
+    await api.openManagedModsFolder();
+    await api.openTrashFolder();
+
+    expect(invoke).toHaveBeenCalledWith("open_managed_mods_folder");
+    expect(invoke).toHaveBeenCalledWith("open_trash_folder");
+  });
+
   it("calls import archive command", async () => {
     const invoke = vi.fn().mockResolvedValue({ modId: "m7" });
     const api = createBackendApi(invoke);

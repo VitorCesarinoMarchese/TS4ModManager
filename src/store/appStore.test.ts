@@ -414,6 +414,33 @@ describe("app store bootstrap", () => {
     expect(store.getState().mods.at(-1)?.name).toBe("Imported");
   });
 
+  it("stores open folder failures as issues", async () => {
+    const api = {
+      openManagedModsFolder: vi.fn().mockRejectedValue({ code: "IO_ERROR", message: "Open mods failed" }),
+      openTrashFolder: vi.fn().mockRejectedValue({ code: "IO_ERROR", message: "Open trash failed" })
+    };
+    const store = createAppStore(api);
+
+    await store.getState().openManagedModsFolder();
+    await store.getState().openTrashFolder();
+
+    expect(store.getState().issues.map((issue) => issue.message)).toEqual(["Open mods failed", "Open trash failed"]);
+  });
+
+  it("opens managed mod and trash folders", async () => {
+    const api = {
+      openManagedModsFolder: vi.fn().mockResolvedValue(undefined),
+      openTrashFolder: vi.fn().mockResolvedValue(undefined)
+    };
+    const store = createAppStore(api);
+
+    await store.getState().openManagedModsFolder();
+    await store.getState().openTrashFolder();
+
+    expect(api.openManagedModsFolder).toHaveBeenCalledTimes(1);
+    expect(api.openTrashFolder).toHaveBeenCalledTimes(1);
+  });
+
   it("custom instance validation error stored as issue", async () => {
     const api = {
       detectGameInstances: vi.fn().mockResolvedValue([]),

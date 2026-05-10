@@ -4,7 +4,7 @@ use std::path::PathBuf;
 
 use crate::error::{ErrorCode, ManagerError};
 
-pub fn managed_root() -> Result<PathBuf, ManagerError> {
+fn home_dir() -> Result<PathBuf, ManagerError> {
     let home = env::var("HOME").map_err(|_| {
         ManagerError::new(
             ErrorCode::InvalidPath,
@@ -12,7 +12,11 @@ pub fn managed_root() -> Result<PathBuf, ManagerError> {
         )
     })?;
 
-    let root = PathBuf::from(home).join(".local/share/sims4-mod-manager");
+    Ok(PathBuf::from(home))
+}
+
+pub fn managed_root() -> Result<PathBuf, ManagerError> {
+    let root = home_dir()?.join(".local/share/sims4-mod-manager");
     fs::create_dir_all(root.join("mods")).map_err(|e| {
         ManagerError::new(
             ErrorCode::IoError,
@@ -20,6 +24,31 @@ pub fn managed_root() -> Result<PathBuf, ManagerError> {
         )
     })?;
     Ok(root)
+}
+
+pub fn managed_mods_dir() -> Result<PathBuf, ManagerError> {
+    let root = managed_root()?.join("mods");
+    fs::create_dir_all(&root).map_err(|e| {
+        ManagerError::new(
+            ErrorCode::IoError,
+            format!("Create managed mods dir failed {}: {e}", root.display()),
+        )
+    })?;
+    Ok(root)
+}
+
+pub fn trash_files_dir() -> Result<PathBuf, ManagerError> {
+    let data_home = env::var("XDG_DATA_HOME")
+        .map(PathBuf::from)
+        .unwrap_or(home_dir()?.join(".local/share"));
+    let trash = data_home.join("Trash/files");
+    fs::create_dir_all(&trash).map_err(|e| {
+        ManagerError::new(
+            ErrorCode::IoError,
+            format!("Create trash dir failed {}: {e}", trash.display()),
+        )
+    })?;
+    Ok(trash)
 }
 
 pub fn instance_root_from_id(instance_id: &str) -> Result<PathBuf, ManagerError> {

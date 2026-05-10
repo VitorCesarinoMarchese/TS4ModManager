@@ -26,6 +26,7 @@ struct LinkSidecar {
 pub fn uninstall_managed_mod(
     managed_root: &Path,
     game_mods_dir: &Path,
+    trash_files_dir: &Path,
     mod_id: &str,
 ) -> Result<UninstallResult, ManagerError> {
     let mod_root = managed_root.join("mods").join(mod_id);
@@ -44,21 +45,23 @@ pub fn uninstall_managed_mod(
     }
 
     let issues = remove_manager_links(managed_root, game_mods_dir, mod_id)?;
-    let trash_dir = managed_root.join("trash");
-    fs::create_dir_all(&trash_dir).map_err(|e| {
+    fs::create_dir_all(trash_files_dir).map_err(|e| {
         ManagerError::new(
             ErrorCode::IoError,
-            format!("Trash dir create failed {}: {e}", trash_dir.display()),
+            format!("Trash dir create failed {}: {e}", trash_files_dir.display()),
         )
     })?;
 
-    let trashed = trash_dir.join(format!("{}-{}", mod_id, unix_millis()));
+    let trashed_name = format!("{}-{}", mod_id, unix_millis());
+    let trashed = trash_files_dir.join(&trashed_name);
     fs::rename(&mod_root, &trashed).map_err(|e| {
         ManagerError::new(
             ErrorCode::IoError,
             format!("Move to trash failed {} -> {}: {e}", mod_root.display(), trashed.display()),
         )
     })?;
+
+    write_trashinfo(trash_files_dir, &trashed_name, &mod_root)?;
 
     Ok(UninstallResult {
         mod_id: mod_id.to_string(),
@@ -137,6 +140,31 @@ fn issue_for_skipped_link(rel: &str, _reason: &str) -> IssueEvent {
     }
 }
 
+fn write_trashinfo(trash_files_dir: &Path, trashed_name: &str, original_path: &Path) -> Result<(), ManagerError> {
+    let Some(trash_root) = trash_files_dir.parent() else {
+        return Ok(());
+    };
+    let info_dir = trash_root.join("info");
+    fs::create_dir_all(&info_dir).map_err(|e| {
+        ManagerError::new(
+            ErrorCode::IoError,
+            format!("Trash info dir create failed {}: {e}", info_dir.display()),
+        )
+    })?;
+    let deletion_date = chrono::Local::now().format("%Y-%m-%dT%H:%M:%S");
+    let content = format!(
+        "[Trash Info]\nPath={}\nDeletionDate={}\n",
+        original_path.to_string_lossy(),
+        deletion_date
+    );
+    fs::write(info_dir.join(format!("{trashed_name}.trashinfo")), content).map_err(|e| {
+        ManagerError::new(
+            ErrorCode::IoError,
+            format!("Trash info write failed: {e}"),
+        )
+    })
+}
+
 fn unix_millis() -> u128 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -182,11 +210,13 @@ mod tests {
         apply_toggle(tmp.path(), &mods_dir, &mod_id, true).expect("enable");
         assert!(mods_dir.join("a.package").exists());
 
-        let result = uninstall_managed_mod(tmp.path(), &mods_dir, &mod_id).expect("uninstall");
+        let trash_files = tmp.path().join("Trash/files");
+        let result = uninstall_managed_mod(tmp.path(), &mods_dir, &trash_files, &mod_id).expect("uninstall");
 
         assert!(!tmp.path().join("mods").join(&mod_id).exists());
         assert!(!mods_dir.join("a.package").exists());
         assert!(std::path::Path::new(&result.trashed_path).join("meta.json").exists());
+        assert!(tmp.path().join("Trash/info").read_dir().expect("info dir").next().is_some());
         assert!(result.issues.is_empty());
     }
 
@@ -194,8 +224,9 @@ mod tests {
     fn uninstall_without_links_still_moves_to_trash() {
         let tmp = TempDir::new().expect("tmp");
         let (mod_id, mods_dir) = setup(&tmp);
+        let trash_files = tmp.path().join("Trash/files");
 
-        let result = uninstall_managed_mod(tmp.path(), &mods_dir, &mod_id).expect("uninstall");
+        let result = uninstall_managed_mod(tmp.path(), &mods_dir, &trash_files, &mod_id).expect("uninstall");
 
         assert!(!tmp.path().join("mods").join(&mod_id).exists());
         assert!(std::path::Path::new(&result.trashed_path).exists());
@@ -209,7 +240,8 @@ mod tests {
         fs::remove_file(mods_dir.join("a.package")).expect("remove symlink");
         fs::write(mods_dir.join("a.package"), b"user file").expect("user file");
 
-        let result = uninstall_managed_mod(tmp.path(), &mods_dir, &mod_id).expect("uninstall");
+        let trash_files = tmp.path().join("Trash/files");
+        let result = uninstall_managed_mod(tmp.path(), &mods_dir, &trash_files, &mod_id).expect("uninstall");
 
         assert_eq!(fs::read(mods_dir.join("a.package")).expect("read"), b"user file");
         assert!(result
@@ -224,9 +256,10 @@ mod tests {
         let mods_dir = tmp.path().join("Game/Mods");
         fs::create_dir_all(&mods_dir).expect("mods dir");
 
-        let err = uninstall_managed_mod(tmp.path(), &mods_dir, "missing").expect_err("missing");
+        let trash_files = tmp.path().join("Trash/files");
+        let err = uninstall_managed_mod(tmp.path(), &mods_dir, &trash_files, "missing").expect_err("missing");
 
         assert_eq!(err.code.as_str(), "NOT_FOUND");
-        assert!(!tmp.path().join("trash").exists());
+        assert!(!trash_files.exists());
     }
 }
