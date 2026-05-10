@@ -23,6 +23,9 @@ type SettingsPageProps = {
   onThemeReset?: () => void;
   onOpenManagedModsFolder?: () => void | Promise<void>;
   onOpenManagerFolder?: () => void | Promise<void>;
+  onManageAllMods?: () => void | Promise<void>;
+  manageAllDisabled?: boolean;
+  manageAllLoading?: boolean;
   onRefreshTrash?: () => void | Promise<void>;
   onRestoreTrash?: (trashName: string) => void | Promise<void>;
 };
@@ -65,6 +68,9 @@ export function SettingsPage({
   onThemeReset,
   onOpenManagedModsFolder,
   onOpenManagerFolder,
+  onManageAllMods,
+  manageAllDisabled = false,
+  manageAllLoading = false,
   onRefreshTrash,
   onRestoreTrash
 }: SettingsPageProps) {
@@ -76,6 +82,9 @@ export function SettingsPage({
   const buttonClass =
     "inline-flex items-center gap-2 rounded-md border !border-[var(--color-border)] bg-white px-3 py-1.5 text-sm hover:border-accent hover:bg-accent/10 focus:outline-none focus:ring-2 focus:ring-accent/40 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-slate-800 dark:hover:border-accent dark:hover:bg-accent/10";
   const canEditTheme = customThemes.some((theme) => theme.name === activeThemeName);
+  const normalizedCustomPath = customPath.trim().replace(/\/+$/, "");
+  const customPathLooksLikeModsFolder = /(^|\/)Mods$/i.test(normalizedCustomPath);
+  const suggestedCustomPath = customPathLooksLikeModsFolder ? normalizedCustomPath.replace(/\/Mods$/i, "") : null;
 
   const updateColor = (key: keyof AppTheme["colors"], value: string) => {
     onThemeChange?.({ ...activeTheme, colors: { ...activeTheme.colors, [key]: value } });
@@ -122,7 +131,7 @@ export function SettingsPage({
           type="button"
           className={buttonClass}
           onClick={() => {
-            const trimmed = customPath.trim();
+            const trimmed = (suggestedCustomPath ?? customPath.trim()).trim();
             if (!trimmed) return;
             void onAddCustomPath(trimmed);
             setCustomPath("");
@@ -131,6 +140,14 @@ export function SettingsPage({
           <FolderPlus size={16} weight="regular" aria-hidden="true" />
           Add Custom Path
         </button>
+        <p className="basis-full text-sm text-slate-600 dark:text-slate-300">
+          Select the <strong>The Sims 4</strong> folder that contains <code>Mods/</code>, not the <code>Mods</code> folder itself.
+        </p>
+        {suggestedCustomPath ? (
+          <p role="status" className="basis-full text-sm text-amber-700 dark:text-amber-300">
+            Looks like you selected <code>Mods</code>. The app will add <code>{suggestedCustomPath}</code> instead.
+          </p>
+        ) : null}
       </div>
 
       <div className="flex flex-wrap gap-2">
@@ -141,6 +158,10 @@ export function SettingsPage({
         <button type="button" className={buttonClass} onClick={() => void onOpenManagerFolder?.()}>
           <FolderOpen size={16} weight="regular" aria-hidden="true" />
           Open Manager Folder
+        </button>
+        <button type="button" className={buttonClass} disabled={manageAllDisabled || manageAllLoading} onClick={() => void onManageAllMods?.()}>
+          <ArrowsClockwise className={manageAllLoading ? "animate-spin" : ""} size={16} weight="regular" aria-hidden="true" />
+          {manageAllLoading ? "Managing Mods..." : "Manage All Mods"}
         </button>
       </div>
 

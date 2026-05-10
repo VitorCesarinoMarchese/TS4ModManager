@@ -95,6 +95,7 @@ export type AppState = {
   lastSuccess: string | null;
   lastDryRun: DryRunResult | null;
   scanStatus: "idle" | "scanning";
+  manageAllStatus: "idle" | "managing";
   selectInstance: (id: string | null) => void;
   loadInstances: () => Promise<void>;
   selectInstanceAndScan: (id: string) => Promise<void>;
@@ -109,6 +110,7 @@ export type AppState = {
   loadTrashEntries: () => Promise<void>;
   restoreTrashedMod: (trashName: string) => Promise<RestoreResult | null>;
   manageExternalMod: (modId: string) => Promise<MigrateResult | null>;
+  manageAllExternalMods: () => Promise<MigrateResult[]>;
   clearSuccess: () => void;
   openManagedModsFolder: () => Promise<void>;
   openManagerFolder: () => Promise<void>;
@@ -181,6 +183,7 @@ export function createAppStore(apiOverrides: Partial<BackendApi> = {}) {
     lastSuccess: null,
     lastDryRun: null,
     scanStatus: "idle",
+    manageAllStatus: "idle",
     selectInstance: (id) => set({ selectedInstanceId: id }),
     loadInstances: async () => {
       const instances = await api.detectGameInstances();
@@ -303,6 +306,34 @@ export function createAppStore(apiOverrides: Partial<BackendApi> = {}) {
           issues: mergeIssueList(state.issues, toIssue(error, "manage-mod", "Manage mod failed"))
         }));
         return null;
+      }
+    },
+    manageAllExternalMods: async () => {
+      const instanceId = get().selectedInstanceId;
+      if (!instanceId) return [];
+      const externalMods = get().mods.filter((mod) => mod.source === "external");
+      if (externalMods.length === 0) return [];
+
+      set({ manageAllStatus: "managing" });
+      const results: MigrateResult[] = [];
+      try {
+        for (const mod of externalMods) {
+          const result = await api.migrateExternalMod(mod.id, instanceId);
+          results.push(result);
+          if (result.issues.length > 0) {
+            set((state) => ({ issues: mergeIssues(state.issues, result.issues) }));
+          }
+        }
+        const mods = await api.scanMods(instanceId);
+        set({ mods, lastSuccess: `Managing ${results.length} mod${results.length === 1 ? "" : "s"}` });
+        return results;
+      } catch (error) {
+        set((state) => ({
+          issues: mergeIssueList(state.issues, toIssue(error, "manage-all-mods", "Manage all mods failed"))
+        }));
+        return results;
+      } finally {
+        set({ manageAllStatus: "idle" });
       }
     },
     restoreTrashedMod: async (trashName) => {

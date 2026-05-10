@@ -167,9 +167,10 @@ describe("SettingsPage", () => {
     expect(onRestoreTrash).toHaveBeenCalledWith("mod-1-123");
   });
 
-  it("opens managed mod and manager folders", () => {
+  it("opens folders and starts manage-all flow", () => {
     const onOpenManagedModsFolder = vi.fn();
     const onOpenManagerFolder = vi.fn();
+    const onManageAllMods = vi.fn();
     render(
       <SettingsPage
         instances={[]}
@@ -179,15 +180,57 @@ describe("SettingsPage", () => {
         onAddCustomPath={() => {}}
         onOpenManagedModsFolder={onOpenManagedModsFolder}
         onOpenManagerFolder={onOpenManagerFolder}
+        onManageAllMods={onManageAllMods}
       />
     );
 
     fireEvent.click(screen.getByRole("button", { name: "Open Mod Folder" }));
     fireEvent.click(screen.getByRole("button", { name: "Open Manager Folder" }));
+    fireEvent.click(screen.getByRole("button", { name: "Manage All Mods" }));
 
     expect(onOpenManagedModsFolder).toHaveBeenCalledTimes(1);
     expect(onOpenManagerFolder).toHaveBeenCalledTimes(1);
+    expect(onManageAllMods).toHaveBeenCalledTimes(1);
     expect(screen.queryByRole("button", { name: "Open Trash Folder" })).not.toBeInTheDocument();
+  });
+
+  it("shows manage-all loading state", () => {
+    render(
+      <SettingsPage
+        instances={[]}
+        selectedInstanceId={null}
+        onSelectInstance={() => {}}
+        onRescan={() => {}}
+        onAddCustomPath={() => {}}
+        manageAllLoading
+      />
+    );
+
+    const button = screen.getByRole("button", { name: "Managing Mods..." });
+    expect(button).toBeDisabled();
+    expect(button.querySelector("svg")).toHaveClass("animate-spin");
+  });
+
+  it("shows custom path hint and uses parent when user enters Mods folder", () => {
+    const onAddCustomPath = vi.fn();
+    render(
+      <SettingsPage
+        instances={[]}
+        selectedInstanceId={null}
+        onSelectInstance={() => {}}
+        onRescan={() => {}}
+        onAddCustomPath={onAddCustomPath}
+      />
+    );
+
+    expect(screen.getByText(/Select the/)).toHaveTextContent("not the Mods folder itself");
+    fireEvent.change(screen.getByLabelText("Custom Sims 4 path"), {
+      target: { value: "/games/The Sims 4/Mods" }
+    });
+    expect(screen.getByRole("status")).toHaveTextContent("/games/The Sims 4");
+    fireEvent.click(screen.getByRole("button", { name: "Add Custom Path" }));
+
+    expect(onAddCustomPath).toHaveBeenCalledWith("/games/The Sims 4");
   });
 
   it("submits custom path", () => {

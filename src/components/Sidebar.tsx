@@ -1,4 +1,5 @@
 import { Folder, X } from "@phosphor-icons/react";
+import { motion } from "framer-motion";
 import type { GameInstance } from "../lib/types";
 
 type SidebarProps = {
@@ -20,9 +21,14 @@ function friendlyName(instance: GameInstance, index: number) {
 
 export function Sidebar({ instances, selectedInstanceId, onSelectInstance, onCollapse }: SidebarProps) {
   return (
-    <aside
+    <motion.aside
       className="sidebar theme-surface rounded-[14px] border !border-[var(--color-border)] p-5"
       aria-label="game-instances-sidebar"
+      data-animated="true"
+      initial={{ opacity: 0, x: -16 }}
+      animate={{ opacity: 1, x: 0 }}
+      exit={{ opacity: 0, x: -16 }}
+      transition={{ duration: 0.18, ease: "easeOut" }}
     >
       <div className="mb-4 flex items-center justify-between gap-3">
         <h2 className="text-lg font-semibold">Game Instances</h2>
@@ -59,6 +65,6 @@ export function Sidebar({ instances, selectedInstanceId, onSelectInstance, onCol
           );
         })}
       </ul>
-    </aside>
+    </motion.aside>
   );
 }

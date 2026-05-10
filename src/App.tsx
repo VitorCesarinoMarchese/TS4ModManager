@@ -1,5 +1,5 @@
 import { ArrowsClockwise, SidebarSimple, X } from "@phosphor-icons/react";
-import { motion } from "framer-motion";
+import { AnimatePresence, motion } from "framer-motion";
 import { useEffect, useState } from "react";
 import { useStore } from "zustand";
 import type { StoreApi } from "zustand/vanilla";
@@ -77,6 +77,7 @@ export function App({ store = defaultStore }: AppProps) {
   const trashEntries = useStore(store, (s) => s.trashEntries);
   const lastSuccess = useStore(store, (s) => s.lastSuccess);
   const scanStatus = useStore(store, (s) => s.scanStatus);
+  const manageAllStatus = useStore(store, (s) => s.manageAllStatus);
   const loadInstances = useStore(store, (s) => s.loadInstances);
   const selectInstanceAndScan = useStore(store, (s) => s.selectInstanceAndScan);
   const rescanSelected = useStore(store, (s) => s.rescanSelected);
@@ -90,6 +91,7 @@ export function App({ store = defaultStore }: AppProps) {
   const loadTrashEntries = useStore(store, (s) => s.loadTrashEntries);
   const restoreTrashedMod = useStore(store, (s) => s.restoreTrashedMod);
   const manageExternalMod = useStore(store, (s) => s.manageExternalMod);
+  const manageAllExternalMods = useStore(store, (s) => s.manageAllExternalMods);
   const clearSuccess = useStore(store, (s) => s.clearSuccess);
   const openManagedModsFolder = useStore(store, (s) => s.openManagedModsFolder);
   const openManagerFolder = useStore(store, (s) => s.openManagerFolder);
@@ -138,6 +140,7 @@ export function App({ store = defaultStore }: AppProps) {
     : null;
 
   const isScanning = scanStatus === "scanning";
+  const isManagingAll = manageAllStatus === "managing";
   const isSidebarCollapsed = sidebarCollapsed;
   const popupIssue = [...issues]
     .reverse()
@@ -199,14 +202,17 @@ export function App({ store = defaultStore }: AppProps) {
       <TopBar onSettings={() => setSettingsOpen(true)} />
 
       <div className={`layout grid gap-6 p-6 ${isSidebarCollapsed ? "grid-cols-1" : "grid-cols-[280px_1fr]"}`}>
-        {isSidebarCollapsed ? null : (
-          <Sidebar
-            instances={instances}
-            selectedInstanceId={selectedInstanceId}
-            onSelectInstance={(id) => void selectInstanceAndScan(id)}
-            onCollapse={() => setPersistedSidebarCollapsed(true)}
-          />
-        )}
+        <AnimatePresence initial={false}>
+          {isSidebarCollapsed ? null : (
+            <Sidebar
+              key="game-instances-sidebar"
+              instances={instances}
+              selectedInstanceId={selectedInstanceId}
+              onSelectInstance={(id) => void selectInstanceAndScan(id)}
+              onCollapse={() => setPersistedSidebarCollapsed(true)}
+            />
+          )}
+        </AnimatePresence>
 
         <main className="main-content grid gap-6 rounded-2xl border !border-[var(--color-border)] bg-white p-6 dark:bg-slate-900">
           <header className="main-header flex items-center justify-between gap-4">
@@ -250,19 +256,24 @@ export function App({ store = defaultStore }: AppProps) {
               onDetails={(mod) => setSelectedMod(mod)}
               toggleDisabledById={toggleDisabledById}
             />
-            {isScanning ? <ModScanOverlay /> : null}
+            <AnimatePresence>
+              {isScanning ? <ModScanOverlay /> : null}
+              {isManagingAll ? <ModScanOverlay label="manage-all-loading" message="Managing all external mods. This can take a while for large mod folders..." /> : null}
+            </AnimatePresence>
           </div>
 
           <IssuesPanel issues={issues} />
         </main>
       </div>
 
-      {settingsOpen ? (
+      <AnimatePresence>
+        {settingsOpen ? (
         <motion.div
           className="modal-backdrop fixed inset-0 z-20 grid place-items-center bg-black/35 p-4"
           role="presentation"
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
           transition={{ duration: 0.16 }}
           onClick={() => setSettingsOpen(false)}
         >
@@ -273,6 +284,7 @@ export function App({ store = defaultStore }: AppProps) {
             data-animated="true"
             initial={{ opacity: 0, scale: 0.98 }}
             animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0, scale: 0.98 }}
             transition={{ duration: 0.18, ease: "easeOut" }}
             onClick={(e) => e.stopPropagation()}
           >
@@ -310,6 +322,9 @@ export function App({ store = defaultStore }: AppProps) {
               onThemeReset={onThemeReset}
               onOpenManagedModsFolder={() => void openManagedModsFolder()}
               onOpenManagerFolder={() => void openManagerFolder()}
+              onManageAllMods={() => void manageAllExternalMods()}
+              manageAllDisabled={!selectedInstanceId || mods.every((mod) => mod.source !== "external")}
+              manageAllLoading={isManagingAll}
               onRefreshTrash={() => void loadTrashEntries()}
               onRestoreTrash={(trashName) => void restoreTrashedMod(trashName)}
             />
@@ -317,7 +332,8 @@ export function App({ store = defaultStore }: AppProps) {
             <ImportPanel onImport={(archivePath, name, slug) => importArchive(archivePath, name, slug)} />
           </motion.section>
         </motion.div>
-      ) : null}
+        ) : null}
+      </AnimatePresence>
 
       <div className="fixed bottom-4 right-4 z-40" onAnimationEnd={clearSuccess}>
         <Toast issue={lastSuccess ? { id: "success", severity: "info", message: lastSuccess } : null} />

@@ -133,6 +133,9 @@ pub fn list_trash_entries(trash_files_dir: &Path) -> Result<Vec<TrashEntry>, Man
         .filter_map(|entry| {
             let path = entry.path();
             let name = path.file_name()?.to_string_lossy().to_string();
+            if !is_mod_trash_entry(trash_files_dir, &name, &path) {
+                return None;
+            }
             Some(TrashEntry { name, path: path.to_string_lossy().to_string() })
         })
         .collect::<Vec<_>>();
@@ -221,6 +224,54 @@ pub fn restore_trashed_mod(
     let _ = fs::remove_dir(&entry);
 
     Ok(RestoreResult { restored_path: restored_path.to_string_lossy().to_string() })
+}
+
+fn is_mod_trash_entry(trash_files_dir: &Path, trash_name: &str, entry_path: &Path) -> bool {
+    if entry_contains_mod_data(entry_path) {
+        return true;
+    }
+
+    let Some(trash_root) = trash_files_dir.parent() else {
+        return false;
+    };
+    let info_path = trash_root.join("info").join(format!("{trash_name}.trashinfo"));
+    let Ok(info) = fs::read_to_string(info_path) else {
+        return false;
+    };
+
+    info.lines().any(|line| {
+        let Some(path) = line.strip_prefix("Path=") else {
+            return false;
+        };
+        path.contains("sims4-mod-manager") || path.contains("/The Sims 4/Mods/") || path.ends_with("/The Sims 4/Mods")
+    })
+}
+
+fn entry_contains_mod_data(path: &Path) -> bool {
+    if path.join("meta.json").is_file() || path.join("metadata/meta.json").is_file() {
+        return true;
+    }
+
+    if path.is_file() {
+        return path.extension().and_then(|ext| ext.to_str()).is_some_and(is_mod_extension);
+    }
+
+    let Ok(entries) = fs::read_dir(path) else {
+        return false;
+    };
+
+    entries.flatten().any(|entry| {
+        let child = entry.path();
+        if child.is_dir() {
+            entry_contains_mod_data(&child)
+        } else {
+            child.extension().and_then(|ext| ext.to_str()).is_some_and(is_mod_extension)
+        }
+    })
+}
+
+fn is_mod_extension(ext: &str) -> bool {
+    ext.eq_ignore_ascii_case("package") || ext.eq_ignore_ascii_case("ts4script")
 }
 
 fn installed_group_targets(game_mods_dir: &Path, mod_id: &str) -> Result<Vec<PathBuf>, ManagerError> {
@@ -479,6 +530,25 @@ mod tests {
         let trashed = std::path::Path::new(&result.trashed_path);
         assert!(trashed.join("LooseMod_a.package").exists());
         assert!(trashed.join("LooseMod_b.ts4script").exists());
+    }
+
+    #[test]
+    fn list_trash_entries_filters_unrelated_user_trash() {
+        let tmp = TempDir::new().expect("tmp");
+        let trash_files = tmp.path().join("Trash/files");
+        let trash_info = tmp.path().join("Trash/info");
+        fs::create_dir_all(&trash_files).expect("trash files");
+        fs::create_dir_all(&trash_info).expect("trash info");
+        fs::write(trash_files.join("notes.txt"), b"notes").expect("notes");
+        fs::write(trash_info.join("notes.txt.trashinfo"), "[Trash Info]\nPath=/home/me/notes.txt\n").expect("notes info");
+        fs::create_dir_all(trash_files.join("LooseMod-123")).expect("mod trash");
+        fs::write(trash_files.join("LooseMod-123/LooseMod.package"), b"pkg").expect("pkg");
+        fs::write(trash_info.join("LooseMod-123.trashinfo"), "[Trash Info]\nPath=/home/me/Documents/Electronic Arts/The Sims 4/Mods/LooseMod\n").expect("mod info");
+
+        let entries = list_trash_entries(&trash_files).expect("list");
+
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].name, "LooseMod-123");
     }
 
     #[test]

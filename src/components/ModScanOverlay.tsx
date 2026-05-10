@@ -1,9 +1,14 @@
 import { motion } from "framer-motion";
 
-export function ModScanOverlay() {
+type ModScanOverlayProps = {
+  label?: string;
+  message?: string;
+};
+
+export function ModScanOverlay({ label = "mod-scan-loading", message = "Scanning mods..." }: ModScanOverlayProps) {
   return (
     <motion.div
-      aria-label="mod-scan-loading"
+      aria-label={label}
       className="absolute inset-0 z-10 grid place-items-center rounded-2xl bg-white/80 backdrop-blur-sm dark:bg-slate-950/70"
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
@@ -17,7 +22,7 @@ export function ModScanOverlay() {
           transition={{ duration: 0.9, repeat: Infinity, ease: "easeInOut" }}
           aria-hidden="true"
         />
-        <p className="text-sm font-medium text-slate-700 dark:text-slate-200">Scanning mods...</p>
+        <p className="text-sm font-medium text-slate-700 dark:text-slate-200">{message}</p>
       </div>
     </motion.div>
   );

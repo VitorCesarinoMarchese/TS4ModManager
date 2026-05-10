@@ -15,6 +15,10 @@ Phase 2 checkpoints 1-11 are complete. Latest lifecycle hardening adds:
 - Folder opening detaches `xdg-open`, silences stdio, and applies Linux desktop env workarounds to avoid DBus/GLFW/Wayland noise.
 - Tauri startup sets `WEBKIT_DISABLE_DMABUF_RENDERER=1` by default to avoid common WebKitGTK Wayland protocol crashes; set `TS4MM_DISABLE_WAYLAND_WORKAROUNDS=1` to opt out.
 - Uninstall/restore success feedback appears as a toast.
+- Settings includes Manage All Mods for bulk external migration with loading feedback.
+- Trash list filters out unrelated user trash and shows only mod/app-related entries.
+- Settings modal and game instance sidebar have exit animations.
+- Custom path entry hints that users must select `The Sims 4`, not `Mods`, and auto-submits the parent when `Mods` is entered.
 
 The project is a functional Linux-first Sims 4 mod manager with:
 
@@ -37,10 +41,9 @@ The project is a functional Linux-first Sims 4 mod manager with:
 Current validation baseline:
 
 ```text
-npm run test:run       -> 71 passed
+npm run test:coverage  -> 126 frontend tests, branch coverage 80.22%
 npm run build          -> passing
-npm run test:coverage  -> 91.09%
-cargo test             -> 44 passed
+cargo test             -> 71 passed
 cargo check --features tauri-app -> passing
 ```
 

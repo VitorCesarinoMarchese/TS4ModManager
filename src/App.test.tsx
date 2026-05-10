@@ -188,11 +188,11 @@ describe("App redesign", () => {
     });
 
     fireEvent.click(screen.getByRole("button", { name: "close-game-instances" }));
-    expect(screen.queryByLabelText("game-instances-sidebar")).not.toBeInTheDocument();
+    await waitFor(() => expect(screen.queryByLabelText("game-instances-sidebar")).not.toBeInTheDocument());
     expect(window.localStorage.setItem).toHaveBeenCalledWith("ts4mm-sidebar-collapsed", "true");
   });
 
-  it("opens and closes settings modal from top bar", () => {
+  it("opens and closes settings modal from top bar", async () => {
     const api = makeApi();
     const store = createAppStore(api);
     render(<App store={store} />);
@@ -207,7 +207,7 @@ describe("App redesign", () => {
     expect(screen.getByRole("button", { name: "close-settings" })).not.toHaveClass("border-red-500");
 
     fireEvent.click(screen.getByRole("button", { name: "close-settings" }));
-    expect(screen.queryByRole("dialog", { name: "settings-modal" })).not.toBeInTheDocument();
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "settings-modal" })).not.toBeInTheDocument());
   });
 
   it("uses system dark theme from settings dropdown", () => {

@@ -21,6 +21,7 @@ describe("app store bootstrap", () => {
     expect(state.issues).toEqual([]);
     expect(state.selectedInstanceId).toBeNull();
     expect(state.scanStatus).toBe("idle");
+    expect(state.manageAllStatus).toBe("idle");
   });
 
   it("allows setting selected instance", () => {
@@ -195,6 +196,77 @@ describe("app store bootstrap", () => {
     expect(api.dryRunToggle).toHaveBeenCalledWith("managed-123", true, "inst-1");
     expect(api.applyToggle).toHaveBeenCalledWith("managed-123", true, "inst-1");
     expect(store.getState().issues.at(-1)?.message).toBe("Migrated");
+  });
+
+  it("skips manage all when no instance or no external mods", async () => {
+    const api = {
+      migrateExternalMod: vi.fn(),
+      scanMods: vi.fn().mockResolvedValue([])
+    };
+    const store = createAppStore(api);
+
+    await expect(store.getState().manageAllExternalMods()).resolves.toEqual([]);
+    store.setState({ selectedInstanceId: "inst-1", mods: [{ id: "m1", name: "Managed", files: [], enabled: true, source: "managed" }] });
+    await expect(store.getState().manageAllExternalMods()).resolves.toEqual([]);
+
+    expect(api.migrateExternalMod).not.toHaveBeenCalled();
+    expect(api.scanMods).not.toHaveBeenCalled();
+  });
+
+  it("manages all external mods sequentially and shows loading state", async () => {
+    const first = deferred<{ managedModId: string; issues: [] }>();
+    const api = {
+      detectGameInstances: vi.fn().mockResolvedValue([]),
+      scanMods: vi.fn().mockResolvedValue([{ id: "managed-1", name: "Managed", files: [], enabled: true, source: "managed" }]),
+      migrateExternalMod: vi.fn().mockReturnValueOnce(first.promise).mockResolvedValueOnce({ managedModId: "managed-2", issues: [] }),
+      dryRunToggle: vi.fn().mockResolvedValue({ canApply: true, operations: [], issues: [] }),
+      applyToggle: vi.fn().mockResolvedValue({ applied: true, issues: [] })
+    };
+    const store = createAppStore(api);
+    store.setState({
+      selectedInstanceId: "inst-1",
+      mods: [
+        { id: "ext-1", name: "One", files: ["a.package"], enabled: true, source: "external" },
+        { id: "managed-old", name: "Old", files: ["b.package"], enabled: true, source: "managed" },
+        { id: "ext-2", name: "Two", files: ["c.package"], enabled: true, source: "external" }
+      ]
+    });
+
+    const pending = store.getState().manageAllExternalMods();
+    expect(store.getState().manageAllStatus).toBe("managing");
+    first.resolve({ managedModId: "managed-1", issues: [] });
+    await pending;
+
+    expect(api.migrateExternalMod).toHaveBeenNthCalledWith(1, "ext-1", "inst-1");
+    expect(api.migrateExternalMod).toHaveBeenNthCalledWith(2, "ext-2", "inst-1");
+    expect(api.scanMods).toHaveBeenCalledWith("inst-1");
+    expect(store.getState().manageAllStatus).toBe("idle");
+    expect(store.getState().lastSuccess).toBe("Managing 2 mods");
+  });
+
+  it("keeps partial manage-all results and stores an issue when migration fails", async () => {
+    const api = {
+      migrateExternalMod: vi
+        .fn()
+        .mockResolvedValueOnce({ managedModId: "managed-1", issues: [] })
+        .mockRejectedValueOnce({ code: "IO_ERROR", message: "copy failed" }),
+      scanMods: vi.fn().mockResolvedValue([])
+    };
+    const store = createAppStore(api);
+    store.setState({
+      selectedInstanceId: "inst-1",
+      mods: [
+        { id: "ext-1", name: "One", files: [], enabled: true, source: "external" },
+        { id: "ext-2", name: "Two", files: [], enabled: true, source: "external" }
+      ]
+    });
+
+    const results = await store.getState().manageAllExternalMods();
+
+    expect(results).toEqual([{ managedModId: "managed-1", issues: [] }]);
+    expect(api.scanMods).not.toHaveBeenCalled();
+    expect(store.getState().manageAllStatus).toBe("idle");
+    expect(store.getState().issues.at(-1)?.message).toBe("copy failed");
   });
 
   it("adds custom instance then scans it", async () => {

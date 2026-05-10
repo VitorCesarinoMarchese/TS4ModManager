@@ -19,6 +19,7 @@ describe("Sidebar", () => {
 
     expect(screen.getByRole("button", { name: "close-game-instances" })).toHaveTextContent("Close");
     expect(screen.getByLabelText("game-instances-sidebar")).toHaveClass("!border-[var(--color-border)]");
+    expect(screen.getByLabelText("game-instances-sidebar")).toHaveAttribute("data-animated", "true");
     expect(screen.getByText("Steam Instance 1")).toBeInTheDocument();
     expect(screen.getByText("Custom Instance 2")).toBeInTheDocument();
     expect(screen.queryByText("/long/path/one")).not.toBeInTheDocument();
