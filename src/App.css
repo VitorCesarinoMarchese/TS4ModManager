@@ -5,7 +5,8 @@ body,
   padding: 0;
   width: 100%;
   height: 100%;
-  background: #15171c;
+  background: var(--color-background, #15171c);
+  color: var(--color-text, #020617);
 }
 
 button,
@@ -20,25 +21,27 @@ button {
 }
 
 .app-shell {
-  background: var(--color-background, #f8fafc);
-  color: var(--color-text, #020617);
+  background: var(--color-background, #f8fafc) !important;
+  color: var(--color-text, #020617) !important;
 }
 
 .topbar,
 .sidebar,
 .main-content,
 .modal {
-  border-color: var(--color-border, #cbd5e1);
+  border-color: var(--color-border, #cbd5e1) !important;
 }
 
+.topbar,
+.sidebar,
 .main-content,
 .modal,
 .app-shell button,
 .app-shell input,
 .app-shell select,
 .app-shell textarea {
-  background-color: var(--color-surface, #ffffff);
-  color: var(--color-text, #020617);
+  background-color: var(--color-surface, #ffffff) !important;
+  color: var(--color-text, #020617) !important;
 }
 
 .app-shell button,
@@ -46,13 +49,19 @@ button {
 .app-shell select,
 .app-shell textarea,
 .app-shell fieldset {
-  border-color: var(--color-border, #cbd5e1);
+  border-color: var(--color-border, #cbd5e1) !important;
 }
 
+.app-shell .text-slate-950,
+.app-shell .dark\:text-slate-100 {
+  color: var(--color-text, #020617) !important;
+}
+
+.app-shell .text-slate-700,
 .app-shell .text-slate-600,
 .app-shell .text-slate-500,
 .app-shell .dark\:text-slate-300 {
-  color: var(--color-muted-text, #64748b);
+  color: var(--color-muted-text, #64748b) !important;
 }
 
 .app-shell.dark {

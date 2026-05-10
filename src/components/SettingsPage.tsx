@@ -174,6 +174,18 @@ export function SettingsPage({
         {copyStatus ? <p role="status" className="text-sm text-slate-600 dark:text-slate-300">{copyStatus}</p> : null}
         {!canEditTheme ? <p className="text-sm text-slate-600 dark:text-slate-300">Create or select a custom theme to edit colors.</p> : null}
 
+        {canEditTheme ? (
+          <label className="grid max-w-xs gap-1 text-sm font-medium" htmlFor="theme-name">
+            Theme name
+            <input
+              id="theme-name"
+              className={inputClass}
+              value={activeTheme.name}
+              onChange={(e) => onThemeChange?.({ ...activeTheme, name: e.target.value })}
+            />
+          </label>
+        ) : null}
+
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
           {colorFields.map(([key, label]) => (
             <label key={key} className="grid gap-1 text-sm font-medium" htmlFor={`theme-${key}`}>
@@ -218,7 +230,7 @@ export function SettingsPage({
             Import Theme
           </button>
           <button type="button" className={buttonClass} onClick={onThemeReset}>
-            Reset Themes
+            Reset Current Theme
           </button>
         </div>
       </fieldset>

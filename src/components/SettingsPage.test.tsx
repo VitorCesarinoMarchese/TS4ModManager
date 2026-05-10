@@ -87,6 +87,9 @@ describe("SettingsPage", () => {
     fireEvent.click(screen.getByRole("button", { name: "Create Custom Theme" }));
     expect(onCreateTheme).toHaveBeenCalledTimes(1);
 
+    fireEvent.change(screen.getByLabelText("Theme name"), { target: { value: "Purple Night" } });
+    expect(onThemeChange).toHaveBeenCalledWith({ ...purpleTheme, name: "Purple Night" });
+
     fireEvent.change(screen.getByLabelText("Accent color"), { target: { value: "#22c55e" } });
     expect(onThemeChange).toHaveBeenCalledWith({ ...purpleTheme, colors: { ...purpleTheme.colors, accent: "#22c55e" } });
     fireEvent.change(screen.getByLabelText("Background color"), { target: { value: "#020617" } });
@@ -104,7 +107,7 @@ describe("SettingsPage", () => {
     fireEvent.click(screen.getByRole("button", { name: "Import Theme" }));
     expect(screen.getByRole("alert")).toHaveTextContent("Invalid theme JSON");
 
-    fireEvent.click(screen.getByRole("button", { name: "Reset Themes" }));
+    fireEvent.click(screen.getByRole("button", { name: "Reset Current Theme" }));
     expect(onThemeReset).toHaveBeenCalledTimes(1);
   });
 
@@ -122,6 +125,7 @@ describe("SettingsPage", () => {
     );
 
     expect(screen.getByText("Create or select a custom theme to edit colors.")).toBeInTheDocument();
+    expect(screen.queryByLabelText("Theme name")).not.toBeInTheDocument();
     expect(screen.getByLabelText("Accent color")).toBeDisabled();
   });
 

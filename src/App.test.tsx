@@ -153,8 +153,8 @@ describe("App redesign", () => {
     const modal = screen.getByRole("dialog", { name: "settings-modal" });
     expect(modal).toBeInTheDocument();
     expect(modal).toHaveAttribute("data-animated", "true");
-    expect(modal).not.toHaveClass("overflow-auto");
-    expect(modal).toHaveClass("overflow-visible");
+    expect(modal).toHaveClass("max-h-[calc(100vh-2rem)]");
+    expect(modal).toHaveClass("overflow-y-auto");
     expect(screen.getByRole("button", { name: "close-settings" })).toHaveClass("hover:border-red-500");
     expect(screen.getByRole("button", { name: "close-settings" })).not.toHaveClass("border-red-500");
 
@@ -194,9 +194,12 @@ describe("App redesign", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "open-settings" }));
     fireEvent.click(screen.getByRole("button", { name: "Create Custom Theme" }));
+    expect(screen.getByLabelText("Theme name")).toHaveValue("Custom Theme 1");
+    fireEvent.change(screen.getByLabelText("Theme name"), { target: { value: "Green Night" } });
     fireEvent.change(screen.getByLabelText("Accent color"), { target: { value: "#22c55e" } });
     fireEvent.change(screen.getByLabelText("Background color"), { target: { value: "#020617" } });
 
+    expect(screen.getByRole("combobox", { name: "Active theme" })).toHaveValue("Green Night");
     expect(document.documentElement.style.getPropertyValue("--color-accent")).toBe("#22c55e");
     expect(document.documentElement.style.getPropertyValue("--color-background")).toBe("#020617");
     expect(window.localStorage.setItem).toHaveBeenCalledWith(
@@ -221,6 +224,46 @@ describe("App redesign", () => {
     fireEvent.change(screen.getByLabelText("Theme JSON import"), { target: { value: JSON.stringify(importedTheme) } });
     fireEvent.click(screen.getByRole("button", { name: "Import Theme" }));
     expect(document.documentElement.style.getPropertyValue("--color-border")).toBe("#6d28d9");
+  });
+
+  it("creates editable custom theme from dark without losing readable text", () => {
+    const api = makeApi();
+    const store = createAppStore(api);
+    render(<App store={store} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "open-settings" }));
+    fireEvent.change(screen.getByRole("combobox", { name: "Active theme" }), { target: { value: "Dark" } });
+    fireEvent.click(screen.getByRole("button", { name: "Create Custom Theme" }));
+
+    expect(document.documentElement.classList.contains("dark")).toBe(false);
+    expect(document.documentElement.style.getPropertyValue("--color-background")).toBe("#15171c");
+    expect(document.documentElement.style.getPropertyValue("--color-text")).toBe("#f8fafc");
+  });
+
+  it("resets only the active custom theme", () => {
+    const existingTheme = {
+      name: "Purple",
+      colors: {
+        accent: "#a855f7",
+        background: "#111827",
+        surface: "#1f2937",
+        text: "#f8fafc",
+        mutedText: "#c4b5fd",
+        border: "#6d28d9"
+      }
+    };
+    window.localStorage.setItem("ts4mm-active-theme", "Purple");
+    window.localStorage.setItem("ts4mm-custom-themes", JSON.stringify([existingTheme]));
+    const api = makeApi();
+    const store = createAppStore(api);
+    render(<App store={store} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "open-settings" }));
+    fireEvent.click(screen.getByRole("button", { name: "Reset Current Theme" }));
+
+    expect(screen.getByRole("combobox", { name: "Active theme" })).toHaveValue("Purple");
+    expect(document.documentElement.style.getPropertyValue("--color-accent")).toBe("#10b981");
+    expect(window.localStorage.getItem("ts4mm-custom-themes")).toContain('"name":"Purple"');
   });
 
   it("asks before overwriting imported theme", () => {

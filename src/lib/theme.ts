@@ -117,4 +117,9 @@ export function applyThemeVariables(theme: AppTheme, root: HTMLElement = documen
   root.style.setProperty("--color-text", theme.colors.text);
   root.style.setProperty("--color-muted-text", theme.colors.mutedText);
   root.style.setProperty("--color-border", theme.colors.border);
+
+  if (root === document.documentElement) {
+    document.body.style.backgroundColor = theme.colors.background;
+    document.body.style.color = theme.colors.text;
+  }
 }

@@ -134,8 +134,24 @@ export function App({ store = defaultStore }: AppProps) {
   };
 
   const onThemeChange = (theme: AppTheme) => {
-    setCustomThemes((current) => upsertTheme(current, theme));
+    setCustomThemes((current) => {
+      const activeThemeExists = current.some((item) => item.name === activeThemeName);
+      if (activeThemeExists && theme.name !== activeThemeName) {
+        return current.map((item) => (item.name === activeThemeName ? theme : item));
+      }
+      return upsertTheme(current, theme);
+    });
     setActiveThemeName(theme.name);
+  };
+
+  const onThemeReset = () => {
+    setCustomThemes((current) =>
+      current.map((theme) =>
+        theme.name === activeThemeName
+          ? { ...theme, colors: { ...DEFAULT_THEME.colors } }
+          : theme
+      )
+    );
   };
 
   const onThemeImport = (theme: AppTheme) => {
@@ -210,7 +226,7 @@ export function App({ store = defaultStore }: AppProps) {
           onClick={() => setSettingsOpen(false)}
         >
           <motion.section
-            className="modal grid w-[min(860px,calc(100vw-2rem))] gap-5 overflow-visible rounded-[14px] border border-slate-300 bg-white p-6 dark:border-slate-700 dark:bg-slate-900"
+            className="modal grid max-h-[calc(100vh-2rem)] w-[min(760px,calc(100vw-2rem))] gap-4 overflow-y-auto rounded-[14px] border border-slate-300 bg-white p-5 dark:border-slate-700 dark:bg-slate-900"
             role="dialog"
             aria-label="settings-modal"
             data-animated="true"
@@ -249,10 +265,7 @@ export function App({ store = defaultStore }: AppProps) {
               onThemeChange={onThemeChange}
               onThemeImport={onThemeImport}
               onThemeExport={onThemeExport}
-              onThemeReset={() => {
-                setCustomThemes([]);
-                setActiveThemeName("Light");
-              }}
+              onThemeReset={onThemeReset}
             />
 
             <ImportPanel onImport={(archivePath, name, slug) => importArchive(archivePath, name, slug)} />
