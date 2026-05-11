@@ -14,6 +14,7 @@ pub mod runtime_env;
 pub mod runtime_paths;
 pub mod source_candidates;
 pub mod source_fingerprint;
+pub mod source_lookup;
 pub mod source_metadata;
 pub mod source_scoring;
 #[cfg(feature = "tauri-app")]

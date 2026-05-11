@@ -106,6 +106,14 @@ fn remove_source_url(mod_id: String) -> Result<crate::managed_storage::ModMetada
 }
 
 #[tauri::command]
+fn find_source_candidates(
+    mod_id: String,
+    instance_id: String,
+) -> Result<Vec<crate::source_candidates::SourceCandidate>, ManagerError> {
+    commands::cmd_find_source_candidates(managed_root()?, instance_mods_dir(&instance_id)?, mod_id)
+}
+
+#[tauri::command]
 fn uninstall_managed_mod(
     mod_id: String,
     instance_id: String,
@@ -166,6 +174,7 @@ pub fn run() {
             rename_mod_display_name,
             attach_source_url,
             remove_source_url,
+            find_source_candidates,
             uninstall_managed_mod,
             list_trash_entries,
             runtime_diagnostics,

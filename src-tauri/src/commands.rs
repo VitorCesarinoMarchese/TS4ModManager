@@ -14,6 +14,8 @@ use serde::{Deserialize, Serialize};
 
 use crate::runtime_env::{desktop_open_env, WAYLAND_WORKAROUND_DISABLE_ENV, WAYLAND_WORKAROUND_ENV};
 use crate::runtime_paths::{managed_root, managed_mods_dir, trash_files_dir};
+use crate::source_candidates::SourceCandidate;
+use crate::source_lookup::find_source_candidates_fixture;
 use crate::source_metadata::resolve_source_metadata;
 use crate::toggle::{apply_toggle, dry_run_toggle, ApplyResult, DryRunResult};
 
@@ -109,6 +111,14 @@ pub fn cmd_attach_source_url(
 
 pub fn cmd_remove_source_url(managed_root: PathBuf, mod_id: String) -> Result<ModMetadata, ManagerError> {
     remove_source_url(&managed_root, &mod_id)
+}
+
+pub fn cmd_find_source_candidates(
+    managed_root: PathBuf,
+    game_mods_dir: PathBuf,
+    mod_id: String,
+) -> Result<Vec<SourceCandidate>, ManagerError> {
+    find_source_candidates_fixture(&managed_root, &game_mods_dir, &mod_id)
 }
 
 pub fn cmd_uninstall_managed_mod(
