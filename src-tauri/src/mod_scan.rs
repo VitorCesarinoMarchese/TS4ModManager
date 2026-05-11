@@ -93,7 +93,6 @@ pub fn scan_mods(mods_dir: &Path, managed_root: &Path) -> Vec<ScannedMod> {
 }
 
 fn build_scanned_mod(key: String, files: Vec<FileEntry>, managed_root: &Path) -> ScannedMod {
-    let preview = choose_preview(&files);
     let all_files = files.iter().map(|f| f.relative.clone()).collect::<Vec<_>>();
 
     let mod_files = files
@@ -119,6 +118,10 @@ fn build_scanned_mod(key: String, files: Vec<FileEntry>, managed_root: &Path) ->
     let metadata = managed_metadata_from_files(&files, managed_root);
     let id = metadata.as_ref().map(|meta| meta.mod_id.clone());
     let source_url = metadata.as_ref().and_then(|meta| meta.source_url.clone());
+    let preview = metadata
+        .as_ref()
+        .and_then(|meta| meta.local_preview_path.clone().or_else(|| meta.preview_url.clone()))
+        .or_else(|| choose_preview(&files));
     let name = metadata
         .as_ref()
         .map(|meta| meta.effective_display_name().to_string())
@@ -418,7 +421,7 @@ mod tests {
                 files: vec!["Example.package".to_string()],
                 source: "curseforge".to_string(),
                 source_url: Some("https://www.curseforge.com/sims4/mods/example".to_string()),
-                preview_url: None,
+                preview_url: Some("https://img.example/cover.jpg".to_string()),
                 local_preview_path: None,
                 locked_name: false,
                 updated_at: None,
@@ -434,6 +437,7 @@ mod tests {
             scanned[0].source_url.as_deref(),
             Some("https://www.curseforge.com/sims4/mods/example")
         );
+        assert_eq!(scanned[0].preview.as_deref(), Some("https://img.example/cover.jpg"));
     }
 
     #[test]

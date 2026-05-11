@@ -204,6 +204,8 @@ pub fn set_source_url(
     mod_id: &str,
     source_url: String,
     provider_id: Option<String>,
+    display_name: Option<String>,
+    preview_url: Option<String>,
 ) -> Result<ModMetadata, ManagerError> {
     let mut meta = read_managed_mod_or_create_local(managed_root, mod_id)?;
     let trimmed = source_url.trim();
@@ -218,6 +220,13 @@ pub fn set_source_url(
     if let Some(provider) = provider_id.filter(|provider| !provider.trim().is_empty()) {
         meta.source = provider;
     }
+    if let Some(title) = display_name.map(|name| name.trim().to_string()).filter(|name| !name.is_empty()) {
+        meta.detected_name = Some(title.clone());
+        if meta.custom_name.as_deref().unwrap_or_default().trim().is_empty() {
+            meta.display_name = title;
+        }
+    }
+    meta.preview_url = preview_url.map(|url| url.trim().to_string()).filter(|url| !url.is_empty());
     write_managed_mod(managed_root, &meta)?;
     Ok(meta)
 }
@@ -450,6 +459,8 @@ mod tests {
             &meta.mod_id,
             "https://www.curseforge.com/sims4/mods/example".to_string(),
             Some("curseforge".to_string()),
+            None,
+            None,
         )
         .expect("attach");
 
@@ -481,6 +492,8 @@ mod tests {
             "McCmdCenter_AllModules_2026_2_0",
             "https://www.curseforge.com/sims4/mods/mc-command-center".to_string(),
             Some("curseforge".to_string()),
+            None,
+            None,
         )
         .expect("attach by bundle name");
 
@@ -512,6 +525,8 @@ mod tests {
             &meta.mod_id,
             "https://www.curseforge.com/sims4/mods/example".to_string(),
             Some("curseforge".to_string()),
+            None,
+            None,
         )
         .expect("attach");
 
@@ -527,6 +542,37 @@ mod tests {
                 .as_deref(),
             Some("https://www.curseforge.com/sims4/mods/example")
         );
+    }
+
+    #[test]
+    fn attaches_resolved_source_metadata() {
+        let tmp = TempDir::new().expect("tmp");
+        let src = tmp.path().join("import");
+        fs::create_dir_all(&src).expect("src");
+        fs::write(src.join("a.package"), b"x").expect("file");
+        let meta = create_managed_mod(
+            tmp.path(),
+            ImportRequest {
+                name: "Detected".to_string(),
+                slug: None,
+                source_dir: src,
+            },
+        )
+        .expect("create");
+
+        let updated = super::set_source_url(
+            tmp.path(),
+            &meta.mod_id,
+            "https://modthesims.info/d/123456/example".to_string(),
+            Some("modthesims".to_string()),
+            Some("Real Mod Title".to_string()),
+            Some("https://static.modthesims.info/cover.jpg".to_string()),
+        )
+        .expect("attach");
+
+        assert_eq!(updated.source, "modthesims");
+        assert_eq!(updated.display_name, "Real Mod Title");
+        assert_eq!(updated.preview_url.as_deref(), Some("https://static.modthesims.info/cover.jpg"));
     }
 
     #[test]

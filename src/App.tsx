@@ -406,8 +406,8 @@ export function App({ store = defaultStore }: AppProps) {
             const renamed = await renameModDisplayName(modId, newName);
             if (renamed) setSelectedMod(renamed);
           }}
-          onAttachSourceUrl={async (modId, sourceUrl, providerId) => {
-            const updated = await attachSourceUrl(modId, sourceUrl, providerId);
+          onAttachSourceUrl={async (modId, sourceUrl, providerId, metadata) => {
+            const updated = await attachSourceUrl(modId, sourceUrl, providerId, metadata);
             if (updated) setSelectedMod(updated);
           }}
           onRemoveSourceUrl={async (modId) => {

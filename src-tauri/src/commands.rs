@@ -92,8 +92,10 @@ pub fn cmd_attach_source_url(
     mod_id: String,
     source_url: String,
     provider_id: Option<String>,
+    display_name: Option<String>,
+    preview_url: Option<String>,
 ) -> Result<ModMetadata, ManagerError> {
-    set_source_url(&managed_root, &mod_id, source_url, provider_id)
+    set_source_url(&managed_root, &mod_id, source_url, provider_id, display_name, preview_url)
 }
 
 pub fn cmd_remove_source_url(managed_root: PathBuf, mod_id: String) -> Result<ModMetadata, ManagerError> {

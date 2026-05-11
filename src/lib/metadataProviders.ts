@@ -62,7 +62,7 @@ function curseForgeSlug(raw: string): string | null {
 
 export function createCurseForgeProvider({
   apiKey,
-  fetchFn = globalThis.fetch as ProviderFetch
+  fetchFn
 }: {
   apiKey?: string;
   fetchFn?: ProviderFetch;
@@ -79,9 +79,10 @@ export function createCurseForgeProvider({
     async fetchMetadataFromUrl(sourceUrl) {
       const key = apiKey?.trim();
       const slug = curseForgeSlug(sourceUrl);
-      if (!key || !slug || !fetchFn) return { sourceUrl };
+      const fetcher = fetchFn ?? (globalThis.fetch as ProviderFetch | undefined);
+      if (!key || !slug || !fetcher) return { sourceUrl };
 
-      const response = await fetchFn(
+      const response = await fetcher(
         `https://api.curseforge.com/v1/mods/search?gameId=7806&slug=${encodeURIComponent(slug)}`,
         { headers: { "x-api-key": key } }
       );
@@ -118,7 +119,7 @@ function metaContent(doc: Document, selector: string): string | undefined {
 }
 
 export function createModTheSimsProvider({
-  fetchFn = globalThis.fetch as ProviderFetch
+  fetchFn
 }: { fetchFn?: ProviderFetch } = {}): MetadataProvider {
   return {
     id: "modthesims",
@@ -132,8 +133,9 @@ export function createModTheSimsProvider({
     },
     async fetchMetadataFromUrl(sourceUrl) {
       try {
-        if (!fetchFn) return { sourceUrl };
-        const response = await fetchFn(sourceUrl);
+        const fetcher = fetchFn ?? (globalThis.fetch as ProviderFetch | undefined);
+        if (!fetcher) return { sourceUrl };
+        const response = await fetcher(sourceUrl);
         if (!response.ok || !response.text) return { sourceUrl };
         const html = await response.text();
         const doc = new DOMParser().parseFromString(html, "text/html");

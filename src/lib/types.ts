@@ -15,6 +15,11 @@ export type ApiError = {
   details?: Record<string, unknown>;
 };
 
+export type SourceMetadata = {
+  displayName?: string;
+  previewUrl?: string;
+};
+
 export type Mod = {
   id: string;
   name: string;

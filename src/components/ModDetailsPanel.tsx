@@ -2,13 +2,13 @@ import { FloppyDisk, X } from "@phosphor-icons/react";
 import { motion } from "framer-motion";
 import { useEffect, useState } from "react";
 import { getMetadataProviderForUrl } from "../lib/metadataProviders";
-import type { Mod } from "../lib/types";
+import type { Mod, SourceMetadata } from "../lib/types";
 
 type ModDetailsPanelProps = {
   mod: Mod;
   onClose: () => void;
   onRename?: (modId: string, newName: string) => void | Promise<void>;
-  onAttachSourceUrl?: (modId: string, sourceUrl: string, providerId?: string) => void | Promise<void>;
+  onAttachSourceUrl?: (modId: string, sourceUrl: string, providerId?: string, metadata?: SourceMetadata) => void | Promise<void>;
   onRemoveSourceUrl?: (modId: string) => void | Promise<void>;
   onOpenSourceUrl?: (sourceUrl: string) => void;
   onUninstall?: (modId: string) => void | Promise<void>;
@@ -104,10 +104,11 @@ export function ModDetailsPanel({ mod, onClose, onRename, onAttachSourceUrl, onR
             type="button"
             aria-label="save-source-url"
             className={buttonClass}
-            onClick={() => {
+            onClick={async () => {
               const next = sourceUrl.trim();
               if (!next) return;
-              onAttachSourceUrl?.(mod.id, next, selectedProvider?.id);
+              const metadata = selectedProvider ? await selectedProvider.fetchMetadataFromUrl(next) : undefined;
+              onAttachSourceUrl?.(mod.id, next, selectedProvider?.id, metadata);
             }}
           >
             <FloppyDisk size={16} weight="regular" aria-hidden="true" />

@@ -94,8 +94,10 @@ fn attach_source_url(
     mod_id: String,
     source_url: String,
     provider_id: Option<String>,
+    display_name: Option<String>,
+    preview_url: Option<String>,
 ) -> Result<crate::managed_storage::ModMetadata, ManagerError> {
-    commands::cmd_attach_source_url(managed_root()?, mod_id, source_url, provider_id)
+    commands::cmd_attach_source_url(managed_root()?, mod_id, source_url, provider_id, display_name, preview_url)
 }
 
 #[tauri::command]

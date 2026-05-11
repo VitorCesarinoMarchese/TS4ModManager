@@ -498,15 +498,22 @@ describe("app store bootstrap", () => {
       validateCustomInstance: vi.fn().mockResolvedValue({ id: "c", path: "/x", source: "custom" }),
       importArchive: vi.fn().mockResolvedValue({ modId: "m2" }),
       renameModDisplayName: vi.fn().mockResolvedValue({ id: "m1", name: "Detected", files: ["a.package"], enabled: false, source: "managed" }),
-      attachSourceUrl: vi.fn().mockResolvedValue({ id: "m1", name: "Detected", sourceUrl: "https://modthesims.info/d/123456/example", files: ["a.package"], enabled: false, source: "managed" })
+      attachSourceUrl: vi.fn().mockResolvedValue({ id: "m1", name: "Detected", sourceUrl: "https://modthesims.info/d/123456/example", preview: "https://img.example/cover.jpg", files: ["a.package"], enabled: false, source: "managed" })
     };
 
     const store = createAppStore(api);
     await store.getState().selectInstanceAndScan("inst-1");
-    await store.getState().attachSourceUrl("m1", "https://modthesims.info/d/123456/example", "modthesims");
+    await store.getState().attachSourceUrl("m1", "https://modthesims.info/d/123456/example", "modthesims", {
+      displayName: "Detected",
+      previewUrl: "https://img.example/cover.jpg"
+    });
 
-    expect(api.attachSourceUrl).toHaveBeenCalledWith("m1", "https://modthesims.info/d/123456/example", "modthesims");
+    expect(api.attachSourceUrl).toHaveBeenCalledWith("m1", "https://modthesims.info/d/123456/example", "modthesims", {
+      displayName: "Detected",
+      previewUrl: "https://img.example/cover.jpg"
+    });
     expect(store.getState().mods[0].sourceUrl).toBe("https://modthesims.info/d/123456/example");
+    expect(store.getState().mods[0].preview).toBe("https://img.example/cover.jpg");
   });
 
   it("renames mod display name and updates store", async () => {

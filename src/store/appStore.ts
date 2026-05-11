@@ -1,5 +1,5 @@
 import { createStore } from "zustand/vanilla";
-import type { DryRunResult, GameInstance, Issue, Mod, RestoreResult, RuntimeDiagnostics, TrashEntry } from "../lib/types";
+import type { DryRunResult, GameInstance, Issue, Mod, RestoreResult, RuntimeDiagnostics, SourceMetadata, TrashEntry } from "../lib/types";
 
 export type ApplyResult = {
   applied: boolean;
@@ -43,7 +43,7 @@ export type BackendApi = {
   ) => Promise<ApplyResult>;
   migrateExternalMod: (modId: string, instanceId: string) => Promise<MigrateResult>;
   renameModDisplayName: (modId: string, displayName: string) => Promise<Mod>;
-  attachSourceUrl: (modId: string, sourceUrl: string, providerId?: string) => Promise<Mod>;
+  attachSourceUrl: (modId: string, sourceUrl: string, providerId?: string, metadata?: SourceMetadata) => Promise<Mod>;
   removeSourceUrl: (modId: string) => Promise<Mod>;
   uninstallManagedMod: (modId: string, instanceId: string) => Promise<UninstallResult>;
   listTrashEntries: () => Promise<TrashEntry[]>;
@@ -70,10 +70,11 @@ const defaultApi: BackendApi = {
     enabled: false,
     source: "managed"
   }),
-  attachSourceUrl: async (modId, sourceUrl) => ({
+  attachSourceUrl: async (modId, sourceUrl, _providerId, metadata) => ({
     id: modId,
     name: modId,
     sourceUrl,
+    preview: metadata?.previewUrl,
     files: [],
     enabled: false,
     source: "managed"
@@ -120,7 +121,7 @@ export type AppState = {
   addCustomInstance: (path: string) => Promise<void>;
   importArchive: (archivePath: string, name: string, slug?: string) => Promise<void>;
   renameModDisplayName: (modId: string, displayName: string) => Promise<Mod | null>;
-  attachSourceUrl: (modId: string, sourceUrl: string, providerId?: string) => Promise<Mod | null>;
+  attachSourceUrl: (modId: string, sourceUrl: string, providerId?: string, metadata?: SourceMetadata) => Promise<Mod | null>;
   removeSourceUrl: (modId: string) => Promise<Mod | null>;
   uninstallManagedMod: (modId: string) => Promise<UninstallResult | null>;
   loadTrashEntries: () => Promise<void>;
@@ -432,9 +433,9 @@ export function createAppStore(apiOverrides: Partial<BackendApi> = {}) {
         return null;
       }
     },
-    attachSourceUrl: async (modId, sourceUrl, providerId) => {
+    attachSourceUrl: async (modId, sourceUrl, providerId, metadata) => {
       try {
-        const withSource = await api.attachSourceUrl(modId, sourceUrl, providerId);
+        const withSource = await api.attachSourceUrl(modId, sourceUrl, providerId, metadata);
         let updated: Mod | null = null;
         set((state) => ({
           mods: state.mods.map((mod) => {

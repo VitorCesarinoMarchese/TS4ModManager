@@ -1,5 +1,5 @@
 import { toBackendErrorCode, type ApiError } from "./error";
-import type { DryRunResult, GameInstance, Issue, Mod, RestoreResult, RuntimeDiagnostics, TrashEntry } from "./types";
+import type { DryRunResult, GameInstance, Issue, Mod, RestoreResult, RuntimeDiagnostics, SourceMetadata, TrashEntry } from "./types";
 
 type ScannedModDto = Omit<Mod, "id"> & {
   id?: string;
@@ -14,6 +14,7 @@ type ModMetadataDto = {
   files?: string[];
   source?: string;
   sourceUrl?: string;
+  previewUrl?: string;
 };
 
 type InvokeFn = <T = unknown>(command: string, payload?: Record<string, unknown>) => Promise<T>;
@@ -41,7 +42,8 @@ function modFromMetadata(mod: ModMetadataDto, fallbackId: string, fallbackName: 
     files: mod.files ?? [],
     enabled: false,
     source: mod.source === "external" ? "external" : "managed",
-    sourceUrl: mod.sourceUrl
+    sourceUrl: mod.sourceUrl,
+    preview: mod.previewUrl
   };
 }
 
@@ -229,12 +231,14 @@ export function createBackendApi(invoke: InvokeFn) {
       }
     },
 
-    async attachSourceUrl(modId: string, sourceUrl: string, providerId?: string): Promise<Mod> {
+    async attachSourceUrl(modId: string, sourceUrl: string, providerId?: string, metadata?: SourceMetadata): Promise<Mod> {
       try {
         const mod = await invoke<ModMetadataDto>("attach_source_url", {
           modId,
           sourceUrl,
-          providerId
+          providerId,
+          displayName: metadata?.displayName,
+          previewUrl: metadata?.previewUrl
         });
         return modFromMetadata(mod, modId, mod.displayName ?? mod.name ?? modId);
       } catch (error) {

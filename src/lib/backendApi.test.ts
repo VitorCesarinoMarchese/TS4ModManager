@@ -194,6 +194,7 @@ describe("backend api wrapper", () => {
       modId: "m1",
       displayName: "My Mod",
       sourceUrl: "https://www.curseforge.com/sims4/mods/example",
+      previewUrl: "https://img.example/cover.jpg",
       files: ["a.package"],
       source: "curseforge"
     });
@@ -202,14 +203,18 @@ describe("backend api wrapper", () => {
     const res = await api.attachSourceUrl(
       "m1",
       "https://www.curseforge.com/sims4/mods/example",
-      "curseforge"
+      "curseforge",
+      { displayName: "My Mod", previewUrl: "https://img.example/cover.jpg" }
     );
 
     expect(res.sourceUrl).toBe("https://www.curseforge.com/sims4/mods/example");
+    expect(res.preview).toBe("https://img.example/cover.jpg");
     expect(invoke).toHaveBeenCalledWith("attach_source_url", {
       modId: "m1",
       sourceUrl: "https://www.curseforge.com/sims4/mods/example",
-      providerId: "curseforge"
+      providerId: "curseforge",
+      displayName: "My Mod",
+      previewUrl: "https://img.example/cover.jpg"
     });
   });
 

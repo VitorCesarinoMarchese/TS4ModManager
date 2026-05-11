@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { ModDetailsPanel } from "./ModDetailsPanel";
 
@@ -49,7 +49,7 @@ describe("ModDetailsPanel", () => {
     expect(onRemoveSourceUrl).toHaveBeenCalledWith("m1");
   });
 
-  it("attaches source URL and opens browser fallback", () => {
+  it("attaches source URL and opens browser fallback", async () => {
     const onAttachSourceUrl = vi.fn();
     const onOpenSourceUrl = vi.fn();
     render(
@@ -66,14 +66,50 @@ describe("ModDetailsPanel", () => {
       target: { value: "https://www.curseforge.com/sims4/mods/example" }
     });
     fireEvent.click(screen.getByRole("button", { name: "save-source-url" }));
-    expect(onAttachSourceUrl).toHaveBeenCalledWith(
+    await waitFor(() => expect(onAttachSourceUrl).toHaveBeenCalledWith(
       "m1",
       "https://www.curseforge.com/sims4/mods/example",
-      "curseforge"
-    );
+      "curseforge",
+      { sourceUrl: "https://www.curseforge.com/sims4/mods/example" }
+    ));
 
     fireEvent.click(screen.getByRole("button", { name: "open-source-url" }));
     expect(onOpenSourceUrl).toHaveBeenCalledWith("https://modthesims.info/d/123456/example");
+  });
+
+  it("fetches ModTheSims title and cover before attaching source URL", async () => {
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      text: async () => `
+        <html>
+          <head>
+            <meta property="og:title" content="Real Mod Title" />
+            <meta property="og:image" content="https://static.modthesims.info/cover.jpg" />
+          </head>
+        </html>`
+    }) as typeof fetch;
+    const onAttachSourceUrl = vi.fn();
+
+    render(<ModDetailsPanel mod={mod} onClose={() => {}} onAttachSourceUrl={onAttachSourceUrl} />);
+
+    fireEvent.change(screen.getByLabelText("edit-source-url"), {
+      target: { value: "https://modthesims.info/d/123456/example" }
+    });
+    fireEvent.click(screen.getByRole("button", { name: "save-source-url" }));
+
+    await waitFor(() => expect(onAttachSourceUrl).toHaveBeenCalledWith(
+      "m1",
+      "https://modthesims.info/d/123456/example",
+      "modthesims",
+      {
+        displayName: "Real Mod Title",
+        sourceUrl: "https://modthesims.info/d/123456/example",
+        previewUrl: "https://static.modthesims.info/cover.jpg"
+      }
+    ));
+
+    globalThis.fetch = originalFetch;
   });
 
   it("warns before uninstalling managed mod", () => {
