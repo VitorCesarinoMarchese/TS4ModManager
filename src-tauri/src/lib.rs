@@ -1,5 +1,6 @@
 pub mod archive_import;
 pub mod commands;
+pub mod curseforge_client;
 pub mod error;
 pub mod external_migration;
 pub mod logging;

@@ -1,0 +1,293 @@
+use serde::Deserialize;
+
+pub const CURSEFORGE_API_BASE: &str = "https://api.curseforge.com";
+pub const SIMS4_GAME_ID: u32 = 7806;
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum SourceLookupError {
+    MissingApiKey,
+    Unauthorized,
+    RateLimited,
+    Network,
+    InvalidResponse,
+    ProviderUnavailable,
+    NoUsableEvidence,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CurseForgeRequest {
+    pub url: String,
+    pub api_key: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CurseForgeModSummary {
+    pub project_id: u64,
+    pub name: String,
+    pub slug: Option<String>,
+    pub source_url: Option<String>,
+    pub preview_url: Option<String>,
+    pub authors: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CurseForgeFileSummary {
+    pub file_id: u64,
+    pub project_id: u64,
+    pub display_name: Option<String>,
+    pub file_name: String,
+    pub game_versions: Vec<String>,
+    pub hashes: Vec<CurseForgeHash>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CurseForgeHash {
+    pub algo: u32,
+    pub value: String,
+}
+
+pub fn build_search_request(api_key: Option<&str>, search_filter: &str) -> Result<CurseForgeRequest, SourceLookupError> {
+    let key = api_key.map(str::trim).filter(|key| !key.is_empty()).ok_or(SourceLookupError::MissingApiKey)?;
+    let query = encode_query(search_filter.trim());
+    Ok(CurseForgeRequest {
+        url: format!("{CURSEFORGE_API_BASE}/v1/mods/search?gameId={SIMS4_GAME_ID}&classId=0&searchFilter={query}"),
+        api_key: key.to_string(),
+    })
+}
+
+pub fn build_files_request(api_key: Option<&str>, project_id: u64) -> Result<CurseForgeRequest, SourceLookupError> {
+    let key = api_key.map(str::trim).filter(|key| !key.is_empty()).ok_or(SourceLookupError::MissingApiKey)?;
+    Ok(CurseForgeRequest {
+        url: format!("{CURSEFORGE_API_BASE}/v1/mods/{project_id}/files"),
+        api_key: key.to_string(),
+    })
+}
+
+pub fn classify_status(status: u16) -> Result<(), SourceLookupError> {
+    match status {
+        200..=299 => Ok(()),
+        401 | 403 => Err(SourceLookupError::Unauthorized),
+        429 => Err(SourceLookupError::RateLimited),
+        500..=599 => Err(SourceLookupError::ProviderUnavailable),
+        _ => Err(SourceLookupError::Network),
+    }
+}
+
+pub fn parse_search_response(json: &str) -> Result<Vec<CurseForgeModSummary>, SourceLookupError> {
+    let parsed: SearchResponse = serde_json::from_str(json).map_err(|_| SourceLookupError::InvalidResponse)?;
+    Ok(parsed
+        .data
+        .into_iter()
+        .filter_map(|mod_dto| {
+            let project_id = mod_dto.id?;
+            let name = mod_dto.name?.trim().to_string();
+            (!name.is_empty()).then(|| CurseForgeModSummary {
+                project_id,
+                name,
+                slug: mod_dto.slug.filter(|slug| !slug.trim().is_empty()),
+                source_url: mod_dto.links.and_then(|links| links.website_url).filter(|url| !url.trim().is_empty()),
+                preview_url: mod_dto.logo.and_then(|logo| logo.url).filter(|url| !url.trim().is_empty()),
+                authors: mod_dto
+                    .authors
+                    .unwrap_or_default()
+                    .into_iter()
+                    .filter_map(|author| author.name.map(|name| name.trim().to_string()).filter(|name| !name.is_empty()))
+                    .collect(),
+            })
+        })
+        .collect())
+}
+
+pub fn parse_files_response(json: &str) -> Result<Vec<CurseForgeFileSummary>, SourceLookupError> {
+    let parsed: FilesResponse = serde_json::from_str(json).map_err(|_| SourceLookupError::InvalidResponse)?;
+    Ok(parsed
+        .data
+        .into_iter()
+        .filter_map(|file| {
+            let file_id = file.id?;
+            let project_id = file.mod_id?;
+            let file_name = file.file_name?.trim().to_string();
+            (!file_name.is_empty()).then(|| CurseForgeFileSummary {
+                file_id,
+                project_id,
+                display_name: file.display_name.filter(|name| !name.trim().is_empty()),
+                file_name,
+                game_versions: file.game_versions.unwrap_or_default(),
+                hashes: file
+                    .hashes
+                    .unwrap_or_default()
+                    .into_iter()
+                    .filter_map(|hash| Some(CurseForgeHash { algo: hash.algo?, value: hash.value? }))
+                    .collect(),
+            })
+        })
+        .collect())
+}
+
+pub fn has_usable_file_metadata(files: &[CurseForgeFileSummary]) -> bool {
+    files.iter().any(|file| !file.file_name.trim().is_empty() || !file.hashes.is_empty())
+}
+
+fn encode_query(raw: &str) -> String {
+    raw.bytes()
+        .flat_map(|byte| match byte {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => vec![byte as char],
+            b' ' => vec!['+'],
+            _ => format!("%{byte:02X}").chars().collect(),
+        })
+        .collect()
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct SearchResponse {
+    data: Vec<ModDto>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ModDto {
+    id: Option<u64>,
+    name: Option<String>,
+    slug: Option<String>,
+    links: Option<LinksDto>,
+    logo: Option<LogoDto>,
+    authors: Option<Vec<AuthorDto>>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct LinksDto {
+    website_url: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct LogoDto {
+    url: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct AuthorDto {
+    name: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct FilesResponse {
+    data: Vec<FileDto>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct FileDto {
+    id: Option<u64>,
+    mod_id: Option<u64>,
+    display_name: Option<String>,
+    file_name: Option<String>,
+    game_versions: Option<Vec<String>>,
+    hashes: Option<Vec<HashDto>>,
+}
+
+#[derive(Debug, Deserialize)]
+struct HashDto {
+    algo: Option<u32>,
+    value: Option<String>,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const SEARCH_FIXTURE: &str = r#"
+    {
+      "data": [
+        {
+          "id": 551680,
+          "name": "MC Command Center",
+          "slug": "mc-command-center",
+          "links": { "websiteUrl": "https://www.curseforge.com/sims4/mods/mc-command-center" },
+          "logo": { "url": "https://media.forgecdn.net/avatars/cover.png" },
+          "authors": [{ "name": "Deaderpool" }]
+        }
+      ]
+    }
+    "#;
+
+    const FILES_FIXTURE: &str = r#"
+    {
+      "data": [
+        {
+          "id": 67890,
+          "modId": 551680,
+          "displayName": "McCmdCenter_AllModules_2026_2_0.zip",
+          "fileName": "McCmdCenter_AllModules_2026_2_0.zip",
+          "gameVersions": ["1.110", "2026.2.0"],
+          "hashes": [
+            { "algo": 1, "value": "123456789" },
+            { "algo": 2, "value": "abcdef" }
+          ]
+        }
+      ]
+    }
+    "#;
+
+    #[test]
+    fn sims4_game_id_is_stable() {
+        assert_eq!(SIMS4_GAME_ID, 7806);
+    }
+
+    #[test]
+    fn api_key_is_required_for_requests() {
+        assert_eq!(build_search_request(None, "mccc"), Err(SourceLookupError::MissingApiKey));
+        assert_eq!(build_files_request(Some(""), 551680), Err(SourceLookupError::MissingApiKey));
+    }
+
+    #[test]
+    fn builds_search_and_files_requests() {
+        let search = build_search_request(Some("key"), "mc command center").expect("request");
+        assert_eq!(search.api_key, "key");
+        assert_eq!(search.url, "https://api.curseforge.com/v1/mods/search?gameId=7806&classId=0&searchFilter=mc+command+center");
+
+        let files = build_files_request(Some("key"), 551680).expect("request");
+        assert_eq!(files.url, "https://api.curseforge.com/v1/mods/551680/files");
+    }
+
+    #[test]
+    fn classifies_provider_status_codes() {
+        assert_eq!(classify_status(200), Ok(()));
+        assert_eq!(classify_status(401), Err(SourceLookupError::Unauthorized));
+        assert_eq!(classify_status(403), Err(SourceLookupError::Unauthorized));
+        assert_eq!(classify_status(429), Err(SourceLookupError::RateLimited));
+        assert_eq!(classify_status(503), Err(SourceLookupError::ProviderUnavailable));
+    }
+
+    #[test]
+    fn parses_search_response_fixture() {
+        let mods = parse_search_response(SEARCH_FIXTURE).expect("parse");
+        assert_eq!(mods.len(), 1);
+        assert_eq!(mods[0].project_id, 551680);
+        assert_eq!(mods[0].name, "MC Command Center");
+        assert_eq!(mods[0].slug.as_deref(), Some("mc-command-center"));
+        assert_eq!(mods[0].source_url.as_deref(), Some("https://www.curseforge.com/sims4/mods/mc-command-center"));
+        assert_eq!(mods[0].preview_url.as_deref(), Some("https://media.forgecdn.net/avatars/cover.png"));
+        assert_eq!(mods[0].authors, vec!["Deaderpool"]);
+    }
+
+    #[test]
+    fn parses_file_metadata_fixture() {
+        let files = parse_files_response(FILES_FIXTURE).expect("parse");
+        assert_eq!(files.len(), 1);
+        assert_eq!(files[0].file_id, 67890);
+        assert_eq!(files[0].project_id, 551680);
+        assert_eq!(files[0].file_name, "McCmdCenter_AllModules_2026_2_0.zip");
+        assert_eq!(files[0].game_versions, vec!["1.110", "2026.2.0"]);
+        assert_eq!(files[0].hashes[1].value, "abcdef");
+        assert!(has_usable_file_metadata(&files));
+    }
+
+    #[test]
+    fn malformed_provider_response_is_typed_error() {
+        assert_eq!(parse_search_response("not json"), Err(SourceLookupError::InvalidResponse));
+        assert_eq!(parse_files_response("{}"), Err(SourceLookupError::InvalidResponse));
+    }
+}

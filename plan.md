@@ -258,6 +258,11 @@ Requirements:
 
 ## Next Major Work: CurseForge Source Auto-Detect + Verification
 
+Progress:
+
+- Phase 0 started: `src-tauri/src/curseforge_client.rs` isolates CurseForge request/fixture parsing, and `docs/curseforge-api-spike.md` documents current assumptions and unknowns.
+
+
 ### Goal
 
 Help users attach a verified source URL to an installed Sims 4 mod by generating CurseForge candidates from local file evidence, ranking them by confidence, and requiring explicit user confirmation before saving anything.
