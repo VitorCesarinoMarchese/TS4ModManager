@@ -110,7 +110,7 @@ fn find_source_candidates(
     mod_id: String,
     instance_id: String,
 ) -> Result<Vec<crate::source_candidates::SourceCandidate>, ManagerError> {
-    commands::cmd_find_source_candidates(managed_root()?, instance_mods_dir(&instance_id)?, mod_id)
+    commands::cmd_find_source_candidates(managed_root()?, mods_dir_from_instance_id(&instance_id)?, mod_id)
 }
 
 #[tauri::command]

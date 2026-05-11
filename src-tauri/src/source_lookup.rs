@@ -3,7 +3,7 @@ use std::path::Path;
 
 use crate::error::{ErrorCode, ManagerError};
 use crate::mod_scan::scan_mods;
-use crate::source_candidates::{ConfidenceLevel, SourceCandidate, SourceProviderId};
+use crate::source_candidates::{SourceCandidate, SourceProviderId};
 use crate::source_fingerprint::{build_mod_fingerprint, FingerprintFile, ModFingerprint};
 use crate::source_scoring::{evidence, score_candidate, CandidateScoreInput};
 
@@ -82,6 +82,7 @@ pub fn fixture_provider_candidates(fingerprint: &ModFingerprint) -> Vec<SourceCa
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::source_candidates::ConfidenceLevel;
     use tempfile::TempDir;
 
     #[test]
