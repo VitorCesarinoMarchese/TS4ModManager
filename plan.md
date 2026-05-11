@@ -24,6 +24,7 @@ Phase 2 checkpoints 1-11 are complete. Latest lifecycle hardening adds:
 - Tauri release bundling is enabled for Linux AppImage and deb targets, with README packaging/troubleshooting instructions.
 - Manage All has confirmation with external mod count and large-folder warning.
 - Restore path collisions show clearer guidance to open the Mods folder and move/rename existing files.
+- Source URL metadata now persists fetched titles and cover image URLs; backend can resolve CurseForge/ModTheSims page metadata server-side when browser fetch fails.
 
 The project is a functional Linux-first Sims 4 mod manager with:
 
@@ -46,9 +47,9 @@ The project is a functional Linux-first Sims 4 mod manager with:
 Current validation baseline:
 
 ```text
-npm run test:coverage  -> 138 frontend tests, branch coverage 81.05%
+npm run test:coverage  -> 139 frontend tests, branch coverage 82.87%
 npm run build          -> passing
-cargo test             -> 73 passed
+cargo test             -> 76 passed
 cargo check --features tauri-app -> passing
 ```
 
@@ -254,6 +255,470 @@ Requirements:
 - Add trash listing and restore workflow.
 - Add tests for confirmation, trash movement, symlink removal, unmanaged file safety, restore, and failure safety.
 - Commit separately.
+
+## Next Major Work: CurseForge Source Auto-Detect + Verification
+
+### Goal
+
+Help users attach a verified source URL to an installed Sims 4 mod by generating CurseForge candidates from local file evidence, ranking them by confidence, and requiring explicit user confirmation before saving anything.
+
+### Non-goals
+
+- Do not download mods.
+- Do not update mods.
+- Do not delete unmanaged files.
+- Do not auto-attach sources silently.
+- Do not treat weak name matches as verified.
+- Do not store API keys in per-mod metadata.
+
+### Phase 0: API Verification Spike
+
+Goal: prove CurseForge integration assumptions before building UI around them.
+
+Tasks:
+
+1. Verify Sims 4 `gameId`.
+2. Verify CurseForge API key flow.
+3. Verify `GET /v1/mods/search` with Sims 4.
+4. Verify file metadata availability.
+5. Verify fingerprint or fuzzy fingerprint matching for Sims 4 files.
+6. Document usable CurseForge fields for matching.
+
+Acceptance criteria:
+
+- Mocked API fixtures exist from real response shapes.
+- Tests do not depend on live CurseForge.
+- Live API is only used through one backend client module.
+- Project docs state which CurseForge fields are reliable for matching.
+
+### Phase A: Domain Model and Provider Abstraction
+
+Add backend domain types:
+
+```rust
+SourceProvider
+SourceCandidate
+SourceEvidence
+ModFingerprint
+SourceLookupError
+```
+
+Create provider abstraction:
+
+```rust
+trait SourceProvider {
+    async fn find_candidates(
+        &self,
+        fingerprint: ModFingerprint
+    ) -> Result<Vec<SourceCandidate>, SourceLookupError>;
+}
+```
+
+This keeps CurseForge isolated and makes ModTheSims easier to add later.
+
+Backend DTO:
+
+```rust
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SourceCandidate {
+    pub provider_id: SourceProviderId,
+    pub title: String,
+    pub source_url: String,
+    pub preview_url: Option<String>,
+    pub author: Option<String>,
+    pub project_id: Option<u64>,
+    pub file_id: Option<u64>,
+    pub confidence: u8,
+    pub confidence_level: ConfidenceLevel,
+    pub reasons: Vec<String>,
+    pub evidence: Vec<SourceEvidence>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum SourceProviderId {
+    Curseforge,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum ConfidenceLevel {
+    High,
+    Medium,
+    Low,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SourceEvidence {
+    pub kind: String,
+    pub description: String,
+    pub weight: i16,
+}
+```
+
+Frontend type:
+
+```ts
+export type SourceCandidate = {
+  providerId: "curseforge";
+  title: string;
+  sourceUrl: string;
+  previewUrl?: string;
+  author?: string;
+  projectId?: number;
+  fileId?: number;
+  confidence: number;
+  confidenceLevel: "high" | "medium" | "low";
+  reasons: string[];
+  evidence: Array<{
+    kind: string;
+    description: string;
+    weight: number;
+  }>;
+};
+```
+
+### Phase B: Local Fingerprint Extraction
+
+For selected mod, collect:
+
+- display name
+- folder name
+- normalized name
+- relative paths
+- basenames
+- extensions
+- file sizes
+- package/script names
+- version tokens
+- optional hashes/fingerprints
+- archive name if imported through the app
+- existing manual source URL if already attached
+
+Version token examples:
+
+```text
+2026_2_0
+v1.2.3
+1.110
+2026.2.0
+```
+
+Ignore:
+
+- thumbnails
+- preview images
+- logs
+- generated app metadata
+- `meta.json`
+
+Acceptance criteria:
+
+- No file mutation.
+- Handles external and managed mods.
+- Handles grouped mods with multiple files.
+- Handles loose `.package` and `.ts4script` files.
+- Handles folders with mixed useful and irrelevant files.
+
+### Phase C: CurseForge Client
+
+Build a small client with these operations:
+
+```text
+search_mods
+get_mod
+get_mod_files
+match_fingerprints
+fuzzy_match_fingerprints
+```
+
+Typed errors:
+
+```text
+MissingApiKey
+Unauthorized
+RateLimited
+Network
+InvalidResponse
+ProviderUnavailable
+NoUsableEvidence
+```
+
+API key storage:
+
+1. Use app settings for MVP.
+2. Move to OS keyring later if desired.
+3. Never store API key in per-mod metadata.
+
+### Phase D: Candidate Discovery Pipeline
+
+Discovery order:
+
+1. Extract local fingerprint.
+2. Try exact/fuzzy fingerprint match.
+3. If enough evidence exists, build high-confidence candidate.
+4. Otherwise, search by normalized mod name.
+5. If weak results, search by folder basename.
+6. If still weak, search by top package/script basename.
+7. Fetch file metadata for likely candidates when available.
+8. Score candidates.
+9. Deduplicate by `projectId` or `sourceUrl`.
+10. Sort by confidence.
+11. Return top 5 candidates.
+
+Matching preference order:
+
+1. Exact fingerprint match.
+2. Fuzzy fingerprint match.
+3. Exact archive/file name match.
+4. Exact package/script basename match.
+5. Version token match.
+6. Title/name similarity.
+7. Package/script basename overlap.
+8. Author match.
+9. Name-only match.
+
+### Phase E: Deterministic Confidence Scoring
+
+Positive evidence:
+
+```text
++95 exact fingerprint match
++80 fuzzy fingerprint match
++40 exact archive/file name match
++25 exact package/script basename match
++20 version token match
++20 title/name similarity
++15 package/script basename overlap
++10 slug similarity
++5 author match
+```
+
+Negative evidence:
+
+```text
+-30 different author when known
+-25 conflicting version token
+-20 unrelated file names
+-15 candidate is not available/searchable
+-10 generic title only, such as "traits", "career", "poses"
+```
+
+Caps:
+
+```text
+Name-only match max 55
+No file evidence max 60
+Search result without file metadata max 70
+Fingerprint match minimum 85 unless there is conflicting evidence
+```
+
+Confidence levels:
+
+```text
+High: 85 to 100
+Medium: 70 to 84
+Low: 40 to 69
+Do not return: below 40
+```
+
+### Phase F: UI Review Flow
+
+Add to Mod Details:
+
+- `Find Source` button
+- missing API key state
+- loading state
+- error state
+- empty state
+- candidate cards
+- confidence badge
+- evidence/reasons
+- preview image
+- `Attach`
+- `Open`
+- `Ignore`
+
+UI rules:
+
+- If exactly one high-confidence match exists, show it first but still require confirmation.
+- If confidence is at least 85, show `High confidence`.
+- If confidence is below 70, show `Please verify before attaching.`
+- Do not auto-attach silently.
+- Let the user change or detach the source later.
+
+### Phase G: Attach Source
+
+When user clicks `Attach`:
+
+1. Call existing `attachSourceUrl`.
+2. Persist provider metadata.
+3. Update UI immediately.
+4. Show source as verified by user.
+5. Allow detach/change later.
+
+Future `meta.json` source metadata shape:
+
+```ts
+source: {
+  providerId: "curseforge";
+  sourceUrl: string;
+  projectId?: number;
+  fileId?: number;
+  slug?: string;
+  title: string;
+  author?: string;
+  confidenceAtAttach: number;
+  attachedAt: string;
+  attachedBy: "user";
+  evidence: string[];
+}
+```
+
+### Phase H: Bulk Mode
+
+Bulk mode comes later, after single-mod flow is reliable.
+
+Later features:
+
+- Settings action: `Find Sources for All`
+- Sequential scan
+- Review table
+- Select multiple candidates
+- Attach selected candidates
+- Skip low-confidence matches by default
+
+Bulk rules:
+
+- Do not attach anything automatically.
+- Do not run all API requests in parallel.
+- Respect rate limits.
+- Save progress so the user can resume.
+- Show skipped/failed/low-confidence items separately.
+
+### Phase I: Tests
+
+Backend tests:
+
+- Extracts version tokens from names like `McCmdCenter_AllModules_2026_2_0`.
+- Extracts `.package` and `.ts4script` basenames.
+- Ignores images and app metadata.
+- Ranks fingerprint match above all search matches.
+- Ranks exact filename above name-only.
+- Caps name-only matches at 55.
+- Caps no-file-evidence matches at 60.
+- Removes duplicate candidates.
+- Handles missing API key.
+- Handles 401/403.
+- Handles rate limit.
+- Handles malformed provider response.
+- Never mutates mod files during lookup.
+
+Frontend tests:
+
+- Button appears for managed mods.
+- Button appears for external mods.
+- Missing API key message appears.
+- Loading state appears.
+- Candidates render with confidence and reasons.
+- Low confidence warning appears.
+- Attach calls existing source attach command.
+- Open opens external URL.
+- Ignore hides candidate locally.
+- Empty state appears when no candidates are found.
+
+### Implementation Slices
+
+Slice 1: Pure Local Fingerprint and Scoring
+
+```text
+Commit 1: add source candidate domain types
+Commit 2: add local fingerprint extraction tests
+Commit 3: implement local fingerprint extraction
+Commit 4: add deterministic scoring tests
+Commit 5: implement scoring and candidate sorting
+```
+
+Slice 2: Mocked Backend Command
+
+```text
+Commit 6: add find_source_candidates command with fixture provider
+Commit 7: add typed errors and command response tests
+```
+
+Slice 3: UI Review Flow
+
+```text
+Commit 8: add Find Source button and loading state
+Commit 9: add candidate result cards
+Commit 10: wire Attach, Open, Ignore actions
+```
+
+Slice 4: Real CurseForge Client
+
+```text
+Commit 11: add CurseForge settings for API key
+Commit 12: add CurseForge API client with mocked response tests
+Commit 13: wire search_mods
+Commit 14: wire fingerprint matching if verified usable
+Commit 15: replace fixture provider with CurseForge provider
+```
+
+Slice 5: Polish and Safety
+
+```text
+Commit 16: add empty/error states
+Commit 17: add dedupe and confidence explanations
+Commit 18: add integration tests for full lookup flow
+```
+
+### Agent Prompt Version
+
+```text
+You are working on the Sims 4 Mod Manager project.
+
+Goal:
+Implement a safe CurseForge source auto-detection flow that helps users attach a verified source URL to an installed mod.
+
+Core behavior:
+- Generate candidates from local file evidence.
+- Rank candidates by confidence.
+- Show candidates and reasons to the user.
+- Require explicit user confirmation before attaching a source.
+- Never auto-attach silently.
+- Never download mods.
+- Never delete unmanaged files.
+- Store local metadata in meta.json.
+- Do not store API keys in per-mod metadata.
+
+Implementation rules:
+- Follow TDD.
+- Write tests before implementation.
+- Use small atomic commits.
+- One logical concern per commit.
+- Run tests after each change.
+- Keep CurseForge integration isolated behind a provider abstraction.
+- Start with local fingerprint extraction and scoring before adding real API calls.
+
+Recommended implementation order:
+1. Add domain types for source candidates and evidence.
+2. Add local fingerprint extraction tests.
+3. Implement fingerprint extraction.
+4. Add deterministic scoring tests.
+5. Implement scoring.
+6. Add a mocked backend command: find_source_candidates(modId, instanceId).
+7. Add UI button and candidate review flow.
+8. Add attach/open/ignore actions.
+9. Add CurseForge API key settings.
+10. Add CurseForge client with mocked API response tests.
+11. Wire real search and fingerprint matching only after validating API response shape.
+12. Add empty, error, and low-confidence states.
+13. Add integration tests for the full lookup flow.
+
+Do not start with the real API integration. First make the local fingerprint, scoring, command contract, and UI review flow work with fixtures.
+```
 
 ## Final Validation
 
