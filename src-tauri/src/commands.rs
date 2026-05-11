@@ -14,6 +14,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::runtime_env::{desktop_open_env, WAYLAND_WORKAROUND_DISABLE_ENV, WAYLAND_WORKAROUND_ENV};
 use crate::runtime_paths::{managed_root, managed_mods_dir, trash_files_dir};
+use crate::source_metadata::resolve_source_metadata;
 use crate::toggle::{apply_toggle, dry_run_toggle, ApplyResult, DryRunResult};
 
 pub fn cmd_detect_game_instances(home: PathBuf) -> Vec<GameInstance> {
@@ -95,7 +96,15 @@ pub fn cmd_attach_source_url(
     display_name: Option<String>,
     preview_url: Option<String>,
 ) -> Result<ModMetadata, ManagerError> {
-    set_source_url(&managed_root, &mod_id, source_url, provider_id, display_name, preview_url)
+    let resolved = if display_name.is_none() || preview_url.is_none() {
+        Some(resolve_source_metadata(&source_url))
+    } else {
+        None
+    };
+    let final_display_name = display_name.or_else(|| resolved.as_ref().and_then(|meta| meta.display_name.clone()));
+    let final_preview_url = preview_url.or_else(|| resolved.and_then(|meta| meta.preview_url));
+
+    set_source_url(&managed_root, &mod_id, source_url, provider_id, final_display_name, final_preview_url)
 }
 
 pub fn cmd_remove_source_url(managed_root: PathBuf, mod_id: String) -> Result<ModMetadata, ManagerError> {

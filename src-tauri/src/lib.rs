@@ -11,6 +11,7 @@ pub mod orphan;
 pub mod path_detection;
 pub mod runtime_env;
 pub mod runtime_paths;
+pub mod source_metadata;
 #[cfg(feature = "tauri-app")]
 pub mod tauri_commands;
 pub mod toggle;
