@@ -19,7 +19,11 @@
     ]
   },
   "bundle": {
-    "active": false,
-    "targets": "all"
+    "active": true,
+    "targets": ["appimage", "deb"],
+    "icon": ["icons/icon.png"],
+    "category": "Utility",
+    "shortDescription": "Linux-first Sims 4 mod manager",
+    "longDescription": "A local-first Linux desktop mod manager for The Sims 4 with safe filesystem operations, metadata, themes, trash restore, and Proton path support."
   }
 }

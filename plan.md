@@ -21,6 +21,7 @@ Phase 2 checkpoints 1-11 are complete. Latest lifecycle hardening adds:
 - Settings modal and game instance sidebar have exit animations.
 - Custom path entry hints that users must select `The Sims 4`, not `Mods`, and auto-submits the parent when `Mods` is entered.
 - Settings can copy diagnostics for support, including selected instance, counts, runtime paths, Wayland workaround state, and recent issues.
+- Tauri release bundling is enabled for Linux AppImage and deb targets, with README packaging instructions.
 
 The project is a functional Linux-first Sims 4 mod manager with:
 

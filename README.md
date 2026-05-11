@@ -303,6 +303,42 @@ Release binary:
 src-tauri/target/release/ts4-mod-manager
 ```
 
+## Packaging
+
+Tauri bundling is enabled for Linux AppImage and deb targets.
+
+Build local release bundles:
+
+```bash
+npm ci
+npx tauri build
+```
+
+Expected bundle outputs:
+
+```text
+src-tauri/target/release/bundle/appimage/
+src-tauri/target/release/bundle/deb/
+```
+
+The package metadata lives in:
+
+```text
+src-tauri/tauri.conf.json
+```
+
+Current Linux bundle settings:
+
+- targets: `appimage`, `deb`
+- icon: `src-tauri/icons/icon.png`
+- category: `Utility`
+
+If WebKitGTK/Wayland crashes on a target machine, run the binary with the default workaround enabled, or explicitly set:
+
+```bash
+WEBKIT_DISABLE_DMABUF_RENDERER=1 ./ts4-mod-manager
+```
+
 ## Project Structure
 
 ```text
