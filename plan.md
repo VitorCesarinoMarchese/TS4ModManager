@@ -262,6 +262,7 @@ Progress:
 
 - Phase 0 started: `src-tauri/src/curseforge_client.rs` isolates CurseForge request/fixture parsing, and `docs/curseforge-api-spike.md` documents current assumptions and unknowns.
 - Slice 1 started: `src-tauri/src/source_candidates.rs` defines source candidate/evidence domain DTOs and confidence levels.
+- Local fingerprint extraction added in `src-tauri/src/source_fingerprint.rs` for grouped/loose mods, version tokens, useful files, and ignore rules.
 
 
 ### Goal
