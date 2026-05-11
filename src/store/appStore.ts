@@ -19,6 +19,12 @@ export type UninstallResult = {
   issues: Issue[];
 };
 
+export type ManageAllProgress = {
+  completed: number;
+  total: number;
+  currentModName: string | null;
+};
+
 export type BackendApi = {
   detectGameInstances: () => Promise<GameInstance[]>;
   scanMods: (instanceId: string) => Promise<Mod[]>;
@@ -103,6 +109,7 @@ export type AppState = {
   lastDryRun: DryRunResult | null;
   scanStatus: "idle" | "scanning";
   manageAllStatus: "idle" | "managing";
+  manageAllProgress: ManageAllProgress | null;
   selectInstance: (id: string | null) => void;
   loadInstances: () => Promise<void>;
   selectInstanceAndScan: (id: string) => Promise<void>;
@@ -192,6 +199,7 @@ export function createAppStore(apiOverrides: Partial<BackendApi> = {}) {
     lastDryRun: null,
     scanStatus: "idle",
     manageAllStatus: "idle",
+    manageAllProgress: null,
     selectInstance: (id) => set({ selectedInstanceId: id }),
     loadInstances: async () => {
       const instances = await api.detectGameInstances();
@@ -347,12 +355,14 @@ export function createAppStore(apiOverrides: Partial<BackendApi> = {}) {
       const externalMods = get().mods.filter((mod) => mod.source === "external");
       if (externalMods.length === 0) return [];
 
-      set({ manageAllStatus: "managing" });
+      set({ manageAllStatus: "managing", manageAllProgress: { completed: 0, total: externalMods.length, currentModName: externalMods[0]?.name ?? null } });
       const results: MigrateResult[] = [];
       try {
-        for (const mod of externalMods) {
+        for (const [index, mod] of externalMods.entries()) {
+          set({ manageAllProgress: { completed: index, total: externalMods.length, currentModName: mod.name } });
           const result = await api.migrateExternalMod(mod.id, instanceId);
           results.push(result);
+          set({ manageAllProgress: { completed: index + 1, total: externalMods.length, currentModName: externalMods[index + 1]?.name ?? null } });
           if (result.issues.length > 0) {
             set((state) => ({ issues: mergeIssues(state.issues, result.issues) }));
           }
@@ -366,7 +376,7 @@ export function createAppStore(apiOverrides: Partial<BackendApi> = {}) {
         }));
         return results;
       } finally {
-        set({ manageAllStatus: "idle" });
+        set({ manageAllStatus: "idle", manageAllProgress: null });
       }
     },
     restoreTrashedMod: async (trashName) => {

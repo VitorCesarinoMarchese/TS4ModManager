@@ -22,6 +22,7 @@ describe("app store bootstrap", () => {
     expect(state.selectedInstanceId).toBeNull();
     expect(state.scanStatus).toBe("idle");
     expect(state.manageAllStatus).toBe("idle");
+    expect(state.manageAllProgress).toBeNull();
   });
 
   it("allows setting selected instance", () => {
@@ -234,6 +235,7 @@ describe("app store bootstrap", () => {
 
     const pending = store.getState().manageAllExternalMods();
     expect(store.getState().manageAllStatus).toBe("managing");
+    expect(store.getState().manageAllProgress).toEqual({ completed: 0, total: 2, currentModName: "One" });
     first.resolve({ managedModId: "managed-1", issues: [] });
     await pending;
 
@@ -241,6 +243,7 @@ describe("app store bootstrap", () => {
     expect(api.migrateExternalMod).toHaveBeenNthCalledWith(2, "ext-2", "inst-1");
     expect(api.scanMods).toHaveBeenCalledWith("inst-1");
     expect(store.getState().manageAllStatus).toBe("idle");
+    expect(store.getState().manageAllProgress).toBeNull();
     expect(store.getState().lastSuccess).toBe("Managing 2 mods");
   });
 

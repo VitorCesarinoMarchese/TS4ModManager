@@ -15,7 +15,7 @@ Phase 2 checkpoints 1-11 are complete. Latest lifecycle hardening adds:
 - Folder opening detaches `xdg-open`, silences stdio, and applies Linux desktop env workarounds to avoid DBus/GLFW/Wayland noise.
 - Tauri startup sets `WEBKIT_DISABLE_DMABUF_RENDERER=1` by default to avoid common WebKitGTK Wayland protocol crashes; set `TS4MM_DISABLE_WAYLAND_WORKAROUNDS=1` to opt out.
 - Uninstall/restore success feedback appears as a toast.
-- Settings includes Manage All Mods for bulk external migration with loading feedback.
+- Settings includes Manage All Mods for bulk external migration with loading/progress feedback.
 - Trash list filters out unrelated user trash and shows only mod/app-related entries.
 - Trash entries parse `.trashinfo` and show original path plus deletion date when available.
 - Settings modal and game instance sidebar have exit animations.

@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { App } from "./App";
 import { openExternalUrl } from "./lib/openUrl";
@@ -362,6 +362,23 @@ describe("App redesign", () => {
 
     expect(window.confirm).toHaveBeenCalledWith('Replace existing theme "Purple"?');
     expect(document.documentElement.style.getPropertyValue("--color-accent")).not.toBe("#22c55e");
+  });
+
+  it("shows manage-all progress overlay", async () => {
+    const api = makeApi({
+      scanMods: vi.fn().mockResolvedValue([
+        { id: "ext-1", name: "Big One", files: ["a.package"], enabled: true, source: "external" }
+      ])
+    });
+    const store = createAppStore(api);
+    render(<App store={store} />);
+
+    await waitFor(() => expect(screen.getByText("Big One")).toBeInTheDocument());
+    act(() => {
+      store.setState({ manageAllStatus: "managing", manageAllProgress: { completed: 0, total: 1, currentModName: "Big One" } });
+    });
+
+    expect(screen.getByLabelText("manage-all-loading")).toHaveTextContent("Managing external mods 0/1: Big One");
   });
 
   it("shows loading overlay and disables rescan while scan is pending", async () => {

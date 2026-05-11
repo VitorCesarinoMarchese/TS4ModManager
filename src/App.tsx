@@ -78,6 +78,7 @@ export function App({ store = defaultStore }: AppProps) {
   const lastSuccess = useStore(store, (s) => s.lastSuccess);
   const scanStatus = useStore(store, (s) => s.scanStatus);
   const manageAllStatus = useStore(store, (s) => s.manageAllStatus);
+  const manageAllProgress = useStore(store, (s) => s.manageAllProgress);
   const loadInstances = useStore(store, (s) => s.loadInstances);
   const selectInstanceAndScan = useStore(store, (s) => s.selectInstanceAndScan);
   const rescanSelected = useStore(store, (s) => s.rescanSelected);
@@ -142,6 +143,9 @@ export function App({ store = defaultStore }: AppProps) {
 
   const isScanning = scanStatus === "scanning";
   const isManagingAll = manageAllStatus === "managing";
+  const manageAllMessage = manageAllProgress
+    ? `Managing external mods ${manageAllProgress.completed}/${manageAllProgress.total}${manageAllProgress.currentModName ? `: ${manageAllProgress.currentModName}` : ""}. This can take a while for large mod folders...`
+    : "Managing all external mods. This can take a while for large mod folders...";
   const isSidebarCollapsed = sidebarCollapsed;
   const popupIssue = [...issues]
     .reverse()
@@ -259,7 +263,7 @@ export function App({ store = defaultStore }: AppProps) {
             />
             <AnimatePresence>
               {isScanning ? <ModScanOverlay /> : null}
-              {isManagingAll ? <ModScanOverlay label="manage-all-loading" message="Managing all external mods. This can take a while for large mod folders..." /> : null}
+              {isManagingAll ? <ModScanOverlay label="manage-all-loading" message={manageAllMessage} /> : null}
             </AnimatePresence>
           </div>
 
