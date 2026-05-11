@@ -94,6 +94,7 @@ export function App({ store = defaultStore }: AppProps) {
   const manageExternalMod = useStore(store, (s) => s.manageExternalMod);
   const manageAllExternalMods = useStore(store, (s) => s.manageAllExternalMods);
   const clearSuccess = useStore(store, (s) => s.clearSuccess);
+  const setSuccess = useStore(store, (s) => s.setSuccess);
   const openManagedModsFolder = useStore(store, (s) => s.openManagedModsFolder);
   const openManagerFolder = useStore(store, (s) => s.openManagerFolder);
   const getDiagnosticsReport = useStore(store, (s) => s.getDiagnosticsReport);
@@ -327,10 +328,18 @@ export function App({ store = defaultStore }: AppProps) {
               onThemeReset={onThemeReset}
               onOpenManagedModsFolder={() => void openManagedModsFolder()}
               onOpenManagerFolder={() => void openManagerFolder()}
-              onManageAllMods={() => void manageAllExternalMods()}
+              onManageAllMods={() => {
+                const externalCount = mods.filter((mod) => mod.source === "external").length;
+                if (externalCount === 0) return;
+                if (!window.confirm(`Manage ${externalCount} external mod${externalCount === 1 ? "" : "s"}? Large folders may take several minutes.`)) return;
+                void manageAllExternalMods();
+              }}
               onCopyDiagnostics={async () => {
                 const report = await getDiagnosticsReport();
-                if (report) await navigator.clipboard.writeText(report);
+                if (report) {
+                  await navigator.clipboard.writeText(report);
+                  setSuccess("Copied diagnostics");
+                }
               }}
               manageAllDisabled={!selectedInstanceId || mods.every((mod) => mod.source !== "external")}
               manageAllLoading={isManagingAll}

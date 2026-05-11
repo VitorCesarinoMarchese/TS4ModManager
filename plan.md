@@ -20,8 +20,10 @@ Phase 2 checkpoints 1-11 are complete. Latest lifecycle hardening adds:
 - Trash entries parse `.trashinfo` and show original path plus deletion date when available.
 - Settings modal and game instance sidebar have exit animations.
 - Custom path entry hints that users must select `The Sims 4`, not `Mods`, and auto-submits the parent when `Mods` is entered.
-- Settings can copy diagnostics for support, including selected instance, counts, runtime paths, Wayland workaround state, and recent issues.
-- Tauri release bundling is enabled for Linux AppImage and deb targets, with README packaging instructions.
+- Settings can copy diagnostics for support, including app version/build target, selected instance, counts, runtime paths, Wayland workaround state, and recent issues; copy shows success toast.
+- Tauri release bundling is enabled for Linux AppImage and deb targets, with README packaging/troubleshooting instructions.
+- Manage All has confirmation with external mod count and large-folder warning.
+- Restore path collisions show clearer guidance to open the Mods folder and move/rename existing files.
 
 The project is a functional Linux-first Sims 4 mod manager with:
 
@@ -44,7 +46,7 @@ The project is a functional Linux-first Sims 4 mod manager with:
 Current validation baseline:
 
 ```text
-npm run test:coverage  -> 131 frontend tests, branch coverage 80.57%
+npm run test:coverage  -> 138 frontend tests, branch coverage 81.05%
 npm run build          -> passing
 cargo test             -> 73 passed
 cargo check --features tauri-app -> passing

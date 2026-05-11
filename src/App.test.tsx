@@ -71,7 +71,9 @@ function makeApi(overrides: Record<string, unknown> = {}) {
       managedModsDir: "/manager/mods",
       trashFilesDir: "/trash/files",
       waylandWorkaround: "1",
-      waylandWorkaroundDisabled: false
+      waylandWorkaroundDisabled: false,
+      appVersion: "0.1.0",
+      buildTarget: "linux-x64"
     }),
     ...overrides
   };
@@ -217,6 +219,43 @@ describe("App redesign", () => {
     await waitFor(() => expect(screen.queryByRole("dialog", { name: "settings-modal" })).not.toBeInTheDocument());
   });
 
+  it("confirms manage-all before bulk migration", async () => {
+    const confirm = vi.spyOn(window, "confirm").mockReturnValue(true);
+    const api = makeApi({
+      scanMods: vi.fn().mockResolvedValue([
+        { id: "ext-1", name: "External", files: ["a.package"], enabled: true, source: "external" }
+      ])
+    });
+    const store = createAppStore(api);
+    render(<App store={store} />);
+
+    await waitFor(() => expect(screen.getAllByText("External").length).toBeGreaterThan(0));
+    fireEvent.click(screen.getByRole("button", { name: "open-settings" }));
+    fireEvent.click(screen.getByRole("button", { name: "Manage All Mods" }));
+
+    expect(confirm).toHaveBeenCalledWith("Manage 1 external mod? Large folders may take several minutes.");
+    await waitFor(() => expect(api.migrateExternalMod).toHaveBeenCalledWith("ext-1", "inst-1"));
+    confirm.mockRestore();
+  });
+
+  it("cancels manage-all when confirmation is rejected", async () => {
+    const confirm = vi.spyOn(window, "confirm").mockReturnValue(false);
+    const api = makeApi({
+      scanMods: vi.fn().mockResolvedValue([
+        { id: "ext-1", name: "External", files: ["a.package"], enabled: true, source: "external" }
+      ])
+    });
+    const store = createAppStore(api);
+    render(<App store={store} />);
+
+    await waitFor(() => expect(screen.getAllByText("External").length).toBeGreaterThan(0));
+    fireEvent.click(screen.getByRole("button", { name: "open-settings" }));
+    fireEvent.click(screen.getByRole("button", { name: "Manage All Mods" }));
+
+    expect(api.migrateExternalMod).not.toHaveBeenCalled();
+    confirm.mockRestore();
+  });
+
   it("copies diagnostics from settings", async () => {
     mockClipboard();
     const api = makeApi();
@@ -228,6 +267,8 @@ describe("App redesign", () => {
 
     await waitFor(() => expect(navigator.clipboard.writeText).toHaveBeenCalledWith(expect.stringContaining("TS4 Mod Manager Diagnostics")));
     expect(navigator.clipboard.writeText).toHaveBeenCalledWith(expect.stringContaining("Managed root: /manager"));
+    expect(navigator.clipboard.writeText).toHaveBeenCalledWith(expect.stringContaining("App version: 0.1.0"));
+    await waitFor(() => expect(screen.getByText("Copied diagnostics")).toBeInTheDocument());
   });
 
   it("uses system dark theme from settings dropdown", () => {

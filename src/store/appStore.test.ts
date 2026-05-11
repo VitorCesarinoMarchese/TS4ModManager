@@ -283,6 +283,29 @@ describe("app store bootstrap", () => {
     expect(store.getState().issues.at(-1)?.message).toBe("diag failed");
   });
 
+  it("shows clearer restore collision issue", async () => {
+    const api = {
+      restoreTrashedMod: vi.fn().mockRejectedValue({ code: "PATH_COLLISION", message: "Restore target exists: /game/Mods/A" })
+    };
+    const store = createAppStore(api);
+    store.setState({ selectedInstanceId: "inst-1" });
+
+    await expect(store.getState().restoreTrashedMod("A-1")).resolves.toBeNull();
+
+    expect(store.getState().issues.at(-1)).toMatchObject({
+      code: "PATH_COLLISION",
+      message: expect.stringContaining("Open the Mods folder")
+    });
+  });
+
+  it("sets manual success messages", () => {
+    const store = createAppStore();
+
+    store.getState().setSuccess("Copied diagnostics");
+
+    expect(store.getState().lastSuccess).toBe("Copied diagnostics");
+  });
+
   it("builds diagnostics report from runtime paths and app state", async () => {
     const api = {
       runtimeDiagnostics: vi.fn().mockResolvedValue({
@@ -290,7 +313,9 @@ describe("app store bootstrap", () => {
         managedModsDir: "/manager/mods",
         trashFilesDir: "/trash/files",
         waylandWorkaround: undefined,
-        waylandWorkaroundDisabled: false
+        waylandWorkaroundDisabled: false,
+        appVersion: "0.1.0",
+        buildTarget: "linux-x64"
       })
     };
     const store = createAppStore(api);
@@ -307,6 +332,8 @@ describe("app store bootstrap", () => {
     expect(report).toContain("Selected instance: inst-1");
     expect(report).toContain("Managed root: /manager");
     expect(report).toContain("Wayland workaround: unset");
+    expect(report).toContain("App version: 0.1.0");
+    expect(report).toContain("Build target: linux-x64");
     expect(report).toContain("[warning] EXTERNAL_LINK: Heads up");
   });
 

@@ -120,6 +120,8 @@ pub struct RuntimeDiagnostics {
     pub trash_files_dir: String,
     pub wayland_workaround: Option<String>,
     pub wayland_workaround_disabled: bool,
+    pub app_version: String,
+    pub build_target: String,
 }
 
 pub fn cmd_list_trash_entries() -> Result<Vec<TrashEntry>, ManagerError> {
@@ -133,6 +135,8 @@ pub fn cmd_runtime_diagnostics() -> Result<RuntimeDiagnostics, ManagerError> {
         trash_files_dir: trash_files_dir()?.to_string_lossy().to_string(),
         wayland_workaround: std::env::var(WAYLAND_WORKAROUND_ENV).ok(),
         wayland_workaround_disabled: std::env::var(WAYLAND_WORKAROUND_DISABLE_ENV).ok().as_deref() == Some("1"),
+        app_version: env!("CARGO_PKG_VERSION").to_string(),
+        build_target: format!("{}-{}", std::env::consts::OS, std::env::consts::ARCH),
     })
 }
 
@@ -208,6 +212,8 @@ mod tests {
         assert!(diagnostics.managed_root.ends_with(".local/share/sims4-mod-manager"));
         assert!(diagnostics.managed_mods_dir.ends_with(".local/share/sims4-mod-manager/mods"));
         assert!(diagnostics.trash_files_dir.ends_with(".local/share/Trash/files"));
+        assert_eq!(diagnostics.app_version, env!("CARGO_PKG_VERSION"));
+        assert!(diagnostics.build_target.contains(std::env::consts::OS));
     }
 
     #[test]

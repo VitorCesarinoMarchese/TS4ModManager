@@ -311,7 +311,13 @@ Build local release bundles:
 
 ```bash
 npm ci
-npx tauri build
+npm run tauri:build
+```
+
+Build only the deb package:
+
+```bash
+npm run tauri:build:deb
 ```
 
 Expected bundle outputs:
@@ -338,6 +344,82 @@ If WebKitGTK/Wayland crashes on a target machine, run the binary with the defaul
 ```bash
 WEBKIT_DISABLE_DMABUF_RENDERER=1 ./ts4-mod-manager
 ```
+
+### Local packaging smoke test
+
+After building a deb package, install and launch it on a Linux desktop:
+
+```bash
+sudo apt install ./src-tauri/target/release/bundle/deb/TS4\ Mod\ Manager_0.1.0_amd64.deb
+ts4-mod-manager
+```
+
+For AppImage builds, launch the generated file directly:
+
+```bash
+chmod +x "src-tauri/target/release/bundle/appimage/TS4 Mod Manager_0.1.0_amd64.AppImage"
+"src-tauri/target/release/bundle/appimage/TS4 Mod Manager_0.1.0_amd64.AppImage"
+```
+
+Some CI/container environments cannot run `linuxdeploy` correctly for AppImage bundling. If AppImage bundling fails there, retry on a normal Linux desktop with FUSE/AppImage support, or build only the deb package with `npm run tauri:build:deb`.
+
+Local smoke-test notes are tracked in:
+
+```text
+docs/local-smoke-report.md
+```
+
+## Troubleshooting / Known Linux Issues
+
+### Wrong Sims 4 custom path
+
+Custom path must be the folder that contains `Mods/`:
+
+```text
+.../Documents/Electronic Arts/The Sims 4
+```
+
+Do not select:
+
+```text
+.../Documents/Electronic Arts/The Sims 4/Mods
+```
+
+If `Mods` is entered, the UI suggests/uses the parent folder.
+
+### Steam Flatpak path
+
+Flatpak Steam commonly stores Proton data under:
+
+```text
+~/.var/app/com.valvesoftware.Steam/.local/share/Steam/steamapps/compatdata/1222670/pfx/drive_c/users/steamuser/Documents/Electronic Arts/The Sims 4
+```
+
+### Wayland/WebKitGTK crash
+
+If you see:
+
+```text
+Error 71 (Protocol error) dispatching to Wayland display
+```
+
+Use the default workaround or set explicitly:
+
+```bash
+WEBKIT_DISABLE_DMABUF_RENDERER=1 ts4-mod-manager
+```
+
+### Missing Tauri/Linux dependencies
+
+If build fails with missing GTK/WebKit packages, reinstall the Linux prerequisites listed above. On Ubuntu/Debian, the most important package is:
+
+```text
+libwebkit2gtk-4.1-dev
+```
+
+### Restore target collision
+
+If restore fails because a file already exists in `Mods/`, open the Mods folder and rename/move the existing file, then restore again. The app does not overwrite existing files.
 
 ## Project Structure
 

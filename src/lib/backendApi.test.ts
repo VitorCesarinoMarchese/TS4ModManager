@@ -282,7 +282,9 @@ describe("backend api wrapper", () => {
       managedModsDir: "/home/me/.local/share/sims4-mod-manager/mods",
       trashFilesDir: "/home/me/.local/share/Trash/files",
       waylandWorkaround: "1",
-      waylandWorkaroundDisabled: false
+      waylandWorkaroundDisabled: false,
+      appVersion: "0.1.0",
+      buildTarget: "linux-x64"
     });
     const api = createBackendApi(invoke);
 

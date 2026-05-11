@@ -92,7 +92,9 @@ const defaultApi: BackendApi = {
     managedRoot: "",
     managedModsDir: "",
     trashFilesDir: "",
-    waylandWorkaroundDisabled: false
+    waylandWorkaroundDisabled: false,
+    appVersion: "0.0.0",
+    buildTarget: "unknown"
   }),
   openManagedModsFolder: async () => {},
   openManagerFolder: async () => {}
@@ -126,6 +128,7 @@ export type AppState = {
   manageExternalMod: (modId: string) => Promise<MigrateResult | null>;
   manageAllExternalMods: () => Promise<MigrateResult[]>;
   clearSuccess: () => void;
+  setSuccess: (message: string) => void;
   openManagedModsFolder: () => Promise<void>;
   openManagerFolder: () => Promise<void>;
   getDiagnosticsReport: () => Promise<string | null>;
@@ -247,6 +250,7 @@ export function createAppStore(apiOverrides: Partial<BackendApi> = {}) {
     },
     addIssue: (issue) => set((state) => ({ issues: mergeIssueList(state.issues, issue) })),
     clearSuccess: () => set({ lastSuccess: null }),
+    setSuccess: (message) => set({ lastSuccess: message }),
     addCustomInstance: async (path) => {
       try {
         const instance = await api.validateCustomInstance(path);
@@ -283,6 +287,8 @@ export function createAppStore(apiOverrides: Partial<BackendApi> = {}) {
         const state = get();
         return [
           "TS4 Mod Manager Diagnostics",
+          `App version: ${diagnostics.appVersion}`,
+          `Build target: ${diagnostics.buildTarget}`,
           `Selected instance: ${state.selectedInstanceId ?? "none"}`,
           `Instances: ${state.instances.length}`,
           `Mods: ${state.mods.length}`,
@@ -390,8 +396,12 @@ export function createAppStore(apiOverrides: Partial<BackendApi> = {}) {
         set({ mods });
         return result;
       } catch (error) {
+        const issue = toIssue(error, "trash-restore", "Restore failed");
+        const restoreIssue = issue.code === "PATH_COLLISION"
+          ? { ...issue, message: `${issue.message}. Open the Mods folder and move or rename the existing file before restoring.` }
+          : issue;
         set((state) => ({
-          issues: mergeIssueList(state.issues, toIssue(error, "trash-restore", "Restore failed"))
+          issues: mergeIssueList(state.issues, restoreIssue)
         }));
         return null;
       }

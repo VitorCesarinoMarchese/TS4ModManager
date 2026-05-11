@@ -50,6 +50,8 @@ export type RuntimeDiagnostics = {
   trashFilesDir: string;
   waylandWorkaround?: string;
   waylandWorkaroundDisabled: boolean;
+  appVersion: string;
+  buildTarget: string;
 };
 
 export type Issue = {

@@ -9,7 +9,9 @@
     "preview": "vite preview",
     "test": "vitest",
     "test:run": "vitest run",
-    "test:coverage": "vitest run --coverage"
+    "test:coverage": "vitest run --coverage",
+    "tauri:build": "tauri build --features tauri-app",
+    "tauri:build:deb": "tauri build --features tauri-app --bundles deb"
   },
   "dependencies": {
     "@phosphor-icons/react": "^2.1.10",
@@ -19,6 +21,7 @@
     "zustand": "^5.0.8"
   },
   "devDependencies": {
+    "@tauri-apps/cli": "^2.11.1",
     "@testing-library/jest-dom": "^6.6.3",
     "@testing-library/react": "^16.0.1",
     "@types/react": "^19.1.10",
