@@ -153,7 +153,7 @@ describe("SettingsPage", () => {
         onSelectInstance={() => {}}
         onRescan={() => {}}
         onAddCustomPath={() => {}}
-        trashEntries={[{ name: "mod-1-123", path: "/trash/mod-1-123" }]}
+        trashEntries={[{ name: "mod-1-123", path: "/trash/mod-1-123", originalPath: "/games/The Sims 4/Mods/mod-1", deletionDate: "2026-05-10T20:00:00" }]}
         onRefreshTrash={onRefreshTrash}
         onRestoreTrash={onRestoreTrash}
       />
@@ -163,6 +163,8 @@ describe("SettingsPage", () => {
     fireEvent.click(screen.getByRole("button", { name: "Restore" }));
 
     expect(screen.getByText("mod-1-123")).toBeInTheDocument();
+    expect(screen.getByText(/Original:/)).toHaveTextContent("/games/The Sims 4/Mods/mod-1");
+    expect(screen.getByText(/Deleted:/)).toHaveTextContent("2026-05-10T20:00:00");
     expect(onRefreshTrash).toHaveBeenCalledTimes(1);
     expect(onRestoreTrash).toHaveBeenCalledWith("mod-1-123");
   });

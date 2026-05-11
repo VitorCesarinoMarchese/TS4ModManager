@@ -175,7 +175,11 @@ export function SettingsPage({
         <ul className="grid list-none gap-2 p-0">
           {trashEntries.map((entry) => (
             <li key={entry.name} className="flex flex-wrap items-center justify-between gap-2 rounded-md border !border-[var(--color-border)] px-3 py-2 text-sm">
-              <span className="truncate" title={entry.path}>{entry.name}</span>
+              <span className="grid min-w-0 gap-1">
+                <span className="truncate font-medium" title={entry.path}>{entry.name}</span>
+                {entry.originalPath ? <span className="truncate text-xs text-slate-600 dark:text-slate-300" title={entry.originalPath}>Original: {entry.originalPath}</span> : null}
+                {entry.deletionDate ? <span className="text-xs text-slate-600 dark:text-slate-300">Deleted: {entry.deletionDate}</span> : null}
+              </span>
               <button type="button" className={buttonClass} onClick={() => void onRestoreTrash?.(entry.name)}>
                 Restore
               </button>

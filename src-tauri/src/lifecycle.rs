@@ -20,6 +20,8 @@ pub struct UninstallResult {
 pub struct TrashEntry {
     pub name: String,
     pub path: String,
+    pub original_path: Option<String>,
+    pub deletion_date: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -133,10 +135,16 @@ pub fn list_trash_entries(trash_files_dir: &Path) -> Result<Vec<TrashEntry>, Man
         .filter_map(|entry| {
             let path = entry.path();
             let name = path.file_name()?.to_string_lossy().to_string();
-            if !is_mod_trash_entry(trash_files_dir, &name, &path) {
+            let info = read_trashinfo(trash_files_dir, &name);
+            if !is_mod_trash_entry(trash_files_dir, &name, &path, info.as_ref()) {
                 return None;
             }
-            Some(TrashEntry { name, path: path.to_string_lossy().to_string() })
+            Some(TrashEntry {
+                name,
+                path: path.to_string_lossy().to_string(),
+                original_path: info.as_ref().and_then(|info| info.original_path.clone()),
+                deletion_date: info.as_ref().and_then(|info| info.deletion_date.clone()),
+            })
         })
         .collect::<Vec<_>>();
     entries.sort_by(|a, b| b.name.cmp(&a.name));
@@ -226,23 +234,32 @@ pub fn restore_trashed_mod(
     Ok(RestoreResult { restored_path: restored_path.to_string_lossy().to_string() })
 }
 
-fn is_mod_trash_entry(trash_files_dir: &Path, trash_name: &str, entry_path: &Path) -> bool {
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct TrashInfo {
+    original_path: Option<String>,
+    deletion_date: Option<String>,
+}
+
+fn read_trashinfo(trash_files_dir: &Path, trash_name: &str) -> Option<TrashInfo> {
+    let trash_root = trash_files_dir.parent()?;
+    let raw = fs::read_to_string(trash_root.join("info").join(format!("{trash_name}.trashinfo"))).ok()?;
+    let mut info = TrashInfo { original_path: None, deletion_date: None };
+    for line in raw.lines() {
+        if let Some(path) = line.strip_prefix("Path=") {
+            info.original_path = Some(path.to_string());
+        } else if let Some(date) = line.strip_prefix("DeletionDate=") {
+            info.deletion_date = Some(date.to_string());
+        }
+    }
+    Some(info)
+}
+
+fn is_mod_trash_entry(_trash_files_dir: &Path, _trash_name: &str, entry_path: &Path, info: Option<&TrashInfo>) -> bool {
     if entry_contains_mod_data(entry_path) {
         return true;
     }
 
-    let Some(trash_root) = trash_files_dir.parent() else {
-        return false;
-    };
-    let info_path = trash_root.join("info").join(format!("{trash_name}.trashinfo"));
-    let Ok(info) = fs::read_to_string(info_path) else {
-        return false;
-    };
-
-    info.lines().any(|line| {
-        let Some(path) = line.strip_prefix("Path=") else {
-            return false;
-        };
+    info.and_then(|info| info.original_path.as_deref()).is_some_and(|path| {
         path.contains("sims4-mod-manager") || path.contains("/The Sims 4/Mods/") || path.ends_with("/The Sims 4/Mods")
     })
 }
@@ -549,6 +566,24 @@ mod tests {
 
         assert_eq!(entries.len(), 1);
         assert_eq!(entries[0].name, "LooseMod-123");
+        assert_eq!(entries[0].original_path.as_deref(), Some("/home/me/Documents/Electronic Arts/The Sims 4/Mods/LooseMod"));
+    }
+
+    #[test]
+    fn list_trash_entries_includes_original_path_and_deletion_date() {
+        let tmp = TempDir::new().expect("tmp");
+        let mods_dir = tmp.path().join("Game/Mods");
+        fs::create_dir_all(mods_dir.join("LooseMod")).expect("installed dir");
+        fs::write(mods_dir.join("LooseMod/main.package"), b"pkg").expect("pkg");
+        let trash_files = tmp.path().join("Trash/files");
+        let trashed = uninstall_managed_mod(tmp.path(), &mods_dir, &trash_files, "LooseMod").expect("uninstall");
+        let trash_name = std::path::Path::new(&trashed.trashed_path).file_name().unwrap().to_string_lossy().to_string();
+
+        let entries = list_trash_entries(&trash_files).expect("list");
+
+        assert_eq!(entries[0].name, trash_name);
+        assert_eq!(entries[0].original_path.as_deref(), Some(mods_dir.join("LooseMod").to_string_lossy().as_ref()));
+        assert!(entries[0].deletion_date.as_deref().unwrap_or_default().contains('T'));
     }
 
     #[test]

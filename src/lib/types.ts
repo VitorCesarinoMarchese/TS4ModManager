@@ -36,6 +36,8 @@ export type GameInstance = {
 export type TrashEntry = {
   name: string;
   path: string;
+  originalPath?: string;
+  deletionDate?: string;
 };
 
 export type RestoreResult = {

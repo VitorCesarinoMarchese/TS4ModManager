@@ -256,11 +256,13 @@ describe("backend api wrapper", () => {
   it("calls trash list and restore commands", async () => {
     const invoke = vi
       .fn()
-      .mockResolvedValueOnce([{ name: "mod-1-123", path: "/trash/mod-1-123" }])
+      .mockResolvedValueOnce([{ name: "mod-1-123", path: "/trash/mod-1-123", originalPath: "/mods/mod-1", deletionDate: "2026-05-10T20:00:00" }])
       .mockResolvedValueOnce({ restoredPath: "/mods/mod-1" });
     const api = createBackendApi(invoke);
 
-    await expect(api.listTrashEntries()).resolves.toEqual([{ name: "mod-1-123", path: "/trash/mod-1-123" }]);
+    await expect(api.listTrashEntries()).resolves.toEqual([
+      { name: "mod-1-123", path: "/trash/mod-1-123", originalPath: "/mods/mod-1", deletionDate: "2026-05-10T20:00:00" }
+    ]);
     await expect(api.restoreTrashedMod("mod-1-123", "inst-1")).resolves.toEqual({ restoredPath: "/mods/mod-1" });
 
     expect(invoke).toHaveBeenCalledWith("list_trash_entries");

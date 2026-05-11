@@ -17,6 +17,7 @@ Phase 2 checkpoints 1-11 are complete. Latest lifecycle hardening adds:
 - Uninstall/restore success feedback appears as a toast.
 - Settings includes Manage All Mods for bulk external migration with loading feedback.
 - Trash list filters out unrelated user trash and shows only mod/app-related entries.
+- Trash entries parse `.trashinfo` and show original path plus deletion date when available.
 - Settings modal and game instance sidebar have exit animations.
 - Custom path entry hints that users must select `The Sims 4`, not `Mods`, and auto-submits the parent when `Mods` is entered.
 
@@ -43,7 +44,7 @@ Current validation baseline:
 ```text
 npm run test:coverage  -> 126 frontend tests, branch coverage 80.22%
 npm run build          -> passing
-cargo test             -> 71 passed
+cargo test             -> 72 passed
 cargo check --features tauri-app -> passing
 ```
 
