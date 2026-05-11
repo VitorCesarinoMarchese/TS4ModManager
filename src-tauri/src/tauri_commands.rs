@@ -117,6 +117,11 @@ fn list_trash_entries() -> Result<Vec<crate::lifecycle::TrashEntry>, ManagerErro
 }
 
 #[tauri::command]
+fn runtime_diagnostics() -> Result<crate::commands::RuntimeDiagnostics, ManagerError> {
+    commands::cmd_runtime_diagnostics()
+}
+
+#[tauri::command]
 fn restore_trashed_mod(
     trash_name: String,
     instance_id: String,
@@ -161,6 +166,7 @@ pub fn run() {
             remove_source_url,
             uninstall_managed_mod,
             list_trash_entries,
+            runtime_diagnostics,
             restore_trashed_mod,
             open_external_url,
             open_managed_mods_folder,

@@ -1,5 +1,5 @@
 import { toBackendErrorCode, type ApiError } from "./error";
-import type { DryRunResult, GameInstance, Issue, Mod, RestoreResult, TrashEntry } from "./types";
+import type { DryRunResult, GameInstance, Issue, Mod, RestoreResult, RuntimeDiagnostics, TrashEntry } from "./types";
 
 type ScannedModDto = Omit<Mod, "id"> & {
   id?: string;
@@ -192,6 +192,14 @@ export function createBackendApi(invoke: InvokeFn) {
     async listTrashEntries(): Promise<TrashEntry[]> {
       try {
         return await invoke<TrashEntry[]>("list_trash_entries");
+      } catch (error) {
+        throw normalizeError(error);
+      }
+    },
+
+    async runtimeDiagnostics(): Promise<RuntimeDiagnostics> {
+      try {
+        return await invoke<RuntimeDiagnostics>("runtime_diagnostics");
       } catch (error) {
         throw normalizeError(error);
       }

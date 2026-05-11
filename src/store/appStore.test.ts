@@ -269,6 +269,44 @@ describe("app store bootstrap", () => {
     expect(store.getState().issues.at(-1)?.message).toBe("copy failed");
   });
 
+  it("stores issue when diagnostics fail", async () => {
+    const api = {
+      runtimeDiagnostics: vi.fn().mockRejectedValue({ code: "IO_ERROR", message: "diag failed" })
+    };
+    const store = createAppStore(api);
+
+    await expect(store.getState().getDiagnosticsReport()).resolves.toBeNull();
+
+    expect(store.getState().issues.at(-1)?.message).toBe("diag failed");
+  });
+
+  it("builds diagnostics report from runtime paths and app state", async () => {
+    const api = {
+      runtimeDiagnostics: vi.fn().mockResolvedValue({
+        managedRoot: "/manager",
+        managedModsDir: "/manager/mods",
+        trashFilesDir: "/trash/files",
+        waylandWorkaround: undefined,
+        waylandWorkaroundDisabled: false
+      })
+    };
+    const store = createAppStore(api);
+    store.setState({
+      selectedInstanceId: "inst-1",
+      instances: [{ id: "inst-1", path: "/game", source: "custom" }],
+      mods: [{ id: "m1", name: "Mod", files: [], enabled: true, source: "managed" }],
+      issues: [{ id: "i1", severity: "warning", message: "Heads up", code: "EXTERNAL_LINK" }]
+    });
+
+    const report = await store.getState().getDiagnosticsReport();
+
+    expect(report).toContain("TS4 Mod Manager Diagnostics");
+    expect(report).toContain("Selected instance: inst-1");
+    expect(report).toContain("Managed root: /manager");
+    expect(report).toContain("Wayland workaround: unset");
+    expect(report).toContain("[warning] EXTERNAL_LINK: Heads up");
+  });
+
   it("adds custom instance then scans it", async () => {
     const api = {
       detectGameInstances: vi.fn().mockResolvedValue([]),

@@ -169,10 +169,11 @@ describe("SettingsPage", () => {
     expect(onRestoreTrash).toHaveBeenCalledWith("mod-1-123");
   });
 
-  it("opens folders and starts manage-all flow", () => {
+  it("opens folders, starts manage-all flow, and copies diagnostics", () => {
     const onOpenManagedModsFolder = vi.fn();
     const onOpenManagerFolder = vi.fn();
     const onManageAllMods = vi.fn();
+    const onCopyDiagnostics = vi.fn();
     render(
       <SettingsPage
         instances={[]}
@@ -183,16 +184,19 @@ describe("SettingsPage", () => {
         onOpenManagedModsFolder={onOpenManagedModsFolder}
         onOpenManagerFolder={onOpenManagerFolder}
         onManageAllMods={onManageAllMods}
+        onCopyDiagnostics={onCopyDiagnostics}
       />
     );
 
     fireEvent.click(screen.getByRole("button", { name: "Open Mod Folder" }));
     fireEvent.click(screen.getByRole("button", { name: "Open Manager Folder" }));
     fireEvent.click(screen.getByRole("button", { name: "Manage All Mods" }));
+    fireEvent.click(screen.getByRole("button", { name: "Copy Diagnostics" }));
 
     expect(onOpenManagedModsFolder).toHaveBeenCalledTimes(1);
     expect(onOpenManagerFolder).toHaveBeenCalledTimes(1);
     expect(onManageAllMods).toHaveBeenCalledTimes(1);
+    expect(onCopyDiagnostics).toHaveBeenCalledTimes(1);
     expect(screen.queryByRole("button", { name: "Open Trash Folder" })).not.toBeInTheDocument();
   });
 

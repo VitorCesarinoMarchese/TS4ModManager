@@ -66,6 +66,13 @@ function makeApi(overrides: Record<string, unknown> = {}) {
       })
     ),
     uninstallManagedMod: vi.fn().mockResolvedValue({ modId: "mod-1", trashedPath: "/trash/mod-1", issues: [] }),
+    runtimeDiagnostics: vi.fn().mockResolvedValue({
+      managedRoot: "/manager",
+      managedModsDir: "/manager/mods",
+      trashFilesDir: "/trash/files",
+      waylandWorkaround: "1",
+      waylandWorkaroundDisabled: false
+    }),
     ...overrides
   };
 }
@@ -208,6 +215,19 @@ describe("App redesign", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "close-settings" }));
     await waitFor(() => expect(screen.queryByRole("dialog", { name: "settings-modal" })).not.toBeInTheDocument());
+  });
+
+  it("copies diagnostics from settings", async () => {
+    mockClipboard();
+    const api = makeApi();
+    const store = createAppStore(api);
+    render(<App store={store} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "open-settings" }));
+    fireEvent.click(screen.getByRole("button", { name: "Copy Diagnostics" }));
+
+    await waitFor(() => expect(navigator.clipboard.writeText).toHaveBeenCalledWith(expect.stringContaining("TS4 Mod Manager Diagnostics")));
+    expect(navigator.clipboard.writeText).toHaveBeenCalledWith(expect.stringContaining("Managed root: /manager"));
   });
 
   it("uses system dark theme from settings dropdown", () => {

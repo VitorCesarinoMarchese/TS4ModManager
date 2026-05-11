@@ -24,6 +24,7 @@ type SettingsPageProps = {
   onOpenManagedModsFolder?: () => void | Promise<void>;
   onOpenManagerFolder?: () => void | Promise<void>;
   onManageAllMods?: () => void | Promise<void>;
+  onCopyDiagnostics?: () => void | Promise<void>;
   manageAllDisabled?: boolean;
   manageAllLoading?: boolean;
   onRefreshTrash?: () => void | Promise<void>;
@@ -69,6 +70,7 @@ export function SettingsPage({
   onOpenManagedModsFolder,
   onOpenManagerFolder,
   onManageAllMods,
+  onCopyDiagnostics,
   manageAllDisabled = false,
   manageAllLoading = false,
   onRefreshTrash,
@@ -162,6 +164,10 @@ export function SettingsPage({
         <button type="button" className={buttonClass} disabled={manageAllDisabled || manageAllLoading} onClick={() => void onManageAllMods?.()}>
           <ArrowsClockwise className={manageAllLoading ? "animate-spin" : ""} size={16} weight="regular" aria-hidden="true" />
           {manageAllLoading ? "Managing Mods..." : "Manage All Mods"}
+        </button>
+        <button type="button" className={buttonClass} onClick={() => void onCopyDiagnostics?.()}>
+          <ClipboardText size={16} weight="regular" aria-hidden="true" />
+          Copy Diagnostics
         </button>
       </div>
 

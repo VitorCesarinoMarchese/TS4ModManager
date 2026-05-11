@@ -20,6 +20,7 @@ Phase 2 checkpoints 1-11 are complete. Latest lifecycle hardening adds:
 - Trash entries parse `.trashinfo` and show original path plus deletion date when available.
 - Settings modal and game instance sidebar have exit animations.
 - Custom path entry hints that users must select `The Sims 4`, not `Mods`, and auto-submits the parent when `Mods` is entered.
+- Settings can copy diagnostics for support, including selected instance, counts, runtime paths, Wayland workaround state, and recent issues.
 
 The project is a functional Linux-first Sims 4 mod manager with:
 
@@ -42,9 +43,9 @@ The project is a functional Linux-first Sims 4 mod manager with:
 Current validation baseline:
 
 ```text
-npm run test:coverage  -> 126 frontend tests, branch coverage 80.22%
+npm run test:coverage  -> 131 frontend tests, branch coverage 80.57%
 npm run build          -> passing
-cargo test             -> 72 passed
+cargo test             -> 73 passed
 cargo check --features tauri-app -> passing
 ```
 

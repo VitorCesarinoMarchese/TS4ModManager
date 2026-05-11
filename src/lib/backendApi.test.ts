@@ -269,6 +269,27 @@ describe("backend api wrapper", () => {
     expect(invoke).toHaveBeenCalledWith("restore_trashed_mod", { trashName: "mod-1-123", instanceId: "inst-1" });
   });
 
+  it("normalizes runtime diagnostics command failures", async () => {
+    const invoke = vi.fn().mockRejectedValue({ code: "IO_ERROR", message: "diag failed" });
+    const api = createBackendApi(invoke);
+
+    await expect(api.runtimeDiagnostics()).rejects.toMatchObject({ code: "IO_ERROR", message: "diag failed" });
+  });
+
+  it("calls runtime diagnostics command", async () => {
+    const invoke = vi.fn().mockResolvedValue({
+      managedRoot: "/home/me/.local/share/sims4-mod-manager",
+      managedModsDir: "/home/me/.local/share/sims4-mod-manager/mods",
+      trashFilesDir: "/home/me/.local/share/Trash/files",
+      waylandWorkaround: "1",
+      waylandWorkaroundDisabled: false
+    });
+    const api = createBackendApi(invoke);
+
+    await expect(api.runtimeDiagnostics()).resolves.toMatchObject({ managedModsDir: expect.stringContaining("mods") });
+    expect(invoke).toHaveBeenCalledWith("runtime_diagnostics");
+  });
+
   it("calls open folder commands", async () => {
     const invoke = vi.fn().mockResolvedValue(undefined);
     const api = createBackendApi(invoke);

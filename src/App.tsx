@@ -95,6 +95,7 @@ export function App({ store = defaultStore }: AppProps) {
   const clearSuccess = useStore(store, (s) => s.clearSuccess);
   const openManagedModsFolder = useStore(store, (s) => s.openManagedModsFolder);
   const openManagerFolder = useStore(store, (s) => s.openManagerFolder);
+  const getDiagnosticsReport = useStore(store, (s) => s.getDiagnosticsReport);
 
   const [search, setSearch] = useState("");
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -323,6 +324,10 @@ export function App({ store = defaultStore }: AppProps) {
               onOpenManagedModsFolder={() => void openManagedModsFolder()}
               onOpenManagerFolder={() => void openManagerFolder()}
               onManageAllMods={() => void manageAllExternalMods()}
+              onCopyDiagnostics={async () => {
+                const report = await getDiagnosticsReport();
+                if (report) await navigator.clipboard.writeText(report);
+              }}
               manageAllDisabled={!selectedInstanceId || mods.every((mod) => mod.source !== "external")}
               manageAllLoading={isManagingAll}
               onRefreshTrash={() => void loadTrashEntries()}

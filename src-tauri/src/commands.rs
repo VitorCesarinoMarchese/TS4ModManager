@@ -10,7 +10,9 @@ use crate::managed_storage::{remove_source_url, set_custom_display_name, set_sou
 use crate::mod_scan::ScannedMod;
 use crate::orphan::{detect_orphan_symlinks, OrphanSymlink};
 use crate::path_detection::{detect_game_instances, validate_custom_instance, GameInstance};
-use crate::runtime_env::desktop_open_env;
+use serde::{Deserialize, Serialize};
+
+use crate::runtime_env::{desktop_open_env, WAYLAND_WORKAROUND_DISABLE_ENV, WAYLAND_WORKAROUND_ENV};
 use crate::runtime_paths::{managed_root, managed_mods_dir, trash_files_dir};
 use crate::toggle::{apply_toggle, dry_run_toggle, ApplyResult, DryRunResult};
 
@@ -110,8 +112,28 @@ pub fn cmd_uninstall_managed_mod(
     Ok(result)
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct RuntimeDiagnostics {
+    pub managed_root: String,
+    pub managed_mods_dir: String,
+    pub trash_files_dir: String,
+    pub wayland_workaround: Option<String>,
+    pub wayland_workaround_disabled: bool,
+}
+
 pub fn cmd_list_trash_entries() -> Result<Vec<TrashEntry>, ManagerError> {
     list_trash_entries(&trash_files_dir()?)
+}
+
+pub fn cmd_runtime_diagnostics() -> Result<RuntimeDiagnostics, ManagerError> {
+    Ok(RuntimeDiagnostics {
+        managed_root: managed_root()?.to_string_lossy().to_string(),
+        managed_mods_dir: managed_mods_dir()?.to_string_lossy().to_string(),
+        trash_files_dir: trash_files_dir()?.to_string_lossy().to_string(),
+        wayland_workaround: std::env::var(WAYLAND_WORKAROUND_ENV).ok(),
+        wayland_workaround_disabled: std::env::var(WAYLAND_WORKAROUND_DISABLE_ENV).ok().as_deref() == Some("1"),
+    })
 }
 
 pub fn cmd_restore_trashed_mod(
@@ -173,7 +195,20 @@ pub fn cmd_open_trash_folder() -> Result<(), ManagerError> {
 
 #[cfg(test)]
 mod tests {
-    use super::validate_external_url;
+    use super::{cmd_runtime_diagnostics, validate_external_url};
+
+    #[test]
+    fn runtime_diagnostics_returns_runtime_paths() {
+        let tmp = tempfile::TempDir::new().expect("tmp");
+        std::env::set_var("HOME", tmp.path());
+        std::env::remove_var("XDG_DATA_HOME");
+
+        let diagnostics = cmd_runtime_diagnostics().expect("diagnostics");
+
+        assert!(diagnostics.managed_root.ends_with(".local/share/sims4-mod-manager"));
+        assert!(diagnostics.managed_mods_dir.ends_with(".local/share/sims4-mod-manager/mods"));
+        assert!(diagnostics.trash_files_dir.ends_with(".local/share/Trash/files"));
+    }
 
     #[test]
     fn external_url_open_allows_http_urls_only() {

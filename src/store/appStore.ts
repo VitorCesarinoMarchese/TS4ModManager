@@ -1,5 +1,5 @@
 import { createStore } from "zustand/vanilla";
-import type { DryRunResult, GameInstance, Issue, Mod, RestoreResult, TrashEntry } from "../lib/types";
+import type { DryRunResult, GameInstance, Issue, Mod, RestoreResult, RuntimeDiagnostics, TrashEntry } from "../lib/types";
 
 export type ApplyResult = {
   applied: boolean;
@@ -42,6 +42,7 @@ export type BackendApi = {
   uninstallManagedMod: (modId: string, instanceId: string) => Promise<UninstallResult>;
   listTrashEntries: () => Promise<TrashEntry[]>;
   restoreTrashedMod: (trashName: string, instanceId: string) => Promise<RestoreResult>;
+  runtimeDiagnostics: () => Promise<RuntimeDiagnostics>;
   openManagedModsFolder: () => Promise<void>;
   openManagerFolder: () => Promise<void>;
 };
@@ -81,6 +82,12 @@ const defaultApi: BackendApi = {
   uninstallManagedMod: async (modId) => ({ modId, trashedPath: "", issues: [] }),
   listTrashEntries: async () => [],
   restoreTrashedMod: async () => ({ restoredPath: "" }),
+  runtimeDiagnostics: async () => ({
+    managedRoot: "",
+    managedModsDir: "",
+    trashFilesDir: "",
+    waylandWorkaroundDisabled: false
+  }),
   openManagedModsFolder: async () => {},
   openManagerFolder: async () => {}
 };
@@ -114,6 +121,7 @@ export type AppState = {
   clearSuccess: () => void;
   openManagedModsFolder: () => Promise<void>;
   openManagerFolder: () => Promise<void>;
+  getDiagnosticsReport: () => Promise<string | null>;
   toggleMod: (mod: Mod, targetEnabled: boolean, instanceId: string) => Promise<DryRunResult>;
 };
 
@@ -259,6 +267,31 @@ export function createAppStore(apiOverrides: Partial<BackendApi> = {}) {
         set((state) => ({
           issues: mergeIssueList(state.issues, toIssue(error, "open-manager-folder", "Open manager folder failed"))
         }));
+      }
+    },
+    getDiagnosticsReport: async () => {
+      try {
+        const diagnostics = await api.runtimeDiagnostics();
+        const state = get();
+        return [
+          "TS4 Mod Manager Diagnostics",
+          `Selected instance: ${state.selectedInstanceId ?? "none"}`,
+          `Instances: ${state.instances.length}`,
+          `Mods: ${state.mods.length}`,
+          `Issues: ${state.issues.length}`,
+          `Managed root: ${diagnostics.managedRoot}`,
+          `Managed mods dir: ${diagnostics.managedModsDir}`,
+          `Trash files dir: ${diagnostics.trashFilesDir}`,
+          `Wayland workaround: ${diagnostics.waylandWorkaround ?? "unset"}`,
+          `Wayland workaround disabled: ${diagnostics.waylandWorkaroundDisabled}`,
+          "Recent issues:",
+          ...state.issues.slice(-5).map((issue) => `- [${issue.severity}] ${issue.code ?? "NO_CODE"}: ${issue.message}`)
+        ].join("\n");
+      } catch (error) {
+        set((state) => ({
+          issues: mergeIssueList(state.issues, toIssue(error, "diagnostics", "Diagnostics failed"))
+        }));
+        return null;
       }
     },
     uninstallManagedMod: async (modId) => {

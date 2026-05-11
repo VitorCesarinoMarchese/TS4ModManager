@@ -44,6 +44,14 @@ export type RestoreResult = {
   restoredPath: string;
 };
 
+export type RuntimeDiagnostics = {
+  managedRoot: string;
+  managedModsDir: string;
+  trashFilesDir: string;
+  waylandWorkaround?: string;
+  waylandWorkaroundDisabled: boolean;
+};
+
 export type Issue = {
   id: string;
   severity: "info" | "warning" | "error";
