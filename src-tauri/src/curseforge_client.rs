@@ -46,6 +46,60 @@ pub struct CurseForgeHash {
     pub value: String,
 }
 
+pub trait CurseForgeTransport {
+    fn get(&self, request: &CurseForgeRequest) -> Result<(u16, String), SourceLookupError>;
+}
+
+pub struct UreqCurseForgeTransport;
+
+impl CurseForgeTransport for UreqCurseForgeTransport {
+    fn get(&self, request: &CurseForgeRequest) -> Result<(u16, String), SourceLookupError> {
+        let response = ureq::get(&request.url)
+            .set("x-api-key", &request.api_key)
+            .set("User-Agent", "TS4ModManager/0.1 source lookup")
+            .call();
+
+        match response {
+            Ok(response) => {
+                let status = response.status();
+                let body = response.into_string().map_err(|_| SourceLookupError::InvalidResponse)?;
+                Ok((status, body))
+            }
+            Err(ureq::Error::Status(status, response)) => {
+                let body = response.into_string().unwrap_or_default();
+                Ok((status, body))
+            }
+            Err(_) => Err(SourceLookupError::Network),
+        }
+    }
+}
+
+pub struct CurseForgeClient<T> {
+    api_key: String,
+    transport: T,
+}
+
+impl<T: CurseForgeTransport> CurseForgeClient<T> {
+    pub fn new(api_key: Option<&str>, transport: T) -> Result<Self, SourceLookupError> {
+        let key = api_key.map(str::trim).filter(|key| !key.is_empty()).ok_or(SourceLookupError::MissingApiKey)?;
+        Ok(Self { api_key: key.to_string(), transport })
+    }
+
+    pub fn search_mods(&self, search_filter: &str) -> Result<Vec<CurseForgeModSummary>, SourceLookupError> {
+        let request = build_search_request(Some(&self.api_key), search_filter)?;
+        let (status, body) = self.transport.get(&request)?;
+        classify_status(status)?;
+        parse_search_response(&body)
+    }
+
+    pub fn get_mod_files(&self, project_id: u64) -> Result<Vec<CurseForgeFileSummary>, SourceLookupError> {
+        let request = build_files_request(Some(&self.api_key), project_id)?;
+        let (status, body) = self.transport.get(&request)?;
+        classify_status(status)?;
+        parse_files_response(&body)
+    }
+}
+
 pub fn build_search_request(api_key: Option<&str>, search_filter: &str) -> Result<CurseForgeRequest, SourceLookupError> {
     let key = api_key.map(str::trim).filter(|key| !key.is_empty()).ok_or(SourceLookupError::MissingApiKey)?;
     let query = encode_query(search_filter.trim());
@@ -283,6 +337,44 @@ mod tests {
         assert_eq!(files[0].game_versions, vec!["1.110", "2026.2.0"]);
         assert_eq!(files[0].hashes[1].value, "abcdef");
         assert!(has_usable_file_metadata(&files));
+    }
+
+    struct MockTransport {
+        status: u16,
+        body: &'static str,
+    }
+
+    impl CurseForgeTransport for MockTransport {
+        fn get(&self, _request: &CurseForgeRequest) -> Result<(u16, String), SourceLookupError> {
+            Ok((self.status, self.body.to_string()))
+        }
+    }
+
+    #[test]
+    fn client_searches_mods_with_mocked_transport() {
+        let client = CurseForgeClient::new(Some("key"), MockTransport { status: 200, body: SEARCH_FIXTURE }).expect("client");
+
+        let mods = client.search_mods("mc command center").expect("mods");
+
+        assert_eq!(mods[0].name, "MC Command Center");
+        assert_eq!(mods[0].source_url.as_deref(), Some("https://www.curseforge.com/sims4/mods/mc-command-center"));
+    }
+
+    #[test]
+    fn client_fetches_files_with_mocked_transport() {
+        let client = CurseForgeClient::new(Some("key"), MockTransport { status: 200, body: FILES_FIXTURE }).expect("client");
+
+        let files = client.get_mod_files(551680).expect("files");
+
+        assert_eq!(files[0].file_name, "McCmdCenter_AllModules_2026_2_0.zip");
+        assert!(has_usable_file_metadata(&files));
+    }
+
+    #[test]
+    fn client_maps_status_errors() {
+        let client = CurseForgeClient::new(Some("key"), MockTransport { status: 429, body: "{}" }).expect("client");
+
+        assert_eq!(client.search_mods("mccc"), Err(SourceLookupError::RateLimited));
     }
 
     #[test]

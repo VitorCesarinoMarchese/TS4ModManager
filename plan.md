@@ -267,6 +267,7 @@ Progress:
 - Mocked backend lookup command added via fixture provider for `find_source_candidates`; it extracts fingerprints and returns review candidates without mutating files.
 - UI review flow started: Mod Details can find source candidates, show loading/empty states, show confidence/evidence, attach/open/ignore candidates, and warn on low confidence.
 - Slice 4 started: Settings includes CurseForge API key storage in app settings/localStorage, not per-mod metadata.
+- CurseForge client now has injectable transport, live `ureq` transport, mocked search/file tests, and typed status/error handling.
 
 
 ### Goal
