@@ -13,11 +13,12 @@ type ModDetailsPanelProps = {
   onRemoveSourceUrl?: (modId: string) => void | Promise<void>;
   onOpenSourceUrl?: (sourceUrl: string) => void;
   onFindSourceCandidates?: (modId: string) => Promise<SourceCandidate[]>;
+  sourceLookupHasApiKey?: boolean;
   onUninstall?: (modId: string) => void | Promise<void>;
   onManageExternal?: (modId: string) => void | Promise<void>;
 };
 
-export function ModDetailsPanel({ mod, onClose, onRename, onAttachSourceUrl, onRemoveSourceUrl, onOpenSourceUrl, onFindSourceCandidates, onUninstall, onManageExternal }: ModDetailsPanelProps) {
+export function ModDetailsPanel({ mod, onClose, onRename, onAttachSourceUrl, onRemoveSourceUrl, onOpenSourceUrl, onFindSourceCandidates, sourceLookupHasApiKey = false, onUninstall, onManageExternal }: ModDetailsPanelProps) {
   const [name, setName] = useState(mod.name);
   const [sourceUrl, setSourceUrl] = useState(mod.sourceUrl ?? "");
   const [confirmRemoveSource, setConfirmRemoveSource] = useState(false);
@@ -156,6 +157,7 @@ export function ModDetailsPanel({ mod, onClose, onRename, onAttachSourceUrl, onR
               <div>
                 <h3 className="font-semibold">Find Source</h3>
                 <p className="text-sm text-slate-600 dark:text-slate-300">Search CurseForge candidates from local file evidence.</p>
+                {!sourceLookupHasApiKey ? <p className="text-sm text-amber-600 dark:text-amber-300">Add a CurseForge API key in Settings for live lookup.</p> : null}
               </div>
               <button
                 type="button"

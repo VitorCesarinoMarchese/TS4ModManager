@@ -265,7 +265,7 @@ Progress:
 - Local fingerprint extraction added in `src-tauri/src/source_fingerprint.rs` for grouped/loose mods, version tokens, useful files, and ignore rules.
 - Deterministic scoring added in `src-tauri/src/source_scoring.rs` with caps, confidence levels, and candidate sorting.
 - Mocked backend lookup command added via fixture provider for `find_source_candidates`; it extracts fingerprints and returns review candidates without mutating files.
-- UI review flow started: Mod Details can find source candidates, show loading/empty states, show confidence/evidence, attach/open/ignore candidates, and warn on low confidence.
+- UI review flow started: Mod Details can find source candidates, show loading/empty/missing-key states, show confidence/evidence, attach/open/ignore candidates, and warn on low confidence.
 - Slice 4 started: Settings includes CurseForge API key storage in app settings/localStorage, not per-mod metadata.
 - CurseForge client now has injectable transport, live `ureq` transport, mocked search/file tests, and typed status/error handling.
 - Source lookup passes the CurseForge API key to backend and uses real CurseForge search/file APIs when a key is provided; no-key flow remains fixture-backed for UI development. Matching now handles compact alias shapes such as `McCmdCenter` vs `MC Command Center`.

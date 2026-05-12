@@ -112,6 +112,18 @@ describe("ModDetailsPanel", () => {
     globalThis.fetch = originalFetch;
   });
 
+  it("shows missing API key hint for source lookup", () => {
+    render(<ModDetailsPanel mod={mod} onClose={() => {}} onFindSourceCandidates={vi.fn().mockResolvedValue([])} />);
+
+    expect(screen.getByText("Add a CurseForge API key in Settings for live lookup.")).toBeInTheDocument();
+  });
+
+  it("hides missing API key hint when source lookup has a key", () => {
+    render(<ModDetailsPanel mod={mod} onClose={() => {}} onFindSourceCandidates={vi.fn().mockResolvedValue([])} sourceLookupHasApiKey />);
+
+    expect(screen.queryByText("Add a CurseForge API key in Settings for live lookup.")).not.toBeInTheDocument();
+  });
+
   it("finds, attaches, opens, and ignores source candidates", async () => {
     const onFindSourceCandidates = vi.fn().mockResolvedValue([
       {
