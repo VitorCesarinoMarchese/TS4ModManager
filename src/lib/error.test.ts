@@ -7,6 +7,11 @@ describe("backend error contract", () => {
     expect(code).toBe(BackendErrorCode.PATH_COLLISION);
   });
 
+  it("maps source lookup errors unchanged", () => {
+    expect(toBackendErrorCode("SOURCE_RATE_LIMITED")).toBe(BackendErrorCode.SOURCE_RATE_LIMITED);
+    expect(toBackendErrorCode("SOURCE_UNAUTHORIZED")).toBe(BackendErrorCode.SOURCE_UNAUTHORIZED);
+  });
+
   it("maps unknown error to INTERNAL_ERROR", () => {
     const code = toBackendErrorCode("SOMETHING_NEW");
     expect(code).toBe(BackendErrorCode.INTERNAL_ERROR);

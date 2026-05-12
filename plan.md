@@ -47,9 +47,9 @@ The project is a functional Linux-first Sims 4 mod manager with:
 Current validation baseline:
 
 ```text
-npm run test:coverage  -> 153 frontend tests, branch coverage 82.63%
+npm run test:coverage  -> 156 frontend tests, branch coverage 83.01%
 npm run build          -> passing
-cargo test             -> 105 passed
+cargo test             -> 106 passed
 cargo check --features tauri-app -> passing
 ```
 
@@ -269,6 +269,7 @@ Progress:
 - Slice 4 started: Settings includes CurseForge API key storage in app settings/localStorage, not per-mod metadata.
 - CurseForge client now has injectable transport, live `ureq` transport, mocked search/file tests, and typed status/error handling.
 - Source lookup passes the CurseForge API key to backend and uses real CurseForge search/file APIs when a key is provided; no-key flow remains fixture-backed for UI development. Matching now handles compact alias shapes such as `McCmdCenter` vs `MC Command Center`.
+- Source lookup errors now use typed backend codes such as `SOURCE_RATE_LIMITED`, `SOURCE_UNAUTHORIZED`, and `SOURCE_INVALID_RESPONSE`.
 - Mod preview image handling hardened: local preview paths are returned as absolute paths, Tauri asset URLs are resolved in UI, and broken images fall back to `No Preview`.
 
 

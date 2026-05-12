@@ -29,6 +29,7 @@ mod tests {
     fn known_error_codes_are_stable() {
         assert_eq!(ErrorCode::InvalidPath.as_str(), "INVALID_PATH");
         assert_eq!(ErrorCode::PathCollision.as_str(), "PATH_COLLISION");
+        assert_eq!(ErrorCode::SourceRateLimited.as_str(), "SOURCE_RATE_LIMITED");
     }
 
     #[test]

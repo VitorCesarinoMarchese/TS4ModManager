@@ -43,7 +43,16 @@ pub fn find_source_candidates(
 }
 
 fn source_lookup_error(err: SourceLookupError) -> ManagerError {
-    ManagerError::new(ErrorCode::InternalError, format!("Source lookup failed: {err:?}"))
+    let code = match err {
+        SourceLookupError::MissingApiKey => ErrorCode::SourceMissingApiKey,
+        SourceLookupError::Unauthorized => ErrorCode::SourceUnauthorized,
+        SourceLookupError::RateLimited => ErrorCode::SourceRateLimited,
+        SourceLookupError::Network => ErrorCode::SourceNetwork,
+        SourceLookupError::InvalidResponse => ErrorCode::SourceInvalidResponse,
+        SourceLookupError::ProviderUnavailable => ErrorCode::SourceProviderUnavailable,
+        SourceLookupError::NoUsableEvidence => ErrorCode::SourceNoUsableEvidence,
+    };
+    ManagerError::new(code, format!("Source lookup failed: {err:?}"))
 }
 
 fn find_with_curseforge(fingerprint: &ModFingerprint, api_key: Option<&str>) -> Result<Vec<SourceCandidate>, SourceLookupError> {
@@ -324,6 +333,13 @@ mod tests {
         assert!(text_related("mc command center", "mccmdcenter allmodules"));
         assert!(text_related("mccmdcenter allmodules zip", "mc cmd center"));
         assert!(!text_related("wonderful whims", "mc command center"));
+    }
+
+    #[test]
+    fn maps_source_lookup_errors_to_typed_manager_errors() {
+        assert_eq!(source_lookup_error(SourceLookupError::RateLimited).code, ErrorCode::SourceRateLimited);
+        assert_eq!(source_lookup_error(SourceLookupError::Unauthorized).code, ErrorCode::SourceUnauthorized);
+        assert_eq!(source_lookup_error(SourceLookupError::InvalidResponse).code, ErrorCode::SourceInvalidResponse);
     }
 
     #[test]
