@@ -158,6 +158,10 @@ describe("ModDetailsPanel", () => {
     expect(screen.getByText("MC Command Center")).toBeInTheDocument();
     expect(screen.getByText("85% · High confidence")).toBeInTheDocument();
     expect(screen.getByText("Matched package/script basename")).toBeInTheDocument();
+    const image = document.querySelector('img[src="https://media.forgecdn.net/cover.png"]');
+    expect(image).toHaveAttribute("referrerpolicy", "no-referrer");
+    fireEvent.error(image!);
+    expect(document.querySelector('img[src="https://media.forgecdn.net/cover.png"]')).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "attach-source-candidate" }));
     expect(onAttachSourceUrl).toHaveBeenCalledWith("m1", "https://www.curseforge.com/sims4/mods/mc-command-center", "curseforge", {

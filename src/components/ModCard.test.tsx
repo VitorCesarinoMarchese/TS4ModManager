@@ -37,6 +37,7 @@ describe("ModCard", () => {
 
     const image = screen.getByRole("img", { name: "MyMod" });
     expect(image).toHaveAttribute("src", "https://img.example/cover.png");
+    expect(image).toHaveAttribute("referrerPolicy", "no-referrer");
 
     fireEvent.error(image);
     expect(screen.getByText("No Preview")).toBeInTheDocument();

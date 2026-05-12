@@ -34,7 +34,7 @@ export function ModCard({ mod, disabled, onToggle, onDetails }: ModCardProps) {
     >
       <div className="preview grid h-[140px] place-items-center overflow-hidden rounded-[10px] border border-dashed !border-[var(--color-border)] text-slate-500 dark:text-slate-300">
         {previewSrc ? (
-          <img className="h-full w-full object-cover" src={previewSrc} alt={mod.name} loading="lazy" onError={() => setImageFailed(true)} />
+          <img className="h-full w-full object-cover" src={previewSrc} alt={mod.name} loading="lazy" referrerPolicy="no-referrer" onError={() => setImageFailed(true)} />
         ) : (
           <span className="inline-flex items-center gap-2">
             <ImageSquare size={20} weight="regular" aria-hidden="true" />
