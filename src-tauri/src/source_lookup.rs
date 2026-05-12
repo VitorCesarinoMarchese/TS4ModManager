@@ -1,16 +1,18 @@
 use std::fs;
 use std::path::Path;
 
+use crate::curseforge_client::{CurseForgeClient, CurseForgeFileSummary, CurseForgeModSummary, SourceLookupError, UreqCurseForgeTransport};
 use crate::error::{ErrorCode, ManagerError};
 use crate::mod_scan::scan_mods;
 use crate::source_candidates::{SourceCandidate, SourceProviderId};
-use crate::source_fingerprint::{build_mod_fingerprint, FingerprintFile, ModFingerprint};
+use crate::source_fingerprint::{build_mod_fingerprint, normalize_name, FingerprintFile, ModFingerprint};
 use crate::source_scoring::{evidence, score_candidate, CandidateScoreInput};
 
-pub fn find_source_candidates_fixture(
+pub fn find_source_candidates(
     managed_root: &Path,
     game_mods_dir: &Path,
     mod_id: &str,
+    api_key: Option<&str>,
 ) -> Result<Vec<SourceCandidate>, ManagerError> {
     let scanned = scan_mods(game_mods_dir, managed_root);
     let selected = scanned
@@ -29,7 +31,139 @@ pub fn find_source_candidates_fixture(
     let folder_name = selected.group_path.first().map(String::as_str);
     let fingerprint = build_mod_fingerprint(&selected.name, folder_name, &files, None, selected.source_url.as_deref());
 
+    if api_key.is_some_and(|key| !key.trim().is_empty()) {
+        match find_with_curseforge(&fingerprint, api_key) {
+            Ok(candidates) => return Ok(candidates),
+            Err(SourceLookupError::MissingApiKey) => {}
+            Err(err) => return Err(source_lookup_error(err)),
+        }
+    }
+
     Ok(fixture_provider_candidates(&fingerprint))
+}
+
+fn source_lookup_error(err: SourceLookupError) -> ManagerError {
+    ManagerError::new(ErrorCode::InternalError, format!("Source lookup failed: {err:?}"))
+}
+
+fn find_with_curseforge(fingerprint: &ModFingerprint, api_key: Option<&str>) -> Result<Vec<SourceCandidate>, SourceLookupError> {
+    let client = CurseForgeClient::new(api_key, UreqCurseForgeTransport)?;
+    let mut mods = vec![];
+    for query in curseforge_queries(fingerprint) {
+        mods.extend(client.search_mods(&query)?);
+    }
+    mods = dedupe_mods(mods);
+
+    let mut candidates = vec![];
+    for mod_summary in mods.into_iter().take(5) {
+        let files = client.get_mod_files(mod_summary.project_id).unwrap_or_default();
+        if let Some(candidate) = candidate_from_curseforge(fingerprint, mod_summary, &files) {
+            candidates.push(candidate);
+        }
+    }
+    candidates.sort_by(|a, b| b.confidence.cmp(&a.confidence));
+    candidates.truncate(5);
+    Ok(candidates)
+}
+
+pub fn curseforge_queries(fingerprint: &ModFingerprint) -> Vec<String> {
+    let mut queries = vec![fingerprint.normalized_name.clone()];
+    if let Some(folder) = &fingerprint.folder_name {
+        queries.push(normalize_name(folder));
+    }
+    if let Some(first_file) = fingerprint.package_script_basenames.first() {
+        queries.push(normalize_name(first_file));
+    }
+    queries.retain(|query| !query.trim().is_empty());
+    queries.sort();
+    queries.dedup();
+    queries
+}
+
+pub fn candidate_from_curseforge(
+    fingerprint: &ModFingerprint,
+    mod_summary: CurseForgeModSummary,
+    files: &[CurseForgeFileSummary],
+) -> Option<SourceCandidate> {
+    let mut evidence_items = vec![];
+    let normalized_title = normalize_name(&mod_summary.name);
+    if !fingerprint.normalized_name.is_empty()
+        && (normalized_title.contains(&fingerprint.normalized_name) || fingerprint.normalized_name.contains(&normalized_title))
+    {
+        evidence_items.push(evidence("title", "Title/name similarity", 20));
+    }
+    if mod_summary
+        .slug
+        .as_deref()
+        .is_some_and(|slug| normalize_name(slug).contains(&fingerprint.normalized_name))
+    {
+        evidence_items.push(evidence("slug", "Slug similarity", 10));
+    }
+
+    let mut has_file_evidence = false;
+    for file in files {
+        let file_name = file.file_name.to_lowercase();
+        if fingerprint.archive_name.as_ref().is_some_and(|archive| archive.eq_ignore_ascii_case(&file.file_name)) {
+            evidence_items.push(evidence("fileName", "Exact archive/file name match", 40));
+            has_file_evidence = true;
+        }
+        if fingerprint
+            .package_script_basenames
+            .iter()
+            .any(|name| file_name.contains(&name.to_lowercase()))
+        {
+            evidence_items.push(evidence("fileName", "Exact package/script basename match", 25));
+            has_file_evidence = true;
+        }
+        if fingerprint
+            .version_tokens
+            .iter()
+            .any(|token| file.game_versions.iter().any(|version| version == token) || file_name.contains(&token.replace('.', "_")))
+        {
+            evidence_items.push(evidence("version", "Version token match", 20));
+            has_file_evidence = true;
+        }
+    }
+
+    evidence_items.sort_by(|a, b| a.kind.cmp(&b.kind).then_with(|| a.description.cmp(&b.description)));
+    evidence_items.dedup_by(|a, b| a.kind == b.kind && a.description == b.description);
+
+    let score = score_candidate(CandidateScoreInput {
+        evidence: evidence_items.clone(),
+        has_file_metadata: !files.is_empty(),
+        has_file_evidence,
+        name_only: evidence_items.iter().all(|evidence| evidence.kind == "title" || evidence.kind == "slug"),
+        fingerprint_match: false,
+    })?;
+
+    Some(SourceCandidate {
+        provider_id: SourceProviderId::Curseforge,
+        title: mod_summary.name,
+        source_url: mod_summary.source_url.unwrap_or_else(|| {
+            mod_summary
+                .slug
+                .map(|slug| format!("https://www.curseforge.com/sims4/mods/{slug}"))
+                .unwrap_or_else(|| format!("https://www.curseforge.com/sims4/mods/{}", mod_summary.project_id))
+        }),
+        preview_url: mod_summary.preview_url,
+        author: mod_summary.authors.first().cloned(),
+        project_id: Some(mod_summary.project_id),
+        file_id: files.first().map(|file| file.file_id),
+        confidence: score.confidence,
+        confidence_level: score.confidence_level,
+        reasons: score.reasons,
+        evidence: evidence_items,
+    })
+}
+
+fn dedupe_mods(mods: Vec<CurseForgeModSummary>) -> Vec<CurseForgeModSummary> {
+    let mut deduped = vec![];
+    for candidate in mods {
+        if !deduped.iter().any(|existing: &CurseForgeModSummary| existing.project_id == candidate.project_id) {
+            deduped.push(candidate);
+        }
+    }
+    deduped
 }
 
 pub fn fixture_provider_candidates(fingerprint: &ModFingerprint) -> Vec<SourceCandidate> {
@@ -116,6 +250,56 @@ mod tests {
     }
 
     #[test]
+    fn builds_curseforge_queries_from_fingerprint() {
+        let fingerprint = build_mod_fingerprint(
+            "Mc Command Center",
+            Some("McCmdCenter_AllModules_2026_2_0"),
+            &[FingerprintFile { relative_path: "McCmdCenter_AllModules_2026_2_0/mc_cmd_center.package".to_string(), size: 10 }],
+            None,
+            None,
+        );
+
+        let queries = curseforge_queries(&fingerprint);
+
+        assert!(queries.contains(&"mccmdcenter allmodules".to_string()));
+        assert!(queries.contains(&"mc cmd center".to_string()));
+    }
+
+    #[test]
+    fn builds_candidate_from_curseforge_file_metadata() {
+        let fingerprint = build_mod_fingerprint(
+            "Mc Command Center",
+            Some("McCmdCenter_AllModules_2026_2_0"),
+            &[FingerprintFile { relative_path: "McCmdCenter_AllModules_2026_2_0/mc_cmd_center.package".to_string(), size: 10 }],
+            Some("McCmdCenter_AllModules_2026_2_0.zip"),
+            None,
+        );
+        let mod_summary = CurseForgeModSummary {
+            project_id: 551680,
+            name: "MC Command Center".to_string(),
+            slug: Some("mc-command-center".to_string()),
+            source_url: Some("https://www.curseforge.com/sims4/mods/mc-command-center".to_string()),
+            preview_url: Some("https://media.forgecdn.net/cover.png".to_string()),
+            authors: vec!["Deaderpool".to_string()],
+        };
+        let files = vec![CurseForgeFileSummary {
+            file_id: 67890,
+            project_id: 551680,
+            display_name: Some("McCmdCenter_AllModules_2026_2_0.zip".to_string()),
+            file_name: "McCmdCenter_AllModules_2026_2_0.zip".to_string(),
+            game_versions: vec!["2026.2.0".to_string()],
+            hashes: vec![],
+        }];
+
+        let candidate = candidate_from_curseforge(&fingerprint, mod_summary, &files).expect("candidate");
+
+        assert_eq!(candidate.title, "MC Command Center");
+        assert_eq!(candidate.project_id, Some(551680));
+        assert!(candidate.confidence >= 60);
+        assert!(candidate.reasons.iter().any(|reason| reason.contains("archive/file")));
+    }
+
+    #[test]
     fn command_extracts_fingerprint_without_mutating_files() {
         let tmp = TempDir::new().expect("tmp");
         let managed = tmp.path().join("managed");
@@ -125,7 +309,7 @@ mod tests {
         fs::write(&package, b"pkg").expect("pkg");
 
         let before = fs::metadata(&package).expect("before").len();
-        let candidates = find_source_candidates_fixture(&managed, &mods, "McCmdCenter_AllModules_2026_2_0").expect("lookup");
+        let candidates = find_source_candidates(&managed, &mods, "McCmdCenter_AllModules_2026_2_0", None).expect("lookup");
         let after = fs::metadata(&package).expect("after").len();
 
         assert_eq!(before, after);
