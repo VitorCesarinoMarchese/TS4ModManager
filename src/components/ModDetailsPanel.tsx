@@ -2,6 +2,7 @@ import { FloppyDisk, X } from "@phosphor-icons/react";
 import { motion } from "framer-motion";
 import { useEffect, useState } from "react";
 import { getMetadataProviderForUrl } from "../lib/metadataProviders";
+import { resolvePreviewSrc } from "../lib/previewImage";
 import type { Mod, SourceCandidate, SourceMetadata } from "../lib/types";
 
 type ModDetailsPanelProps = {
@@ -189,7 +190,7 @@ export function ModDetailsPanel({ mod, onClose, onRename, onAttachSourceUrl, onR
                     <p className="text-sm">{candidate.confidence}% · {candidate.confidenceLevel === "high" ? "High confidence" : candidate.confidenceLevel === "medium" ? "Medium confidence" : "Low confidence"}</p>
                     {candidate.confidence < 70 ? <p className="text-sm text-amber-600 dark:text-amber-300">Please verify before attaching.</p> : null}
                   </div>
-                  {candidate.previewUrl ? <img className="h-16 w-24 rounded-md object-cover" src={candidate.previewUrl} alt="" loading="lazy" /> : null}
+                  {candidate.previewUrl ? <img className="h-16 w-24 rounded-md object-cover" src={resolvePreviewSrc(candidate.previewUrl)} alt="" loading="lazy" /> : null}
                 </div>
                 <ul className="m-0 grid list-disc gap-1 pl-5 text-sm text-slate-600 dark:text-slate-300">
                   {candidate.reasons.map((reason) => <li key={reason}>{reason}</li>)}

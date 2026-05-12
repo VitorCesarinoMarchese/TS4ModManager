@@ -1,5 +1,7 @@
 import { Eye, ImageSquare, Power, WarningCircle } from "@phosphor-icons/react";
 import { motion } from "framer-motion";
+import { useEffect, useState } from "react";
+import { resolvePreviewSrc } from "../lib/previewImage";
 import type { Mod } from "../lib/types";
 
 type ModCardProps = {
@@ -10,8 +12,14 @@ type ModCardProps = {
 };
 
 export function ModCard({ mod, disabled, onToggle, onDetails }: ModCardProps) {
+  const [imageFailed, setImageFailed] = useState(false);
+  const previewSrc = !imageFailed ? resolvePreviewSrc(mod.preview) : undefined;
   const buttonClass =
     "inline-flex items-center gap-2 rounded-md border !border-[var(--color-border)] bg-white px-3 py-1.5 text-sm hover:border-accent hover:bg-accent/10 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-slate-800 dark:hover:border-accent dark:hover:bg-accent/10";
+
+  useEffect(() => {
+    setImageFailed(false);
+  }, [mod.preview]);
 
   return (
     <motion.article
@@ -25,8 +33,8 @@ export function ModCard({ mod, disabled, onToggle, onDetails }: ModCardProps) {
       whileTap={{ scale: 0.995 }}
     >
       <div className="preview grid h-[140px] place-items-center overflow-hidden rounded-[10px] border border-dashed !border-[var(--color-border)] text-slate-500 dark:text-slate-300">
-        {mod.preview ? (
-          <img className="h-full w-full object-cover" src={mod.preview} alt={mod.name} loading="lazy" />
+        {previewSrc ? (
+          <img className="h-full w-full object-cover" src={previewSrc} alt={mod.name} loading="lazy" onError={() => setImageFailed(true)} />
         ) : (
           <span className="inline-flex items-center gap-2">
             <ImageSquare size={20} weight="regular" aria-hidden="true" />

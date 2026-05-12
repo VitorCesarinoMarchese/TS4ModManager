@@ -28,6 +28,20 @@ describe("ModCard", () => {
     expect(screen.getByRole("button", { name: "details-m1" })).toBeInTheDocument();
   });
 
+  it("renders preview image and falls back when it fails", () => {
+    render(
+      <ModCard
+        mod={{ id: "m1", name: "MyMod", files: ["a.package"], enabled: false, source: "managed", preview: "https://img.example/cover.png" }}
+      />
+    );
+
+    const image = screen.getByRole("img", { name: "MyMod" });
+    expect(image).toHaveAttribute("src", "https://img.example/cover.png");
+
+    fireEvent.error(image);
+    expect(screen.getByText("No Preview")).toBeInTheDocument();
+  });
+
   it("fires callbacks from action buttons", () => {
     const onToggle = vi.fn();
     const onDetails = vi.fn();

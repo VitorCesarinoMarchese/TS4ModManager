@@ -211,7 +211,7 @@ fn choose_preview(files: &[FileEntry]) -> Option<String> {
             let size = fs::metadata(&f.absolute).map(|m| m.len()).unwrap_or(0);
             (area, size)
         })
-        .map(|f| f.relative.clone())
+        .map(|f| f.absolute.to_string_lossy().to_string())
 }
 
 #[cfg(test)]
@@ -315,7 +315,7 @@ mod tests {
             .expect("save big");
 
         let scanned = scan_mods(&mods, &managed);
-        assert_eq!(scanned[0].preview.as_deref(), Some("Pack/preview_big.png"));
+        assert_eq!(scanned[0].preview.as_deref(), Some(mods.join("Pack/preview_big.png").to_string_lossy().as_ref()));
     }
 
     #[test]
