@@ -23,6 +23,7 @@ export function ModDetailsPanel({ mod, onClose, onRename, onAttachSourceUrl, onR
   const [confirmUninstall, setConfirmUninstall] = useState(false);
   const [sourceLookupStatus, setSourceLookupStatus] = useState<"idle" | "loading">("idle");
   const [sourceCandidates, setSourceCandidates] = useState<SourceCandidate[]>([]);
+  const [sourceLookupSearched, setSourceLookupSearched] = useState(false);
   const [ignoredCandidateUrls, setIgnoredCandidateUrls] = useState<Set<string>>(() => new Set());
   const buttonClass =
     "inline-flex items-center gap-2 rounded-md border !border-[var(--color-border)] bg-white px-3 py-1.5 text-sm hover:border-accent hover:bg-accent/10 focus:outline-none focus:ring-2 focus:ring-accent/40 dark:bg-slate-800 dark:hover:border-accent dark:hover:bg-accent/10";
@@ -33,6 +34,7 @@ export function ModDetailsPanel({ mod, onClose, onRename, onAttachSourceUrl, onR
     setName(mod.name);
     setSourceUrl(mod.sourceUrl ?? "");
     setSourceCandidates([]);
+    setSourceLookupSearched(false);
     setIgnoredCandidateUrls(new Set());
     setSourceLookupStatus("idle");
   }, [mod.id, mod.name, mod.sourceUrl]);
@@ -163,6 +165,7 @@ export function ModDetailsPanel({ mod, onClose, onRename, onAttachSourceUrl, onR
                   setSourceLookupStatus("loading");
                   const candidates = await onFindSourceCandidates(mod.id);
                   setSourceCandidates(candidates);
+                  setSourceLookupSearched(true);
                   setIgnoredCandidateUrls(new Set());
                   setSourceLookupStatus("idle");
                 }}
@@ -171,6 +174,9 @@ export function ModDetailsPanel({ mod, onClose, onRename, onAttachSourceUrl, onR
               </button>
             </div>
             {sourceLookupStatus === "loading" ? <p className="text-sm" role="status">Searching CurseForge...</p> : null}
+            {sourceLookupStatus === "idle" && sourceLookupSearched && sourceCandidates.length === 0 ? (
+              <p className="text-sm text-slate-600 dark:text-slate-300">No source candidates found.</p>
+            ) : null}
             {sourceLookupStatus === "idle" && sourceCandidates.length > 0 && visibleCandidates.length === 0 ? (
               <p className="text-sm text-slate-600 dark:text-slate-300">All candidates ignored.</p>
             ) : null}
@@ -211,7 +217,7 @@ export function ModDetailsPanel({ mod, onClose, onRename, onAttachSourceUrl, onR
                 </div>
               </article>
             ))}
-            {sourceLookupStatus === "idle" && sourceCandidates.length === 0 ? <p className="text-sm text-slate-600 dark:text-slate-300">No candidates loaded yet.</p> : null}
+            {sourceLookupStatus === "idle" && !sourceLookupSearched ? <p className="text-sm text-slate-600 dark:text-slate-300">No candidates loaded yet.</p> : null}
           </section>
         ) : null}
 

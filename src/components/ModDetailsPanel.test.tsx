@@ -161,6 +161,16 @@ describe("ModDetailsPanel", () => {
     expect(screen.getByText("All candidates ignored.")).toBeInTheDocument();
   });
 
+  it("shows empty state when no source candidates are found", async () => {
+    render(<ModDetailsPanel mod={mod} onClose={() => {}} onFindSourceCandidates={vi.fn().mockResolvedValue([])} />);
+
+    expect(screen.getByText("No candidates loaded yet.")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "find-source-candidates" }));
+
+    await waitFor(() => expect(screen.getByText("No source candidates found.")).toBeInTheDocument());
+    expect(screen.queryByText("No candidates loaded yet.")).not.toBeInTheDocument();
+  });
+
   it("shows low confidence warning for weak source candidates", async () => {
     render(
       <ModDetailsPanel
