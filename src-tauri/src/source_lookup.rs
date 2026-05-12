@@ -87,15 +87,13 @@ pub fn candidate_from_curseforge(
 ) -> Option<SourceCandidate> {
     let mut evidence_items = vec![];
     let normalized_title = normalize_name(&mod_summary.name);
-    if !fingerprint.normalized_name.is_empty()
-        && (normalized_title.contains(&fingerprint.normalized_name) || fingerprint.normalized_name.contains(&normalized_title))
-    {
+    if text_related(&normalized_title, &fingerprint.normalized_name) {
         evidence_items.push(evidence("title", "Title/name similarity", 20));
     }
     if mod_summary
         .slug
         .as_deref()
-        .is_some_and(|slug| normalize_name(slug).contains(&fingerprint.normalized_name))
+        .is_some_and(|slug| text_related(&normalize_name(slug), &fingerprint.normalized_name))
     {
         evidence_items.push(evidence("slug", "Slug similarity", 10));
     }
@@ -110,7 +108,7 @@ pub fn candidate_from_curseforge(
         if fingerprint
             .package_script_basenames
             .iter()
-            .any(|name| file_name.contains(&name.to_lowercase()))
+            .any(|name| text_related(&normalize_name(&file_name), &normalize_name(name)))
         {
             evidence_items.push(evidence("fileName", "Exact package/script basename match", 25));
             has_file_evidence = true;
@@ -154,6 +152,26 @@ pub fn candidate_from_curseforge(
         reasons: score.reasons,
         evidence: evidence_items,
     })
+}
+
+fn text_related(left: &str, right: &str) -> bool {
+    let left = left.trim();
+    let right = right.trim();
+    if left.is_empty() || right.is_empty() {
+        return false;
+    }
+    left.contains(right)
+        || right.contains(left)
+        || canonical_compact_text(left).contains(&canonical_compact_text(right))
+        || canonical_compact_text(right).contains(&canonical_compact_text(left))
+}
+
+fn canonical_compact_text(value: &str) -> String {
+    value
+        .chars()
+        .filter(|ch| ch.is_ascii_alphanumeric())
+        .collect::<String>()
+        .replace("command", "cmd")
 }
 
 fn dedupe_mods(mods: Vec<CurseForgeModSummary>) -> Vec<CurseForgeModSummary> {
@@ -295,8 +313,17 @@ mod tests {
 
         assert_eq!(candidate.title, "MC Command Center");
         assert_eq!(candidate.project_id, Some(551680));
-        assert!(candidate.confidence >= 60);
+        assert!(candidate.confidence >= 95);
         assert!(candidate.reasons.iter().any(|reason| reason.contains("archive/file")));
+        assert!(candidate.reasons.iter().any(|reason| reason.contains("package/script")));
+        assert!(candidate.reasons.iter().any(|reason| reason.contains("Title/name")));
+    }
+
+    #[test]
+    fn compact_similarity_matches_mccmdcenter_alias_shape() {
+        assert!(text_related("mc command center", "mccmdcenter allmodules"));
+        assert!(text_related("mccmdcenter allmodules zip", "mc cmd center"));
+        assert!(!text_related("wonderful whims", "mc command center"));
     }
 
     #[test]
