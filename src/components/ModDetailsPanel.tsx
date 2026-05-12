@@ -2,7 +2,7 @@ import { FloppyDisk, X } from "@phosphor-icons/react";
 import { motion } from "framer-motion";
 import { useEffect, useState } from "react";
 import { getMetadataProviderForUrl } from "../lib/metadataProviders";
-import type { Mod, SourceMetadata } from "../lib/types";
+import type { Mod, SourceCandidate, SourceMetadata } from "../lib/types";
 
 type ModDetailsPanelProps = {
   mod: Mod;
@@ -11,15 +11,19 @@ type ModDetailsPanelProps = {
   onAttachSourceUrl?: (modId: string, sourceUrl: string, providerId?: string, metadata?: SourceMetadata) => void | Promise<void>;
   onRemoveSourceUrl?: (modId: string) => void | Promise<void>;
   onOpenSourceUrl?: (sourceUrl: string) => void;
+  onFindSourceCandidates?: (modId: string) => Promise<SourceCandidate[]>;
   onUninstall?: (modId: string) => void | Promise<void>;
   onManageExternal?: (modId: string) => void | Promise<void>;
 };
 
-export function ModDetailsPanel({ mod, onClose, onRename, onAttachSourceUrl, onRemoveSourceUrl, onOpenSourceUrl, onUninstall, onManageExternal }: ModDetailsPanelProps) {
+export function ModDetailsPanel({ mod, onClose, onRename, onAttachSourceUrl, onRemoveSourceUrl, onOpenSourceUrl, onFindSourceCandidates, onUninstall, onManageExternal }: ModDetailsPanelProps) {
   const [name, setName] = useState(mod.name);
   const [sourceUrl, setSourceUrl] = useState(mod.sourceUrl ?? "");
   const [confirmRemoveSource, setConfirmRemoveSource] = useState(false);
   const [confirmUninstall, setConfirmUninstall] = useState(false);
+  const [sourceLookupStatus, setSourceLookupStatus] = useState<"idle" | "loading">("idle");
+  const [sourceCandidates, setSourceCandidates] = useState<SourceCandidate[]>([]);
+  const [ignoredCandidateUrls, setIgnoredCandidateUrls] = useState<Set<string>>(() => new Set());
   const buttonClass =
     "inline-flex items-center gap-2 rounded-md border !border-[var(--color-border)] bg-white px-3 py-1.5 text-sm hover:border-accent hover:bg-accent/10 focus:outline-none focus:ring-2 focus:ring-accent/40 dark:bg-slate-800 dark:hover:border-accent dark:hover:bg-accent/10";
   const dangerButtonClass =
@@ -28,10 +32,14 @@ export function ModDetailsPanel({ mod, onClose, onRename, onAttachSourceUrl, onR
   useEffect(() => {
     setName(mod.name);
     setSourceUrl(mod.sourceUrl ?? "");
+    setSourceCandidates([]);
+    setIgnoredCandidateUrls(new Set());
+    setSourceLookupStatus("idle");
   }, [mod.id, mod.name, mod.sourceUrl]);
 
   const selectedProvider = getMetadataProviderForUrl(sourceUrl);
   const existingProvider = mod.sourceUrl ? getMetadataProviderForUrl(mod.sourceUrl) : null;
+  const visibleCandidates = sourceCandidates.filter((candidate) => !ignoredCandidateUrls.has(candidate.sourceUrl));
 
   return (
     <motion.div
@@ -138,6 +146,74 @@ export function ModDetailsPanel({ mod, onClose, onRename, onAttachSourceUrl, onR
         <p className="text-sm text-slate-600 dark:text-slate-300">
           Provider: {existingProvider?.name ?? selectedProvider?.name ?? "Manual"}
         </p>
+
+        {onFindSourceCandidates ? (
+          <section aria-label="source-candidates" className="grid gap-3 rounded-md border !border-[var(--color-border)] p-4">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <h3 className="font-semibold">Find Source</h3>
+                <p className="text-sm text-slate-600 dark:text-slate-300">Search CurseForge candidates from local file evidence.</p>
+              </div>
+              <button
+                type="button"
+                aria-label="find-source-candidates"
+                className={buttonClass}
+                disabled={sourceLookupStatus === "loading"}
+                onClick={async () => {
+                  setSourceLookupStatus("loading");
+                  const candidates = await onFindSourceCandidates(mod.id);
+                  setSourceCandidates(candidates);
+                  setIgnoredCandidateUrls(new Set());
+                  setSourceLookupStatus("idle");
+                }}
+              >
+                {sourceLookupStatus === "loading" ? "Searching..." : "Find Source"}
+              </button>
+            </div>
+            {sourceLookupStatus === "loading" ? <p className="text-sm" role="status">Searching CurseForge...</p> : null}
+            {sourceLookupStatus === "idle" && sourceCandidates.length > 0 && visibleCandidates.length === 0 ? (
+              <p className="text-sm text-slate-600 dark:text-slate-300">All candidates ignored.</p>
+            ) : null}
+            {visibleCandidates.map((candidate) => (
+              <article key={candidate.sourceUrl} aria-label="source-candidate" className="grid gap-2 rounded-md border !border-[var(--color-border)] p-3">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="font-semibold">{candidate.title}</p>
+                    {candidate.author ? <p className="text-sm text-slate-600 dark:text-slate-300">By {candidate.author}</p> : null}
+                    <p className="text-sm">{candidate.confidence}% · {candidate.confidenceLevel === "high" ? "High confidence" : candidate.confidenceLevel === "medium" ? "Medium confidence" : "Low confidence"}</p>
+                    {candidate.confidence < 70 ? <p className="text-sm text-amber-600 dark:text-amber-300">Please verify before attaching.</p> : null}
+                  </div>
+                  {candidate.previewUrl ? <img className="h-16 w-24 rounded-md object-cover" src={candidate.previewUrl} alt="" loading="lazy" /> : null}
+                </div>
+                <ul className="m-0 grid list-disc gap-1 pl-5 text-sm text-slate-600 dark:text-slate-300">
+                  {candidate.reasons.map((reason) => <li key={reason}>{reason}</li>)}
+                </ul>
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    aria-label="attach-source-candidate"
+                    className={buttonClass}
+                    onClick={() => onAttachSourceUrl?.(mod.id, candidate.sourceUrl, candidate.providerId, { displayName: candidate.title, previewUrl: candidate.previewUrl })}
+                  >
+                    Attach
+                  </button>
+                  <button type="button" aria-label="open-source-candidate" className={buttonClass} onClick={() => onOpenSourceUrl?.(candidate.sourceUrl)}>
+                    Open
+                  </button>
+                  <button
+                    type="button"
+                    aria-label="ignore-source-candidate"
+                    className={dangerButtonClass}
+                    onClick={() => setIgnoredCandidateUrls((current) => new Set([...current, candidate.sourceUrl]))}
+                  >
+                    Ignore
+                  </button>
+                </div>
+              </article>
+            ))}
+            {sourceLookupStatus === "idle" && sourceCandidates.length === 0 ? <p className="text-sm text-slate-600 dark:text-slate-300">No candidates loaded yet.</p> : null}
+          </section>
+        ) : null}
 
         {mod.source === "external" && onManageExternal ? (
           <button

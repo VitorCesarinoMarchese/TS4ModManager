@@ -265,6 +265,7 @@ Progress:
 - Local fingerprint extraction added in `src-tauri/src/source_fingerprint.rs` for grouped/loose mods, version tokens, useful files, and ignore rules.
 - Deterministic scoring added in `src-tauri/src/source_scoring.rs` with caps, confidence levels, and candidate sorting.
 - Mocked backend lookup command added via fixture provider for `find_source_candidates`; it extracts fingerprints and returns review candidates without mutating files.
+- UI review flow started: Mod Details can find source candidates, show confidence/evidence, attach/open/ignore candidates, and warn on low confidence.
 
 
 ### Goal

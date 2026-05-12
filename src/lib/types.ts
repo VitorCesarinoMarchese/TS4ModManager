@@ -20,6 +20,24 @@ export type SourceMetadata = {
   previewUrl?: string;
 };
 
+export type SourceCandidate = {
+  providerId: "curseforge";
+  title: string;
+  sourceUrl: string;
+  previewUrl?: string;
+  author?: string;
+  projectId?: number;
+  fileId?: number;
+  confidence: number;
+  confidenceLevel: "high" | "medium" | "low";
+  reasons: string[];
+  evidence: Array<{
+    kind: string;
+    description: string;
+    weight: number;
+  }>;
+};
+
 export type Mod = {
   id: string;
   name: string;

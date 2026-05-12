@@ -1,5 +1,5 @@
 import { createStore } from "zustand/vanilla";
-import type { DryRunResult, GameInstance, Issue, Mod, RestoreResult, RuntimeDiagnostics, SourceMetadata, TrashEntry } from "../lib/types";
+import type { DryRunResult, GameInstance, Issue, Mod, RestoreResult, RuntimeDiagnostics, SourceCandidate, SourceMetadata, TrashEntry } from "../lib/types";
 
 export type ApplyResult = {
   applied: boolean;
@@ -44,6 +44,7 @@ export type BackendApi = {
   migrateExternalMod: (modId: string, instanceId: string) => Promise<MigrateResult>;
   renameModDisplayName: (modId: string, displayName: string) => Promise<Mod>;
   attachSourceUrl: (modId: string, sourceUrl: string, providerId?: string, metadata?: SourceMetadata) => Promise<Mod>;
+  findSourceCandidates: (modId: string, instanceId: string) => Promise<SourceCandidate[]>;
   removeSourceUrl: (modId: string) => Promise<Mod>;
   uninstallManagedMod: (modId: string, instanceId: string) => Promise<UninstallResult>;
   listTrashEntries: () => Promise<TrashEntry[]>;
@@ -79,6 +80,7 @@ const defaultApi: BackendApi = {
     enabled: false,
     source: "managed"
   }),
+  findSourceCandidates: async () => [],
   removeSourceUrl: async (modId) => ({
     id: modId,
     name: modId,
@@ -122,6 +124,7 @@ export type AppState = {
   importArchive: (archivePath: string, name: string, slug?: string) => Promise<void>;
   renameModDisplayName: (modId: string, displayName: string) => Promise<Mod | null>;
   attachSourceUrl: (modId: string, sourceUrl: string, providerId?: string, metadata?: SourceMetadata) => Promise<Mod | null>;
+  findSourceCandidates: (modId: string) => Promise<SourceCandidate[]>;
   removeSourceUrl: (modId: string) => Promise<Mod | null>;
   uninstallManagedMod: (modId: string) => Promise<UninstallResult | null>;
   loadTrashEntries: () => Promise<void>;
@@ -405,6 +408,18 @@ export function createAppStore(apiOverrides: Partial<BackendApi> = {}) {
           issues: mergeIssueList(state.issues, restoreIssue)
         }));
         return null;
+      }
+    },
+    findSourceCandidates: async (modId) => {
+      const instanceId = get().selectedInstanceId;
+      if (!instanceId) return [];
+      try {
+        return await api.findSourceCandidates(modId, instanceId);
+      } catch (error) {
+        set((state) => ({
+          issues: mergeIssueList(state.issues, toIssue(error, "source-lookup", "Source lookup failed"))
+        }));
+        return [];
       }
     },
     removeSourceUrl: async (modId) => {

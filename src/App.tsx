@@ -98,6 +98,7 @@ export function App({ store = defaultStore }: AppProps) {
   const openManagedModsFolder = useStore(store, (s) => s.openManagedModsFolder);
   const openManagerFolder = useStore(store, (s) => s.openManagerFolder);
   const getDiagnosticsReport = useStore(store, (s) => s.getDiagnosticsReport);
+  const findSourceCandidates = useStore(store, (s) => s.findSourceCandidates);
 
   const [search, setSearch] = useState("");
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -415,6 +416,7 @@ export function App({ store = defaultStore }: AppProps) {
             if (updated) setSelectedMod(updated);
           }}
           onOpenSourceUrl={(sourceUrl) => void openExternalUrl(sourceUrl)}
+          onFindSourceCandidates={(modId) => findSourceCandidates(modId)}
           onManageExternal={async (modId) => {
             const result = await manageExternalMod(modId);
             if (result) setSelectedMod(null);

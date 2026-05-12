@@ -487,6 +487,27 @@ describe("app store bootstrap", () => {
     expect(store.getState().mods[0].sourceUrl).toBeUndefined();
   });
 
+  it("finds source candidates for selected instance", async () => {
+    const api = {
+      detectGameInstances: vi.fn().mockResolvedValue([]),
+      scanMods: vi.fn().mockResolvedValue([{ id: "m1", name: "Detected", files: ["a.package"], enabled: false, source: "managed" }]),
+      detectOrphanSymlinks: vi.fn().mockResolvedValue([]),
+      dryRunToggle: vi.fn().mockResolvedValue({ canApply: true, operations: [], issues: [] }),
+      applyToggle: vi.fn().mockResolvedValue({ applied: true, issues: [] }),
+      migrateExternalMod: vi.fn().mockResolvedValue({ managedModId: "m1", issues: [] }),
+      validateCustomInstance: vi.fn().mockResolvedValue({ id: "c", path: "/x", source: "custom" }),
+      importArchive: vi.fn().mockResolvedValue({ modId: "m2" }),
+      findSourceCandidates: vi.fn().mockResolvedValue([{ providerId: "curseforge", title: "MC Command Center", sourceUrl: "https://www.curseforge.com/sims4/mods/mc-command-center", confidence: 85, confidenceLevel: "high", reasons: ["Matched package"], evidence: [] }])
+    };
+
+    const store = createAppStore(api);
+    await store.getState().selectInstanceAndScan("inst-1");
+    const candidates = await store.getState().findSourceCandidates("m1");
+
+    expect(api.findSourceCandidates).toHaveBeenCalledWith("m1", "inst-1");
+    expect(candidates[0].title).toBe("MC Command Center");
+  });
+
   it("attaches source URL and updates store", async () => {
     const api = {
       detectGameInstances: vi.fn().mockResolvedValue([]),

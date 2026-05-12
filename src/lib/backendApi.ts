@@ -1,5 +1,5 @@
 import { toBackendErrorCode, type ApiError } from "./error";
-import type { DryRunResult, GameInstance, Issue, Mod, RestoreResult, RuntimeDiagnostics, SourceMetadata, TrashEntry } from "./types";
+import type { DryRunResult, GameInstance, Issue, Mod, RestoreResult, RuntimeDiagnostics, SourceCandidate, SourceMetadata, TrashEntry } from "./types";
 
 type ScannedModDto = Omit<Mod, "id"> & {
   id?: string;
@@ -226,6 +226,14 @@ export function createBackendApi(invoke: InvokeFn) {
     async openManagerFolder(): Promise<void> {
       try {
         await invoke("open_manager_folder");
+      } catch (error) {
+        throw normalizeError(error);
+      }
+    },
+
+    async findSourceCandidates(modId: string, instanceId: string): Promise<SourceCandidate[]> {
+      try {
+        return await invoke<SourceCandidate[]>("find_source_candidates", { modId, instanceId });
       } catch (error) {
         throw normalizeError(error);
       }

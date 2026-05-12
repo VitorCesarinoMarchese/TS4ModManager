@@ -189,6 +189,26 @@ describe("backend api wrapper", () => {
     expect(invoke).toHaveBeenCalledWith("remove_source_url", { modId: "m1" });
   });
 
+  it("calls find source candidates command", async () => {
+    const invoke = vi.fn().mockResolvedValue([
+      {
+        providerId: "curseforge",
+        title: "MC Command Center",
+        sourceUrl: "https://www.curseforge.com/sims4/mods/mc-command-center",
+        confidence: 85,
+        confidenceLevel: "high",
+        reasons: ["Matched package name"],
+        evidence: [{ kind: "fileName", description: "Matched package name", weight: 25 }]
+      }
+    ]);
+    const api = createBackendApi(invoke);
+
+    const res = await api.findSourceCandidates("m1", "inst-1");
+
+    expect(res[0].title).toBe("MC Command Center");
+    expect(invoke).toHaveBeenCalledWith("find_source_candidates", { modId: "m1", instanceId: "inst-1" });
+  });
+
   it("calls attach source URL command", async () => {
     const invoke = vi.fn().mockResolvedValue({
       modId: "m1",
