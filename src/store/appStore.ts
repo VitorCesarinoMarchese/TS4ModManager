@@ -419,7 +419,7 @@ export function createAppStore(apiOverrides: Partial<BackendApi> = {}) {
         set((state) => ({
           issues: mergeIssueList(state.issues, toIssue(error, "source-lookup", "Source lookup failed"))
         }));
-        return [];
+        throw error;
       }
     },
     removeSourceUrl: async (modId) => {

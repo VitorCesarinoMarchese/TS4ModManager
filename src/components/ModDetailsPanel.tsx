@@ -28,6 +28,7 @@ export function ModDetailsPanel({ mod, onClose, onRename, onAttachSourceUrl, onR
   const [sourceLookupSearched, setSourceLookupSearched] = useState(false);
   const [ignoredCandidateUrls, setIgnoredCandidateUrls] = useState<Set<string>>(() => new Set());
   const [failedCandidateImageUrls, setFailedCandidateImageUrls] = useState<Set<string>>(() => new Set());
+  const [sourceLookupError, setSourceLookupError] = useState<string | null>(null);
   const buttonClass =
     "inline-flex items-center gap-2 rounded-md border !border-[var(--color-border)] bg-white px-3 py-1.5 text-sm hover:border-accent hover:bg-accent/10 focus:outline-none focus:ring-2 focus:ring-accent/40 dark:bg-slate-800 dark:hover:border-accent dark:hover:bg-accent/10";
   const dangerButtonClass =
@@ -40,6 +41,7 @@ export function ModDetailsPanel({ mod, onClose, onRename, onAttachSourceUrl, onR
     setSourceLookupSearched(false);
     setIgnoredCandidateUrls(new Set());
     setFailedCandidateImageUrls(new Set());
+    setSourceLookupError(null);
     setSourceLookupStatus("idle");
   }, [mod.id, mod.name, mod.sourceUrl]);
 
@@ -168,19 +170,28 @@ export function ModDetailsPanel({ mod, onClose, onRename, onAttachSourceUrl, onR
                 disabled={sourceLookupStatus === "loading"}
                 onClick={async () => {
                   setSourceLookupStatus("loading");
-                  const candidates = await onFindSourceCandidates(mod.id);
-                  setSourceCandidates(candidates);
-                  setSourceLookupSearched(true);
-                  setIgnoredCandidateUrls(new Set());
-                  setFailedCandidateImageUrls(new Set());
-                  setSourceLookupStatus("idle");
+                  setSourceLookupError(null);
+                  try {
+                    const candidates = await onFindSourceCandidates(mod.id);
+                    setSourceCandidates(candidates);
+                    setSourceLookupSearched(true);
+                    setIgnoredCandidateUrls(new Set());
+                    setFailedCandidateImageUrls(new Set());
+                  } catch (error) {
+                    setSourceCandidates([]);
+                    setSourceLookupSearched(true);
+                    setSourceLookupError(error instanceof Error ? error.message : "Source lookup failed.");
+                  } finally {
+                    setSourceLookupStatus("idle");
+                  }
                 }}
               >
                 {sourceLookupStatus === "loading" ? "Searching..." : "Find Source"}
               </button>
             </div>
             {sourceLookupStatus === "loading" ? <p className="text-sm" role="status">Searching CurseForge...</p> : null}
-            {sourceLookupStatus === "idle" && sourceLookupSearched && sourceCandidates.length === 0 ? (
+            {sourceLookupError ? <p role="alert" className="text-sm text-red-600 dark:text-red-300">{sourceLookupError}</p> : null}
+            {sourceLookupStatus === "idle" && sourceLookupSearched && !sourceLookupError && sourceCandidates.length === 0 ? (
               <p className="text-sm text-slate-600 dark:text-slate-300">No source candidates found.</p>
             ) : null}
             {sourceLookupStatus === "idle" && sourceCandidates.length > 0 && visibleCandidates.length === 0 ? (

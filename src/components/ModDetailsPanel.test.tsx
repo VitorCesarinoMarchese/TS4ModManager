@@ -177,6 +177,15 @@ describe("ModDetailsPanel", () => {
     expect(screen.getByText("All candidates ignored.")).toBeInTheDocument();
   });
 
+  it("shows source lookup error state", async () => {
+    render(<ModDetailsPanel mod={mod} onClose={() => {}} onFindSourceCandidates={vi.fn().mockRejectedValue(new Error("CurseForge rate limited"))} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "find-source-candidates" }));
+
+    await waitFor(() => expect(screen.getByRole("alert")).toHaveTextContent("CurseForge rate limited"));
+    expect(screen.queryByText("No source candidates found.")).not.toBeInTheDocument();
+  });
+
   it("shows empty state when no source candidates are found", async () => {
     render(<ModDetailsPanel mod={mod} onClose={() => {}} onFindSourceCandidates={vi.fn().mockResolvedValue([])} />);
 

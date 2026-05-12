@@ -508,6 +508,26 @@ describe("app store bootstrap", () => {
     expect(candidates[0].title).toBe("MC Command Center");
   });
 
+  it("stores source lookup failure as issue and rethrows", async () => {
+    const api = {
+      detectGameInstances: vi.fn().mockResolvedValue([]),
+      scanMods: vi.fn().mockResolvedValue([{ id: "m1", name: "Detected", files: ["a.package"], enabled: false, source: "managed" }]),
+      detectOrphanSymlinks: vi.fn().mockResolvedValue([]),
+      dryRunToggle: vi.fn().mockResolvedValue({ canApply: true, operations: [], issues: [] }),
+      applyToggle: vi.fn().mockResolvedValue({ applied: true, issues: [] }),
+      migrateExternalMod: vi.fn().mockResolvedValue({ managedModId: "m1", issues: [] }),
+      validateCustomInstance: vi.fn().mockResolvedValue({ id: "c", path: "/x", source: "custom" }),
+      importArchive: vi.fn().mockResolvedValue({ modId: "m2" }),
+      findSourceCandidates: vi.fn().mockRejectedValue({ code: "INTERNAL_ERROR", message: "CurseForge failed" })
+    };
+
+    const store = createAppStore(api);
+    await store.getState().selectInstanceAndScan("inst-1");
+
+    await expect(store.getState().findSourceCandidates("m1", "cf-key")).rejects.toMatchObject({ message: "CurseForge failed" });
+    expect(store.getState().issues.at(-1)?.message).toBe("CurseForge failed");
+  });
+
   it("attaches source URL and updates store", async () => {
     const api = {
       detectGameInstances: vi.fn().mockResolvedValue([]),
