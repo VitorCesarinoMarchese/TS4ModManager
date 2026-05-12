@@ -47,9 +47,9 @@ The project is a functional Linux-first Sims 4 mod manager with:
 Current validation baseline:
 
 ```text
-npm run test:coverage  -> 147 frontend tests, branch coverage 82.15%
+npm run test:coverage  -> 153 frontend tests, branch coverage 82.63%
 npm run build          -> passing
-cargo test             -> 104 passed
+cargo test             -> 105 passed
 cargo check --features tauri-app -> passing
 ```
 
