@@ -143,6 +143,28 @@ describe("SettingsPage", () => {
     expect(screen.getByLabelText("Accent color")).toBeDisabled();
   });
 
+  it("edits CurseForge API key setting", () => {
+    const onCurseForgeApiKeyChange = vi.fn();
+    render(
+      <SettingsPage
+        instances={[]}
+        selectedInstanceId={null}
+        onSelectInstance={() => {}}
+        onRescan={() => {}}
+        onAddCustomPath={() => {}}
+        curseForgeApiKey="secret"
+        onCurseForgeApiKeyChange={onCurseForgeApiKeyChange}
+      />
+    );
+
+    expect(screen.getByRole("group", { name: "curseforge-settings" })).toBeInTheDocument();
+    expect(screen.getByLabelText("CurseForge API key")).toHaveAttribute("type", "password");
+    expect(screen.getByText(/not in per-mod metadata/)).toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText("CurseForge API key"), { target: { value: "new-key" } });
+    expect(onCurseForgeApiKeyChange).toHaveBeenCalledWith("new-key");
+  });
+
   it("renders trash entries and restores one", () => {
     const onRefreshTrash = vi.fn();
     const onRestoreTrash = vi.fn();

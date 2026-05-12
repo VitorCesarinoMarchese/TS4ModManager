@@ -25,6 +25,8 @@ type SettingsPageProps = {
   onOpenManagerFolder?: () => void | Promise<void>;
   onManageAllMods?: () => void | Promise<void>;
   onCopyDiagnostics?: () => void | Promise<void>;
+  curseForgeApiKey?: string;
+  onCurseForgeApiKeyChange?: (apiKey: string) => void;
   manageAllDisabled?: boolean;
   manageAllLoading?: boolean;
   onRefreshTrash?: () => void | Promise<void>;
@@ -71,6 +73,8 @@ export function SettingsPage({
   onOpenManagerFolder,
   onManageAllMods,
   onCopyDiagnostics,
+  curseForgeApiKey = "",
+  onCurseForgeApiKeyChange,
   manageAllDisabled = false,
   manageAllLoading = false,
   onRefreshTrash,
@@ -170,6 +174,25 @@ export function SettingsPage({
           Copy Diagnostics
         </button>
       </div>
+
+      <fieldset aria-label="curseforge-settings" className="grid gap-3 rounded-lg border !border-[var(--color-border)] p-4">
+        <legend className="px-1 text-lg font-semibold">CurseForge</legend>
+        <label className="text-sm font-medium" htmlFor="curseforge-api-key">
+          API key
+        </label>
+        <input
+          id="curseforge-api-key"
+          aria-label="CurseForge API key"
+          type="password"
+          className={inputClass}
+          value={curseForgeApiKey}
+          onChange={(e) => onCurseForgeApiKeyChange?.(e.target.value)}
+          placeholder="Paste CurseForge API key"
+        />
+        <p className="text-sm text-slate-600 dark:text-slate-300">
+          Used only for source lookup. The key is stored in app settings, not in per-mod metadata.
+        </p>
+      </fieldset>
 
       <fieldset aria-label="trash-manager" className="grid gap-3 rounded-lg border !border-[var(--color-border)] p-4">
         <legend className="px-1 text-lg font-semibold">Trash</legend>

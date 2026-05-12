@@ -37,6 +37,7 @@ import { createAppStore, type AppState } from "./store/appStore";
 
 const defaultStore = createAppStore(createBackendApi(invokeTauri));
 const SIDEBAR_COLLAPSED_STORAGE_KEY = "ts4mm-sidebar-collapsed";
+const CURSEFORGE_API_KEY_STORAGE_KEY = "ts4mm-curseforge-api-key";
 
 function systemPrefersDark() {
   return window.matchMedia?.("(prefers-color-scheme: dark)").matches ?? false;
@@ -52,6 +53,11 @@ function getInitialCustomThemes(): AppTheme[] {
 function getInitialSidebarCollapsed(): boolean {
   if (typeof window === "undefined") return true;
   return window.localStorage.getItem(SIDEBAR_COLLAPSED_STORAGE_KEY) !== "false";
+}
+
+function getInitialCurseForgeApiKey(): string {
+  if (typeof window === "undefined") return "";
+  return window.localStorage.getItem(CURSEFORGE_API_KEY_STORAGE_KEY) ?? "";
 }
 
 function getInitialActiveThemeName(customThemes: AppTheme[]): string {
@@ -104,6 +110,7 @@ export function App({ store = defaultStore }: AppProps) {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [customThemes, setCustomThemes] = useState<AppTheme[]>(getInitialCustomThemes);
   const [activeThemeName, setActiveThemeName] = useState(() => getInitialActiveThemeName(getInitialCustomThemes()));
+  const [curseForgeApiKey, setCurseForgeApiKey] = useState(getInitialCurseForgeApiKey);
   const [selectedMod, setSelectedMod] = useState<AppState["mods"][number] | null>(null);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(getInitialSidebarCollapsed);
   const [dismissedIssueIds, setDismissedIssueIds] = useState<Set<string>>(() => new Set());
@@ -334,6 +341,11 @@ export function App({ store = defaultStore }: AppProps) {
                 if (externalCount === 0) return;
                 if (!window.confirm(`Manage ${externalCount} external mod${externalCount === 1 ? "" : "s"}? Large folders may take several minutes.`)) return;
                 void manageAllExternalMods();
+              }}
+              curseForgeApiKey={curseForgeApiKey}
+              onCurseForgeApiKeyChange={(apiKey) => {
+                setCurseForgeApiKey(apiKey);
+                window.localStorage.setItem(CURSEFORGE_API_KEY_STORAGE_KEY, apiKey);
               }}
               onCopyDiagnostics={async () => {
                 const report = await getDiagnosticsReport();

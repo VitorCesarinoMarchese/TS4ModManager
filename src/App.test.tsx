@@ -219,6 +219,28 @@ describe("App redesign", () => {
     await waitFor(() => expect(screen.queryByRole("dialog", { name: "settings-modal" })).not.toBeInTheDocument());
   });
 
+  it("persists CurseForge API key from settings", async () => {
+    const api = makeApi();
+    const store = createAppStore(api);
+    render(<App store={store} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "open-settings" }));
+    fireEvent.change(screen.getByLabelText("CurseForge API key"), { target: { value: "cf-key" } });
+
+    expect(window.localStorage.setItem).toHaveBeenCalledWith("ts4mm-curseforge-api-key", "cf-key");
+  });
+
+  it("loads persisted CurseForge API key", async () => {
+    window.localStorage.setItem("ts4mm-curseforge-api-key", "saved-key");
+    const api = makeApi();
+    const store = createAppStore(api);
+    render(<App store={store} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "open-settings" }));
+
+    expect(screen.getByLabelText("CurseForge API key")).toHaveValue("saved-key");
+  });
+
   it("confirms manage-all before bulk migration", async () => {
     const confirm = vi.spyOn(window, "confirm").mockReturnValue(true);
     const api = makeApi({
