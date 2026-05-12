@@ -203,10 +203,10 @@ describe("backend api wrapper", () => {
     ]);
     const api = createBackendApi(invoke);
 
-    const res = await api.findSourceCandidates("m1", "inst-1");
+    const res = await api.findSourceCandidates("m1", "inst-1", "cf-key");
 
     expect(res[0].title).toBe("MC Command Center");
-    expect(invoke).toHaveBeenCalledWith("find_source_candidates", { modId: "m1", instanceId: "inst-1" });
+    expect(invoke).toHaveBeenCalledWith("find_source_candidates", { modId: "m1", instanceId: "inst-1", apiKey: "cf-key" });
   });
 
   it("calls attach source URL command", async () => {

@@ -44,7 +44,7 @@ export type BackendApi = {
   migrateExternalMod: (modId: string, instanceId: string) => Promise<MigrateResult>;
   renameModDisplayName: (modId: string, displayName: string) => Promise<Mod>;
   attachSourceUrl: (modId: string, sourceUrl: string, providerId?: string, metadata?: SourceMetadata) => Promise<Mod>;
-  findSourceCandidates: (modId: string, instanceId: string) => Promise<SourceCandidate[]>;
+  findSourceCandidates: (modId: string, instanceId: string, apiKey?: string) => Promise<SourceCandidate[]>;
   removeSourceUrl: (modId: string) => Promise<Mod>;
   uninstallManagedMod: (modId: string, instanceId: string) => Promise<UninstallResult>;
   listTrashEntries: () => Promise<TrashEntry[]>;
@@ -124,7 +124,7 @@ export type AppState = {
   importArchive: (archivePath: string, name: string, slug?: string) => Promise<void>;
   renameModDisplayName: (modId: string, displayName: string) => Promise<Mod | null>;
   attachSourceUrl: (modId: string, sourceUrl: string, providerId?: string, metadata?: SourceMetadata) => Promise<Mod | null>;
-  findSourceCandidates: (modId: string) => Promise<SourceCandidate[]>;
+  findSourceCandidates: (modId: string, apiKey?: string) => Promise<SourceCandidate[]>;
   removeSourceUrl: (modId: string) => Promise<Mod | null>;
   uninstallManagedMod: (modId: string) => Promise<UninstallResult | null>;
   loadTrashEntries: () => Promise<void>;
@@ -410,11 +410,11 @@ export function createAppStore(apiOverrides: Partial<BackendApi> = {}) {
         return null;
       }
     },
-    findSourceCandidates: async (modId) => {
+    findSourceCandidates: async (modId, apiKey) => {
       const instanceId = get().selectedInstanceId;
       if (!instanceId) return [];
       try {
-        return await api.findSourceCandidates(modId, instanceId);
+        return await api.findSourceCandidates(modId, instanceId, apiKey);
       } catch (error) {
         set((state) => ({
           issues: mergeIssueList(state.issues, toIssue(error, "source-lookup", "Source lookup failed"))

@@ -109,8 +109,9 @@ fn remove_source_url(mod_id: String) -> Result<crate::managed_storage::ModMetada
 fn find_source_candidates(
     mod_id: String,
     instance_id: String,
+    api_key: Option<String>,
 ) -> Result<Vec<crate::source_candidates::SourceCandidate>, ManagerError> {
-    commands::cmd_find_source_candidates(managed_root()?, mods_dir_from_instance_id(&instance_id)?, mod_id)
+    commands::cmd_find_source_candidates(managed_root()?, mods_dir_from_instance_id(&instance_id)?, mod_id, api_key)
 }
 
 #[tauri::command]

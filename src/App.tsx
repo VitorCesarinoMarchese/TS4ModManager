@@ -428,7 +428,7 @@ export function App({ store = defaultStore }: AppProps) {
             if (updated) setSelectedMod(updated);
           }}
           onOpenSourceUrl={(sourceUrl) => void openExternalUrl(sourceUrl)}
-          onFindSourceCandidates={(modId) => findSourceCandidates(modId)}
+          onFindSourceCandidates={(modId) => findSourceCandidates(modId, curseForgeApiKey)}
           onManageExternal={async (modId) => {
             const result = await manageExternalMod(modId);
             if (result) setSelectedMod(null);

@@ -502,9 +502,9 @@ describe("app store bootstrap", () => {
 
     const store = createAppStore(api);
     await store.getState().selectInstanceAndScan("inst-1");
-    const candidates = await store.getState().findSourceCandidates("m1");
+    const candidates = await store.getState().findSourceCandidates("m1", "cf-key");
 
-    expect(api.findSourceCandidates).toHaveBeenCalledWith("m1", "inst-1");
+    expect(api.findSourceCandidates).toHaveBeenCalledWith("m1", "inst-1", "cf-key");
     expect(candidates[0].title).toBe("MC Command Center");
   });
 

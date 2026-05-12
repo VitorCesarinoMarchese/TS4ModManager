@@ -231,9 +231,9 @@ export function createBackendApi(invoke: InvokeFn) {
       }
     },
 
-    async findSourceCandidates(modId: string, instanceId: string): Promise<SourceCandidate[]> {
+    async findSourceCandidates(modId: string, instanceId: string, apiKey?: string): Promise<SourceCandidate[]> {
       try {
-        return await invoke<SourceCandidate[]>("find_source_candidates", { modId, instanceId });
+        return await invoke<SourceCandidate[]>("find_source_candidates", { modId, instanceId, apiKey });
       } catch (error) {
         throw normalizeError(error);
       }
