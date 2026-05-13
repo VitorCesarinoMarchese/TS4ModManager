@@ -689,6 +689,46 @@ Commit 17: add dedupe and confidence explanations
 Commit 18: add integration tests for full lookup flow
 ```
 
+### Immediate Next Steps
+
+1. Persist richer attached source metadata into each managed mod's `meta.json`:
+   - `projectId`
+   - `fileId`
+   - provider ID
+   - source URL
+   - title
+   - author
+   - confidence at attach
+   - evidence/reasons
+   - `attachedBy: "user"`
+   - `attachedAt`
+
+2. Add clearer candidate details UI:
+   - evidence weights
+   - project ID
+   - file ID
+   - author
+   - confidence explanation
+   - low-confidence warning remains visible
+
+3. Add live API smoke checklist/docs:
+   - where to paste the CurseForge API key
+   - how to test with MCCC
+   - expected candidate fields
+   - expected typed errors for bad keys/rate limits/network failures
+   - confirm API key is not stored in per-mod metadata
+
+4. Run live CurseForge API smoke with a real key:
+   - Add key in Settings.
+   - Use a real MCCC install such as `McCmdCenter_AllModules_2026_2_0`.
+   - Open mod details and click `Find Source`.
+   - Confirm candidate is `MC Command Center` with URL `https://www.curseforge.com/sims4/mods/mc-command-center`.
+   - Confirm preview image loads.
+   - Inspect whether CurseForge file metadata exposes useful archive/file names, hashes, and game versions.
+   - Attach candidate and confirm Source URL/cover persist after rescan.
+   - Test a bad key and expect `SOURCE_UNAUTHORIZED`.
+   - Note whether matching can be high-confidence from file evidence or must stay conservative.
+
 ### Agent Prompt Version
 
 ```text
