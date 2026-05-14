@@ -76,17 +76,33 @@ fn find_with_curseforge(fingerprint: &ModFingerprint, api_key: Option<&str>) -> 
 }
 
 pub fn curseforge_queries(fingerprint: &ModFingerprint) -> Vec<String> {
-    let mut queries = vec![fingerprint.normalized_name.clone()];
+    let mut queries = vec![fingerprint.normalized_name.clone(), normalize_name(&fingerprint.display_name)];
     if let Some(folder) = &fingerprint.folder_name {
         queries.push(normalize_name(folder));
     }
     if let Some(first_file) = fingerprint.package_script_basenames.first() {
         queries.push(normalize_name(first_file));
     }
+    let aliases = queries.iter().flat_map(|query| curseforge_query_aliases(query)).collect::<Vec<_>>();
+    queries.extend(aliases);
     queries.retain(|query| !query.trim().is_empty());
     queries.sort();
     queries.dedup();
     queries
+}
+
+fn curseforge_query_aliases(query: &str) -> Vec<String> {
+    let compact = canonical_compact_text(query);
+    let mut aliases = vec![];
+    if compact.contains("mccmdcenter") || compact.contains("mccenter") || compact.contains("mccmd") {
+        aliases.push("mc command center".to_string());
+        aliases.push("mc cmd center".to_string());
+        aliases.push("mccc".to_string());
+    }
+    if compact.contains("mccommandcenter") {
+        aliases.push("mc cmd center".to_string());
+    }
+    aliases
 }
 
 pub fn candidate_from_curseforge(
@@ -99,15 +115,23 @@ pub fn candidate_from_curseforge(
     if text_related(&normalized_title, &fingerprint.normalized_name) {
         evidence_items.push(evidence("title", "Title/name similarity", 20));
     }
-    if mod_summary
-        .slug
+    let normalized_slug = mod_summary.slug.as_deref().map(normalize_name);
+    if normalized_slug
         .as_deref()
-        .is_some_and(|slug| text_related(&normalize_name(slug), &fingerprint.normalized_name))
+        .is_some_and(|slug| text_related(slug, &fingerprint.normalized_name))
     {
         evidence_items.push(evidence("slug", "Slug similarity", 10));
     }
 
     let mut has_file_evidence = false;
+    if fingerprint.package_script_basenames.iter().any(|name| {
+        let normalized = normalize_name(name);
+        text_related(&normalized, &normalized_title)
+            || normalized_slug.as_deref().is_some_and(|slug| text_related(&normalized, slug))
+    }) {
+        evidence_items.push(evidence("packageName", "Package/script basename overlaps title or slug", 15));
+        has_file_evidence = true;
+    }
     for file in files {
         let file_name = file.file_name.to_lowercase();
         if fingerprint.archive_name.as_ref().is_some_and(|archive| archive.eq_ignore_ascii_case(&file.file_name)) {
@@ -290,6 +314,31 @@ mod tests {
 
         assert!(queries.contains(&"mccmdcenter allmodules".to_string()));
         assert!(queries.contains(&"mc cmd center".to_string()));
+        assert!(queries.contains(&"mc command center".to_string()));
+    }
+
+    #[test]
+    fn keeps_candidate_when_local_package_overlaps_title() {
+        let fingerprint = build_mod_fingerprint(
+            "McCmdCenter_AllModules_2026_2_0",
+            Some("McCmdCenter_AllModules_2026_2_0"),
+            &[FingerprintFile { relative_path: "McCmdCenter_AllModules_2026_2_0/mc_cmd_center.package".to_string(), size: 10 }],
+            None,
+            None,
+        );
+        let mod_summary = CurseForgeModSummary {
+            project_id: 551680,
+            name: "MC Command Center".to_string(),
+            slug: Some("mc-command-center".to_string()),
+            source_url: Some("https://www.curseforge.com/sims4/mods/mc-command-center".to_string()),
+            preview_url: None,
+            authors: vec!["Deaderpool".to_string()],
+        };
+
+        let candidate = candidate_from_curseforge(&fingerprint, mod_summary, &[]).expect("candidate");
+
+        assert_eq!(candidate.confidence_level, ConfidenceLevel::Low);
+        assert!(candidate.evidence.iter().any(|item| item.kind == "packageName"));
     }
 
     #[test]
