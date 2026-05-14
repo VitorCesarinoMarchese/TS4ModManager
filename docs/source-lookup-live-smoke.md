@@ -49,18 +49,16 @@ Expected storage behavior:
 3. Click `Find Source`.
 4. Wait for candidates.
 
-Expected candidate:
+Expected candidate behavior:
 
-- Title: `MC Command Center`
-- Source URL: `https://www.curseforge.com/sims4/mods/mc-command-center`
-- Provider ID: `curseforge`
-- Author: visible when returned by CurseForge, expected `Deaderpool`
-- Project ID: visible, expected `551680` if CurseForge response is stable
-- File ID: visible when file metadata is returned
-- Preview image: should load or hide gracefully if the image URL fails
-- Confidence: should remain conservative unless file evidence is strong
-- Evidence list: shows each evidence kind, description, and weight
-- Low-confidence warning: remains visible for candidates below 70
+- Only real CurseForge API candidates should appear.
+- The app must not invent guessed CurseForge URLs from local file names.
+- If CurseForge returns no Sims 4 candidates, the UI should show `No source candidates found.`
+- If candidates are returned, expected fields are:
+  - Title, provider ID, source URL, and confidence.
+  - Author/project ID/file ID/preview image when returned by CurseForge.
+  - Evidence list with each evidence kind, description, and weight.
+- Low-confidence warning remains visible for candidates below 70.
 
 ## Attach persistence check
 
