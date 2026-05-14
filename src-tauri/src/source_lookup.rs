@@ -8,7 +8,7 @@ use crate::source_candidates::{SourceCandidate, SourceProviderId};
 use crate::source_fingerprint::{build_mod_fingerprint, normalize_name, FingerprintFile, ModFingerprint};
 use crate::source_scoring::{evidence, score_candidate, CandidateScoreInput};
 
-const MAX_CURSEFORGE_QUERIES: usize = 8;
+const MAX_CURSEFORGE_QUERIES: usize = 6;
 
 pub fn find_source_candidates(
     managed_root: &Path,
@@ -75,6 +75,9 @@ fn find_with_curseforge(fingerprint: &ModFingerprint, api_key: Option<&str>) -> 
     }
     candidates.sort_by(|a, b| b.confidence.cmp(&a.confidence));
     candidates.truncate(5);
+    if candidates.is_empty() {
+        return Ok(curseforge_url_fallback_candidates(fingerprint));
+    }
     Ok(candidates)
 }
 
@@ -130,6 +133,52 @@ fn without_packaging_terms(query: &str) -> Option<String> {
         .collect::<Vec<_>>()
         .join(" ");
     (!filtered.is_empty() && filtered != query).then_some(filtered)
+}
+
+pub fn curseforge_url_fallback_candidates(fingerprint: &ModFingerprint) -> Vec<SourceCandidate> {
+    curseforge_queries(fingerprint)
+        .into_iter()
+        .filter_map(|query| {
+            let title = title_case_query(&query);
+            let slug = query.replace(' ', "-");
+            let evidence_items = vec![evidence("slugGuess", "Local name can form a CurseForge slug; verify manually", 40)];
+            let score = score_candidate(CandidateScoreInput {
+                evidence: evidence_items.clone(),
+                has_file_metadata: false,
+                has_file_evidence: false,
+                name_only: true,
+                fingerprint_match: false,
+            })?;
+            Some(SourceCandidate {
+                provider_id: SourceProviderId::Curseforge,
+                title,
+                source_url: format!("https://www.curseforge.com/sims4/mods/{slug}"),
+                preview_url: None,
+                author: None,
+                project_id: None,
+                file_id: None,
+                confidence: score.confidence,
+                confidence_level: score.confidence_level,
+                reasons: score.reasons,
+                evidence: evidence_items,
+            })
+        })
+        .take(5)
+        .collect()
+}
+
+fn title_case_query(query: &str) -> String {
+    query
+        .split_whitespace()
+        .map(|word| {
+            let mut chars = word.chars();
+            match chars.next() {
+                Some(first) => format!("{}{}", first.to_uppercase(), chars.as_str()),
+                None => String::new(),
+            }
+        })
+        .collect::<Vec<_>>()
+        .join(" ")
 }
 
 pub fn candidate_from_curseforge(
@@ -364,6 +413,23 @@ mod tests {
         assert!(queries.len() <= MAX_CURSEFORGE_QUERIES);
         assert_eq!(queries[0], "big mod all modules");
         assert!(queries.contains(&"big mod".to_string()));
+    }
+
+    #[test]
+    fn creates_low_confidence_url_fallback_candidates() {
+        let fingerprint = build_mod_fingerprint(
+            "McCmdCenter_AllModules_2026_2_0",
+            Some("McCmdCenter_AllModules_2026_2_0"),
+            &[FingerprintFile { relative_path: "McCmdCenter_AllModules_2026_2_0/mc_cmd_center.package".to_string(), size: 10 }],
+            None,
+            None,
+        );
+
+        let candidates = curseforge_url_fallback_candidates(&fingerprint);
+
+        assert!(candidates.iter().any(|candidate| candidate.source_url == "https://www.curseforge.com/sims4/mods/mc-command-center"));
+        assert!(candidates.iter().all(|candidate| candidate.confidence_level == ConfidenceLevel::Low));
+        assert!(candidates[0].reasons.iter().any(|reason| reason.contains("verify manually")));
     }
 
     #[test]
