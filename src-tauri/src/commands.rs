@@ -6,7 +6,7 @@ use crate::error::{ErrorCode, ManagerError};
 use crate::external_migration::{migrate_external_mod, MigrateResult};
 use crate::logging::append_issue_log;
 use crate::lifecycle::{list_trash_entries, restore_trashed_mod, uninstall_managed_mod, RestoreResult, TrashEntry, UninstallResult};
-use crate::managed_storage::{remove_source_url, set_custom_display_name, set_source_url, ModMetadata};
+use crate::managed_storage::{remove_source_url, set_custom_display_name, set_source_url, ModMetadata, SourceAttachmentMetadata};
 use crate::mod_scan::ScannedMod;
 use crate::orphan::{detect_orphan_symlinks, OrphanSymlink};
 use crate::path_detection::{detect_game_instances, validate_custom_instance, GameInstance};
@@ -97,16 +97,27 @@ pub fn cmd_attach_source_url(
     provider_id: Option<String>,
     display_name: Option<String>,
     preview_url: Option<String>,
+    source_attachment: Option<SourceAttachmentMetadata>,
 ) -> Result<ModMetadata, ManagerError> {
     let resolved = if display_name.is_none() || preview_url.is_none() {
         Some(resolve_source_metadata(&source_url))
     } else {
         None
     };
-    let final_display_name = display_name.or_else(|| resolved.as_ref().and_then(|meta| meta.display_name.clone()));
+    let final_display_name = display_name
+        .or_else(|| source_attachment.as_ref().map(|attachment| attachment.title.clone()))
+        .or_else(|| resolved.as_ref().and_then(|meta| meta.display_name.clone()));
     let final_preview_url = preview_url.or_else(|| resolved.and_then(|meta| meta.preview_url));
 
-    set_source_url(&managed_root, &mod_id, source_url, provider_id, final_display_name, final_preview_url)
+    set_source_url(
+        &managed_root,
+        &mod_id,
+        source_url,
+        provider_id,
+        final_display_name,
+        final_preview_url,
+        source_attachment,
+    )
 }
 
 pub fn cmd_remove_source_url(managed_root: PathBuf, mod_id: String) -> Result<ModMetadata, ManagerError> {

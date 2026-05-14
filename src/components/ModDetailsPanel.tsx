@@ -197,13 +197,32 @@ export function ModDetailsPanel({ mod, onClose, onRename, onAttachSourceUrl, onR
             {sourceLookupStatus === "idle" && sourceCandidates.length > 0 && visibleCandidates.length === 0 ? (
               <p className="text-sm text-slate-600 dark:text-slate-300">All candidates ignored.</p>
             ) : null}
-            {visibleCandidates.map((candidate) => (
+            {visibleCandidates.map((candidate) => {
+              const confidenceLabel = candidate.confidenceLevel === "high" ? "High confidence" : candidate.confidenceLevel === "medium" ? "Medium confidence" : "Low confidence";
+              const sourceAttachment = {
+                providerId: candidate.providerId,
+                projectId: candidate.projectId,
+                fileId: candidate.fileId,
+                sourceUrl: candidate.sourceUrl,
+                title: candidate.title,
+                author: candidate.author,
+                confidence: candidate.confidence,
+                reasons: candidate.reasons,
+                evidence: candidate.evidence,
+                attachedBy: "user",
+                attachedAt: new Date().toISOString()
+              };
+
+              return (
               <article key={candidate.sourceUrl} aria-label="source-candidate" className="grid gap-2 rounded-md border !border-[var(--color-border)] p-3">
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div className="min-w-0">
                     <p className="font-semibold">{candidate.title}</p>
                     {candidate.author ? <p className="text-sm text-slate-600 dark:text-slate-300">By {candidate.author}</p> : null}
-                    <p className="text-sm">{candidate.confidence}% · {candidate.confidenceLevel === "high" ? "High confidence" : candidate.confidenceLevel === "medium" ? "Medium confidence" : "Low confidence"}</p>
+                    <p className="text-sm">{candidate.confidence}% · {confidenceLabel}</p>
+                    <p className="text-sm text-slate-600 dark:text-slate-300">Confidence comes from {candidate.evidence.length} evidence item{candidate.evidence.length === 1 ? "" : "s"}.</p>
+                    {candidate.projectId != null ? <p className="text-sm text-slate-600 dark:text-slate-300">Project ID: {candidate.projectId}</p> : null}
+                    {candidate.fileId != null ? <p className="text-sm text-slate-600 dark:text-slate-300">File ID: {candidate.fileId}</p> : null}
                     {candidate.confidence < 70 ? <p className="text-sm text-amber-600 dark:text-amber-300">Please verify before attaching.</p> : null}
                   </div>
                   {candidate.previewUrl && !failedCandidateImageUrls.has(candidate.previewUrl) ? (
@@ -220,12 +239,15 @@ export function ModDetailsPanel({ mod, onClose, onRename, onAttachSourceUrl, onR
                 <ul className="m-0 grid list-disc gap-1 pl-5 text-sm text-slate-600 dark:text-slate-300">
                   {candidate.reasons.map((reason) => <li key={reason}>{reason}</li>)}
                 </ul>
+                <ul className="m-0 grid list-disc gap-1 pl-5 text-sm text-slate-600 dark:text-slate-300">
+                  {candidate.evidence.map((item, index) => <li key={`${item.kind}-${index}`}>{item.kind}: {item.description} ({item.weight})</li>)}
+                </ul>
                 <div className="flex flex-wrap gap-2">
                   <button
                     type="button"
                     aria-label="attach-source-candidate"
                     className={buttonClass}
-                    onClick={() => onAttachSourceUrl?.(mod.id, candidate.sourceUrl, candidate.providerId, { displayName: candidate.title, previewUrl: candidate.previewUrl })}
+                    onClick={() => onAttachSourceUrl?.(mod.id, candidate.sourceUrl, candidate.providerId, { displayName: candidate.title, previewUrl: candidate.previewUrl, sourceAttachment })}
                   >
                     Attach
                   </button>
@@ -242,7 +264,8 @@ export function ModDetailsPanel({ mod, onClose, onRename, onAttachSourceUrl, onR
                   </button>
                 </div>
               </article>
-            ))}
+              );
+            })}
             {sourceLookupStatus === "idle" && !sourceLookupSearched ? <p className="text-sm text-slate-600 dark:text-slate-300">No candidates loaded yet.</p> : null}
           </section>
         ) : null}

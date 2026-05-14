@@ -22,9 +22,30 @@ export type ApiError = {
   details?: Record<string, unknown>;
 };
 
+export type SourceEvidence = {
+  kind: string;
+  description: string;
+  weight: number;
+};
+
+export type SourceAttachmentMetadata = {
+  providerId: string;
+  projectId?: number;
+  fileId?: number;
+  sourceUrl: string;
+  title: string;
+  author?: string;
+  confidence?: number;
+  reasons: string[];
+  evidence: SourceEvidence[];
+  attachedBy: string;
+  attachedAt: string;
+};
+
 export type SourceMetadata = {
   displayName?: string;
   previewUrl?: string;
+  sourceAttachment?: SourceAttachmentMetadata;
 };
 
 export type SourceCandidate = {
@@ -53,6 +74,7 @@ export type Mod = {
   enabled: boolean;
   preview?: string;
   sourceUrl?: string;
+  sourceAttachment?: SourceAttachmentMetadata;
   source: "managed" | "external";
   groupPath?: string[];
 };

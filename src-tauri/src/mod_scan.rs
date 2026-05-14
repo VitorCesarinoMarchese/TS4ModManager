@@ -4,7 +4,7 @@ use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 
-use crate::managed_storage::{read_managed_mod, ModMetadata};
+use crate::managed_storage::{read_managed_mod, ModMetadata, SourceAttachmentMetadata};
 use crate::metadata_names::detect_display_name;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -25,6 +25,8 @@ pub struct ScannedMod {
     pub preview: Option<String>,
     #[serde(rename = "sourceUrl", skip_serializing_if = "Option::is_none")]
     pub source_url: Option<String>,
+    #[serde(rename = "sourceAttachment", skip_serializing_if = "Option::is_none")]
+    pub source_attachment: Option<SourceAttachmentMetadata>,
     pub source: ModSource,
     pub group_path: Vec<String>,
 }
@@ -118,6 +120,7 @@ fn build_scanned_mod(key: String, files: Vec<FileEntry>, managed_root: &Path) ->
     let metadata = managed_metadata_from_files(&files, managed_root);
     let id = metadata.as_ref().map(|meta| meta.mod_id.clone());
     let source_url = metadata.as_ref().and_then(|meta| meta.source_url.clone());
+    let source_attachment = metadata.as_ref().and_then(|meta| meta.source_attachment.clone());
     let preview = metadata
         .as_ref()
         .and_then(|meta| meta.local_preview_path.clone().or_else(|| meta.preview_url.clone()))
@@ -135,6 +138,7 @@ fn build_scanned_mod(key: String, files: Vec<FileEntry>, managed_root: &Path) ->
         mod_files,
         preview,
         source_url,
+        source_attachment,
         source,
         group_path,
     }
@@ -221,7 +225,7 @@ mod tests {
     use image::{ImageBuffer, Rgba};
     use tempfile::TempDir;
 
-    use crate::managed_storage::{write_managed_mod, ModMetadata};
+    use crate::managed_storage::{write_managed_mod, ModMetadata, SourceAttachmentMetadata, SourceEvidence};
 
     use super::{scan_mods, ModSource};
 
@@ -378,6 +382,7 @@ mod tests {
                 source_url: None,
                 preview_url: None,
                 local_preview_path: None,
+                source_attachment: None,
                 locked_name: false,
                 updated_at: None,
             },
@@ -423,6 +428,23 @@ mod tests {
                 source_url: Some("https://www.curseforge.com/sims4/mods/example".to_string()),
                 preview_url: Some("https://img.example/cover.jpg".to_string()),
                 local_preview_path: None,
+                source_attachment: Some(SourceAttachmentMetadata {
+                    provider_id: "curseforge".to_string(),
+                    project_id: Some(551680),
+                    file_id: Some(67890),
+                    source_url: "https://www.curseforge.com/sims4/mods/example".to_string(),
+                    title: "Example".to_string(),
+                    author: Some("Creator".to_string()),
+                    confidence: Some(95),
+                    reasons: vec!["Exact fingerprint match".to_string()],
+                    evidence: vec![SourceEvidence {
+                        kind: "fingerprint".to_string(),
+                        description: "Exact fingerprint match".to_string(),
+                        weight: 95,
+                    }],
+                    attached_by: "user".to_string(),
+                    attached_at: "2026-05-13T12:34:56Z".to_string(),
+                }),
                 locked_name: false,
                 updated_at: None,
             },
@@ -438,6 +460,7 @@ mod tests {
             Some("https://www.curseforge.com/sims4/mods/example")
         );
         assert_eq!(scanned[0].preview.as_deref(), Some("https://img.example/cover.jpg"));
+        assert_eq!(scanned[0].source_attachment.as_ref().and_then(|source| source.project_id), Some(551680));
     }
 
     #[test]
@@ -466,6 +489,7 @@ mod tests {
                 source_url: None,
                 preview_url: None,
                 local_preview_path: None,
+                source_attachment: None,
                 locked_name: false,
                 updated_at: None,
             },

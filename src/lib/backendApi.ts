@@ -15,6 +15,7 @@ type ModMetadataDto = {
   source?: string;
   sourceUrl?: string;
   previewUrl?: string;
+  sourceAttachment?: SourceMetadata["sourceAttachment"];
 };
 
 type InvokeFn = <T = unknown>(command: string, payload?: Record<string, unknown>) => Promise<T>;
@@ -43,7 +44,8 @@ function modFromMetadata(mod: ModMetadataDto, fallbackId: string, fallbackName: 
     enabled: false,
     source: mod.source === "external" ? "external" : "managed",
     sourceUrl: mod.sourceUrl,
-    preview: mod.previewUrl
+    preview: mod.previewUrl,
+    sourceAttachment: mod.sourceAttachment
   };
 }
 
@@ -246,7 +248,8 @@ export function createBackendApi(invoke: InvokeFn) {
           sourceUrl,
           providerId,
           displayName: metadata?.displayName,
-          previewUrl: metadata?.previewUrl
+          previewUrl: metadata?.previewUrl,
+          sourceAttachment: metadata?.sourceAttachment
         });
         return modFromMetadata(mod, modId, mod.displayName ?? mod.name ?? modId);
       } catch (error) {

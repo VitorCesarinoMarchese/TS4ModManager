@@ -7,6 +7,36 @@ use uuid::Uuid;
 use crate::error::{ErrorCode, ManagerError};
 use crate::metadata_names::detect_display_name;
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct SourceEvidence {
+    pub kind: String,
+    pub description: String,
+    pub weight: i16,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct SourceAttachmentMetadata {
+    pub provider_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub project_id: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub file_id: Option<u64>,
+    pub source_url: String,
+    pub title: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub author: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub confidence: Option<u8>,
+    #[serde(default)]
+    pub reasons: Vec<String>,
+    #[serde(default)]
+    pub evidence: Vec<SourceEvidence>,
+    pub attached_by: String,
+    pub attached_at: String,
+}
+
 #[derive(Debug, Clone)]
 pub struct ImportRequest {
     pub name: String,
@@ -36,6 +66,8 @@ pub struct ModMetadata {
     pub preview_url: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub local_preview_path: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_attachment: Option<SourceAttachmentMetadata>,
     #[serde(default)]
     pub locked_name: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -90,6 +122,7 @@ pub fn create_managed_mod(managed_root: &Path, req: ImportRequest) -> Result<Mod
         source_url: None,
         preview_url: None,
         local_preview_path: None,
+        source_attachment: None,
         locked_name: false,
         updated_at: None,
     };
@@ -171,6 +204,7 @@ fn read_managed_mod_or_create_local(managed_root: &Path, mod_id: &str) -> Result
                 source_url: None,
                 preview_url: None,
                 local_preview_path: None,
+                source_attachment: None,
                 locked_name: false,
                 updated_at: None,
             })
@@ -206,6 +240,7 @@ pub fn set_source_url(
     provider_id: Option<String>,
     display_name: Option<String>,
     preview_url: Option<String>,
+    source_attachment: Option<SourceAttachmentMetadata>,
 ) -> Result<ModMetadata, ManagerError> {
     let mut meta = read_managed_mod_or_create_local(managed_root, mod_id)?;
     let trimmed = source_url.trim();
@@ -216,8 +251,10 @@ pub fn set_source_url(
         ));
     }
 
+    let normalized_provider = provider_id.filter(|provider| !provider.trim().is_empty());
+
     meta.source_url = Some(trimmed.to_string());
-    if let Some(provider) = provider_id.filter(|provider| !provider.trim().is_empty()) {
+    if let Some(provider) = normalized_provider.clone() {
         meta.source = provider;
     }
     if let Some(title) = display_name.map(|name| name.trim().to_string()).filter(|name| !name.is_empty()) {
@@ -227,6 +264,13 @@ pub fn set_source_url(
         }
     }
     meta.preview_url = preview_url.map(|url| url.trim().to_string()).filter(|url| !url.is_empty());
+    meta.source_attachment = source_attachment.map(|mut attachment| {
+        attachment.source_url = trimmed.to_string();
+        if let Some(provider) = normalized_provider {
+            attachment.provider_id = provider;
+        }
+        attachment
+    });
     write_managed_mod(managed_root, &meta)?;
     Ok(meta)
 }
@@ -234,6 +278,7 @@ pub fn set_source_url(
 pub fn remove_source_url(managed_root: &Path, mod_id: &str) -> Result<ModMetadata, ManagerError> {
     let mut meta = read_managed_mod_or_create_local(managed_root, mod_id)?;
     meta.source_url = None;
+    meta.source_attachment = None;
     meta.source = "local".to_string();
     write_managed_mod(managed_root, &meta)?;
     Ok(meta)
@@ -254,6 +299,7 @@ pub fn read_managed_mod_or_default(managed_root: &Path, mod_id: &str, detected_n
         source_url: None,
         preview_url: None,
         local_preview_path: None,
+        source_attachment: None,
         locked_name: false,
         updated_at: None,
     })
@@ -324,7 +370,7 @@ mod tests {
 
     use tempfile::TempDir;
 
-    use super::{create_managed_mod, read_managed_mod, read_managed_mod_or_default, write_managed_mod, ImportRequest};
+    use super::{create_managed_mod, read_managed_mod, read_managed_mod_or_default, write_managed_mod, ImportRequest, SourceAttachmentMetadata, SourceEvidence};
 
     #[test]
     fn creates_managed_mod_with_uuid_directory() {
@@ -461,6 +507,7 @@ mod tests {
             Some("curseforge".to_string()),
             None,
             None,
+            None,
         )
         .expect("attach");
 
@@ -494,6 +541,7 @@ mod tests {
             Some("curseforge".to_string()),
             None,
             None,
+            None,
         )
         .expect("attach by bundle name");
 
@@ -525,6 +573,7 @@ mod tests {
             &meta.mod_id,
             "https://www.curseforge.com/sims4/mods/example".to_string(),
             Some("curseforge".to_string()),
+            None,
             None,
             None,
         )
@@ -567,12 +616,64 @@ mod tests {
             Some("modthesims".to_string()),
             Some("Real Mod Title".to_string()),
             Some("https://static.modthesims.info/cover.jpg".to_string()),
+            None,
         )
         .expect("attach");
 
         assert_eq!(updated.source, "modthesims");
         assert_eq!(updated.display_name, "Real Mod Title");
         assert_eq!(updated.preview_url.as_deref(), Some("https://static.modthesims.info/cover.jpg"));
+    }
+
+    #[test]
+    fn attaches_richer_source_attachment_metadata() {
+        let tmp = TempDir::new().expect("tmp");
+        let src = tmp.path().join("import");
+        fs::create_dir_all(&src).expect("src");
+        fs::write(src.join("a.package"), b"x").expect("file");
+        let meta = create_managed_mod(
+            tmp.path(),
+            ImportRequest {
+                name: "Detected".to_string(),
+                slug: None,
+                source_dir: src,
+            },
+        )
+        .expect("create");
+
+        let attachment = SourceAttachmentMetadata {
+            provider_id: "curseforge".to_string(),
+            project_id: Some(551680),
+            file_id: Some(67890),
+            source_url: "https://www.curseforge.com/sims4/mods/mc-command-center".to_string(),
+            title: "MC Command Center".to_string(),
+            author: Some("Deaderpool".to_string()),
+            confidence: Some(95),
+            reasons: vec!["Exact fingerprint match".to_string()],
+            evidence: vec![SourceEvidence {
+                kind: "fingerprint".to_string(),
+                description: "Exact fingerprint match".to_string(),
+                weight: 95,
+            }],
+            attached_by: "user".to_string(),
+            attached_at: "2026-05-13T12:34:56Z".to_string(),
+        };
+
+        let updated = super::set_source_url(
+            tmp.path(),
+            &meta.mod_id,
+            attachment.source_url.clone(),
+            Some(attachment.provider_id.clone()),
+            Some(attachment.title.clone()),
+            None,
+            Some(attachment.clone()),
+        )
+        .expect("attach");
+
+        assert_eq!(updated.source_attachment.as_ref(), Some(&attachment));
+        let raw = fs::read_to_string(tmp.path().join("mods").join(&meta.mod_id).join("meta.json")).expect("read");
+        assert!(raw.contains("\"sourceAttachment\""));
+        assert!(raw.contains("\"attachedBy\": \"user\""));
     }
 
     #[test]

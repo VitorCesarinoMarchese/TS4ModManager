@@ -234,8 +234,80 @@ describe("backend api wrapper", () => {
       sourceUrl: "https://www.curseforge.com/sims4/mods/example",
       providerId: "curseforge",
       displayName: "My Mod",
-      previewUrl: "https://img.example/cover.jpg"
+      previewUrl: "https://img.example/cover.jpg",
+      sourceAttachment: undefined
     });
+  });
+
+  it("passes richer source attachment metadata when available", async () => {
+    const invoke = vi.fn().mockResolvedValue({
+      modId: "m1",
+      displayName: "MC Command Center",
+      sourceUrl: "https://www.curseforge.com/sims4/mods/mc-command-center",
+      previewUrl: "https://media.forgecdn.net/cover.png",
+      sourceAttachment: {
+        providerId: "curseforge",
+        projectId: 551680,
+        fileId: 67890,
+        sourceUrl: "https://www.curseforge.com/sims4/mods/mc-command-center",
+        title: "MC Command Center",
+        author: "Deaderpool",
+        confidence: 95,
+        reasons: ["Exact fingerprint match"],
+        evidence: [{ kind: "fingerprint", description: "Exact fingerprint match", weight: 95 }],
+        attachedBy: "user",
+        attachedAt: "2026-05-13T12:34:56Z"
+      },
+      files: ["a.package"],
+      source: "curseforge"
+    });
+    const api = createBackendApi(invoke);
+
+    const res = await api.attachSourceUrl("m1", "https://www.curseforge.com/sims4/mods/mc-command-center", "curseforge", {
+      displayName: "MC Command Center",
+      previewUrl: "https://media.forgecdn.net/cover.png",
+      sourceAttachment: {
+        providerId: "curseforge",
+        projectId: 551680,
+        fileId: 67890,
+        sourceUrl: "https://www.curseforge.com/sims4/mods/mc-command-center",
+        title: "MC Command Center",
+        author: "Deaderpool",
+        confidence: 95,
+        reasons: ["Exact fingerprint match"],
+        evidence: [{ kind: "fingerprint", description: "Exact fingerprint match", weight: 95 }],
+        attachedBy: "user",
+        attachedAt: "2026-05-13T12:34:56Z"
+      }
+    });
+
+    expect(res.sourceAttachment).toMatchObject({
+      providerId: "curseforge",
+      projectId: 551680,
+      fileId: 67890,
+      title: "MC Command Center",
+      author: "Deaderpool",
+      confidence: 95,
+      attachedBy: "user"
+    });
+    expect(invoke).toHaveBeenCalledWith("attach_source_url", expect.objectContaining({
+      modId: "m1",
+      sourceUrl: "https://www.curseforge.com/sims4/mods/mc-command-center",
+      providerId: "curseforge",
+      displayName: "MC Command Center",
+      previewUrl: "https://media.forgecdn.net/cover.png",
+      sourceAttachment: expect.objectContaining({
+        providerId: "curseforge",
+        projectId: 551680,
+        fileId: 67890,
+        sourceUrl: "https://www.curseforge.com/sims4/mods/mc-command-center",
+        title: "MC Command Center",
+        author: "Deaderpool",
+        confidence: 95,
+        attachedBy: "user",
+        attachedAt: "2026-05-13T12:34:56Z"
+      })
+    }));
   });
 
   it("calls rename mod display name command", async () => {

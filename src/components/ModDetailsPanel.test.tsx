@@ -132,6 +132,8 @@ describe("ModDetailsPanel", () => {
         sourceUrl: "https://www.curseforge.com/sims4/mods/mc-command-center",
         previewUrl: "https://media.forgecdn.net/cover.png",
         author: "Deaderpool",
+        projectId: 551680,
+        fileId: 67890,
         confidence: 85,
         confidenceLevel: "high",
         reasons: ["Matched package/script basename"],
@@ -157,17 +159,38 @@ describe("ModDetailsPanel", () => {
     expect(onFindSourceCandidates).toHaveBeenCalledWith("m1");
     expect(screen.getByText("MC Command Center")).toBeInTheDocument();
     expect(screen.getByText("85% · High confidence")).toBeInTheDocument();
+    expect(screen.getByText("Confidence comes from 1 evidence item.")).toBeInTheDocument();
+    expect(screen.getByText("Project ID: 551680")).toBeInTheDocument();
+    expect(screen.getByText("File ID: 67890")).toBeInTheDocument();
     expect(screen.getByText("Matched package/script basename")).toBeInTheDocument();
+    expect(screen.getByRole("article", { name: "source-candidate" })).toHaveTextContent("fileName: Matched package/script basename (25)");
     const image = document.querySelector('img[src="https://media.forgecdn.net/cover.png"]');
     expect(image).toHaveAttribute("referrerpolicy", "no-referrer");
     fireEvent.error(image!);
     expect(document.querySelector('img[src="https://media.forgecdn.net/cover.png"]')).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "attach-source-candidate" }));
-    expect(onAttachSourceUrl).toHaveBeenCalledWith("m1", "https://www.curseforge.com/sims4/mods/mc-command-center", "curseforge", {
-      displayName: "MC Command Center",
-      previewUrl: "https://media.forgecdn.net/cover.png"
-    });
+    expect(onAttachSourceUrl).toHaveBeenCalledWith(
+      "m1",
+      "https://www.curseforge.com/sims4/mods/mc-command-center",
+      "curseforge",
+      expect.objectContaining({
+        displayName: "MC Command Center",
+        previewUrl: "https://media.forgecdn.net/cover.png",
+        sourceAttachment: expect.objectContaining({
+          providerId: "curseforge",
+          projectId: 551680,
+          fileId: 67890,
+          title: "MC Command Center",
+          author: "Deaderpool",
+          confidence: 85,
+          reasons: ["Matched package/script basename"],
+          evidence: [{ kind: "fileName", description: "Matched package/script basename", weight: 25 }],
+          attachedBy: "user",
+          attachedAt: expect.stringMatching(/Z$/)
+        })
+      })
+    );
 
     fireEvent.click(screen.getByRole("button", { name: "open-source-candidate" }));
     expect(onOpenSourceUrl).toHaveBeenCalledWith("https://www.curseforge.com/sims4/mods/mc-command-center");
