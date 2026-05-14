@@ -92,6 +92,13 @@ impl<T: CurseForgeTransport> CurseForgeClient<T> {
         parse_search_response(&body)
     }
 
+    pub fn search_mods_by_slug(&self, slug: &str) -> Result<Vec<CurseForgeModSummary>, SourceLookupError> {
+        let request = build_slug_search_request(Some(&self.api_key), slug)?;
+        let (status, body) = self.transport.get(&request)?;
+        classify_status(status)?;
+        parse_search_response(&body)
+    }
+
     pub fn get_mod_files(&self, project_id: u64) -> Result<Vec<CurseForgeFileSummary>, SourceLookupError> {
         let request = build_files_request(Some(&self.api_key), project_id)?;
         let (status, body) = self.transport.get(&request)?;
@@ -105,6 +112,15 @@ pub fn build_search_request(api_key: Option<&str>, search_filter: &str) -> Resul
     let query = encode_query(search_filter.trim());
     Ok(CurseForgeRequest {
         url: format!("{CURSEFORGE_API_BASE}/v1/mods/search?gameId={SIMS4_GAME_ID}&searchFilter={query}"),
+        api_key: key.to_string(),
+    })
+}
+
+pub fn build_slug_search_request(api_key: Option<&str>, slug: &str) -> Result<CurseForgeRequest, SourceLookupError> {
+    let key = api_key.map(str::trim).filter(|key| !key.is_empty()).ok_or(SourceLookupError::MissingApiKey)?;
+    let slug = encode_query(slug.trim());
+    Ok(CurseForgeRequest {
+        url: format!("{CURSEFORGE_API_BASE}/v1/mods/search?gameId={SIMS4_GAME_ID}&slug={slug}"),
         api_key: key.to_string(),
     })
 }
@@ -302,6 +318,9 @@ mod tests {
         assert_eq!(search.api_key, "key");
         assert_eq!(search.url, "https://api.curseforge.com/v1/mods/search?gameId=7806&searchFilter=mc+command+center");
 
+        let slug = build_slug_search_request(Some("key"), "mc-command-center").expect("request");
+        assert_eq!(slug.url, "https://api.curseforge.com/v1/mods/search?gameId=7806&slug=mc-command-center");
+
         let files = build_files_request(Some("key"), 551680).expect("request");
         assert_eq!(files.url, "https://api.curseforge.com/v1/mods/551680/files");
     }
@@ -361,6 +380,15 @@ mod tests {
     }
 
     #[test]
+    fn client_searches_mods_by_slug_with_mocked_transport() {
+        let client = CurseForgeClient::new(Some("key"), MockTransport { status: 200, body: SEARCH_FIXTURE }).expect("client");
+
+        let mods = client.search_mods_by_slug("mc-command-center").expect("mods");
+
+        assert_eq!(mods[0].slug.as_deref(), Some("mc-command-center"));
+    }
+
+    #[test]
     fn client_fetches_files_with_mocked_transport() {
         let client = CurseForgeClient::new(Some("key"), MockTransport { status: 200, body: FILES_FIXTURE }).expect("client");
 
@@ -389,7 +417,7 @@ mod tests {
         let api_key = std::env::var("CURSEFORGE_API_KEY").expect("CURSEFORGE_API_KEY env var");
         let client = CurseForgeClient::new(Some(&api_key), UreqCurseForgeTransport).expect("client");
 
-        let mods = client.search_mods("mc command center").expect("search");
+        let mods = client.search_mods_by_slug("mc-command-center").expect("search");
 
         eprintln!("live CurseForge results: {mods:#?}");
         assert!(mods.iter().any(|candidate| {

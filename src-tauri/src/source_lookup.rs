@@ -62,6 +62,7 @@ fn find_with_curseforge(fingerprint: &ModFingerprint, api_key: Option<&str>) -> 
     let mut mods = vec![];
     for query in curseforge_queries(fingerprint) {
         mods.extend(client.search_mods(&query)?);
+        mods.extend(client.search_mods_by_slug(&query.replace(' ', "-"))?);
     }
     mods = dedupe_mods(mods);
 
@@ -88,6 +89,10 @@ pub fn curseforge_queries(fingerprint: &ModFingerprint) -> Vec<String> {
     for query in simplified_roots {
         push_query(&mut queries, query);
     }
+    let expanded = queries.iter().flat_map(|query| abbreviation_expansions(query)).collect::<Vec<_>>();
+    for query in expanded {
+        push_query(&mut queries, query);
+    }
     for file in &fingerprint.package_script_basenames {
         push_query(&mut queries, normalize_name(file));
         if queries.len() >= MAX_CURSEFORGE_QUERIES {
@@ -103,6 +108,18 @@ fn push_query(queries: &mut Vec<String>, query: String) {
     if !trimmed.is_empty() && !queries.iter().any(|existing| existing == trimmed) {
         queries.push(trimmed.to_string());
     }
+}
+
+fn abbreviation_expansions(query: &str) -> Vec<String> {
+    let tokens = query.split_whitespace().collect::<Vec<_>>();
+    let mut expansions = vec![];
+    if tokens.contains(&"cmd") {
+        expansions.push(tokens.iter().map(|token| if *token == "cmd" { "command" } else { token }).collect::<Vec<_>>().join(" "));
+    }
+    if tokens.contains(&"command") {
+        expansions.push(tokens.iter().map(|token| if *token == "command" { "cmd" } else { token }).collect::<Vec<_>>().join(" "));
+    }
+    expansions
 }
 
 fn without_packaging_terms(query: &str) -> Option<String> {
@@ -327,6 +344,7 @@ mod tests {
 
         assert_eq!(queries[0], "mc cmd center all modules");
         assert!(queries.contains(&"mc cmd center".to_string()));
+        assert!(queries.contains(&"mc command center".to_string()));
         assert!(queries.contains(&"mc career".to_string()));
         assert!(!queries.contains(&"mccc".to_string()));
     }
