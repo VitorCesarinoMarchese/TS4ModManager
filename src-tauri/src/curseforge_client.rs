@@ -425,4 +425,31 @@ mod tests {
                 || candidate.name.to_lowercase().contains("command center")
         }));
     }
+
+    #[test]
+    #[ignore = "requires CURSEFORGE_API_KEY in environment"]
+    fn live_diagnose_mccc_search_variants() {
+        let api_key = std::env::var("CURSEFORGE_API_KEY").expect("CURSEFORGE_API_KEY env var");
+        let transport = UreqCurseForgeTransport;
+        let urls = [
+            format!("{CURSEFORGE_API_BASE}/v1/mods/search?gameId={SIMS4_GAME_ID}&searchFilter=mc+command+center"),
+            format!("{CURSEFORGE_API_BASE}/v1/mods/search?gameId={SIMS4_GAME_ID}&searchFilter=mccc"),
+            format!("{CURSEFORGE_API_BASE}/v1/mods/search?gameId={SIMS4_GAME_ID}&slug=mc-command-center"),
+            format!("{CURSEFORGE_API_BASE}/v1/mods/search?gameId={SIMS4_GAME_ID}&searchFilter=mc+cmd+center"),
+            format!("{CURSEFORGE_API_BASE}/v1/mods/search?searchFilter=mc+command+center"),
+            format!("{CURSEFORGE_API_BASE}/v1/mods/551680"),
+            format!("{CURSEFORGE_API_BASE}/v1/games/{SIMS4_GAME_ID}"),
+        ];
+
+        for url in urls {
+            let request = CurseForgeRequest { url: url.clone(), api_key: api_key.clone() };
+            match transport.get(&request) {
+                Ok((status, body)) => {
+                    let preview = body.chars().take(2000).collect::<String>();
+                    eprintln!("\nURL: {url}\nSTATUS: {status}\nBODY: {preview}\n");
+                }
+                Err(err) => eprintln!("\nURL: {url}\nERROR: {err:?}\n"),
+            }
+        }
+    }
 }
