@@ -2,6 +2,8 @@
 
 Status: started with mocked fixtures. Live API verification still requires a CurseForge API key.
 
+See also: [Source Lookup Live Smoke Checklist](source-lookup-live-smoke.md).
+
 ## Verified in code
 
 - Sims 4 `gameId`: `7806`.
