@@ -6,8 +6,8 @@ See also: [Source Lookup Live Smoke Checklist](source-lookup-live-smoke.md).
 
 ## Verified in code
 
-- Sims 4 `gameId`: `7806`.
-- Search endpoint shape: `GET /v1/mods/search?gameId=7806&searchFilter=...`.
+- Sims 4 `gameId`: `78062`.
+- Search endpoint shape: `GET /v1/mods/search?gameId=78062&searchFilter=...`.
 - File endpoint shape: `GET /v1/mods/{projectId}/files`.
 - API key is required and must be passed as `x-api-key` by the future live client.
 - Tests parse mocked fixtures matching the expected CurseForge response shape.

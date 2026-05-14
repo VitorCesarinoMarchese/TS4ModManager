@@ -72,7 +72,7 @@ describe("metadata providers", () => {
       version: "1.2.3"
     });
     expect(fetchFn).toHaveBeenCalledWith(
-      "https://api.curseforge.com/v1/mods/search?gameId=7806&slug=example",
+      "https://api.curseforge.com/v1/mods/search?gameId=78062&slug=example",
       { headers: { "x-api-key": "key" } }
     );
   });

@@ -83,7 +83,7 @@ export function createCurseForgeProvider({
       if (!key || !slug || !fetcher) return { sourceUrl };
 
       const response = await fetcher(
-        `https://api.curseforge.com/v1/mods/search?gameId=7806&slug=${encodeURIComponent(slug)}`,
+        `https://api.curseforge.com/v1/mods/search?gameId=78062&slug=${encodeURIComponent(slug)}`,
         { headers: { "x-api-key": key } }
       );
       if (!response.ok) return { sourceUrl };

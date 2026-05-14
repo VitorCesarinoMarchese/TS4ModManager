@@ -1,7 +1,7 @@
 use serde::Deserialize;
 
 pub const CURSEFORGE_API_BASE: &str = "https://api.curseforge.com";
-pub const SIMS4_GAME_ID: u32 = 7806;
+pub const SIMS4_GAME_ID: u32 = 78062;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SourceLookupError {
@@ -303,7 +303,7 @@ mod tests {
 
     #[test]
     fn sims4_game_id_is_stable() {
-        assert_eq!(SIMS4_GAME_ID, 7806);
+        assert_eq!(SIMS4_GAME_ID, 78062);
     }
 
     #[test]
@@ -316,10 +316,10 @@ mod tests {
     fn builds_search_and_files_requests() {
         let search = build_search_request(Some("key"), "mc command center").expect("request");
         assert_eq!(search.api_key, "key");
-        assert_eq!(search.url, "https://api.curseforge.com/v1/mods/search?gameId=7806&searchFilter=mc+command+center");
+        assert_eq!(search.url, "https://api.curseforge.com/v1/mods/search?gameId=78062&searchFilter=mc+command+center");
 
         let slug = build_slug_search_request(Some("key"), "mc-command-center").expect("request");
-        assert_eq!(slug.url, "https://api.curseforge.com/v1/mods/search?gameId=7806&slug=mc-command-center");
+        assert_eq!(slug.url, "https://api.curseforge.com/v1/mods/search?gameId=78062&slug=mc-command-center");
 
         let files = build_files_request(Some("key"), 551680).expect("request");
         assert_eq!(files.url, "https://api.curseforge.com/v1/mods/551680/files");
