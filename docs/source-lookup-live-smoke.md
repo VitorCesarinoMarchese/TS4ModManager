@@ -11,9 +11,30 @@ Use this checklist when validating CurseForge source auto-detect with a real API
 
 ## API key setup
 
+### App UI
+
 1. Open Settings.
 2. Paste the CurseForge API key into the CurseForge API key field.
 3. Save/close Settings.
+
+### Local ignored `.env` for live API tests
+
+Do not paste the API key into chat or commit it.
+
+Create `.env` in the repo root:
+
+```bash
+CURSEFORGE_API_KEY=your-key-here
+```
+
+`.env` is ignored by git. To run the ignored live MCCC API smoke test:
+
+```bash
+set -a
+source .env
+set +a
+cargo test --manifest-path src-tauri/Cargo.toml live_search_mccc_returns_results -- --ignored --nocapture
+```
 
 Expected storage behavior:
 

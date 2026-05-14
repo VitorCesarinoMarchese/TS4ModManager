@@ -4,5 +4,8 @@ coverage/
 .vite/
 .DS_Store
 *.log
+.env
+.env.*
+!.env.example
 *.tsbuildinfo
 src-tauri/target/

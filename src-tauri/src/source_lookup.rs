@@ -8,6 +8,8 @@ use crate::source_candidates::{SourceCandidate, SourceProviderId};
 use crate::source_fingerprint::{build_mod_fingerprint, normalize_name, FingerprintFile, ModFingerprint};
 use crate::source_scoring::{evidence, score_candidate, CandidateScoreInput};
 
+const MAX_CURSEFORGE_QUERIES: usize = 8;
+
 pub fn find_source_candidates(
     managed_root: &Path,
     game_mods_dir: &Path,
@@ -76,17 +78,31 @@ fn find_with_curseforge(fingerprint: &ModFingerprint, api_key: Option<&str>) -> 
 }
 
 pub fn curseforge_queries(fingerprint: &ModFingerprint) -> Vec<String> {
-    let mut queries = vec![fingerprint.normalized_name.clone(), normalize_name(&fingerprint.display_name)];
+    let mut queries = vec![];
+    push_query(&mut queries, fingerprint.normalized_name.clone());
+    push_query(&mut queries, normalize_name(&fingerprint.display_name));
     if let Some(folder) = &fingerprint.folder_name {
-        queries.push(normalize_name(folder));
+        push_query(&mut queries, normalize_name(folder));
     }
-    queries.extend(fingerprint.package_script_basenames.iter().map(|file| normalize_name(file)));
-    let simplified = queries.iter().filter_map(|query| without_packaging_terms(query)).collect::<Vec<_>>();
-    queries.extend(simplified);
-    queries.retain(|query| !query.trim().is_empty());
-    queries.sort();
-    queries.dedup();
+    let simplified_roots = queries.iter().filter_map(|query| without_packaging_terms(query)).collect::<Vec<_>>();
+    for query in simplified_roots {
+        push_query(&mut queries, query);
+    }
+    for file in &fingerprint.package_script_basenames {
+        push_query(&mut queries, normalize_name(file));
+        if queries.len() >= MAX_CURSEFORGE_QUERIES {
+            break;
+        }
+    }
+    queries.truncate(MAX_CURSEFORGE_QUERIES);
     queries
+}
+
+fn push_query(queries: &mut Vec<String>, query: String) {
+    let trimmed = query.trim();
+    if !trimmed.is_empty() && !queries.iter().any(|existing| existing == trimmed) {
+        queries.push(trimmed.to_string());
+    }
 }
 
 fn without_packaging_terms(query: &str) -> Option<String> {
@@ -309,10 +325,27 @@ mod tests {
 
         let queries = curseforge_queries(&fingerprint);
 
-        assert!(queries.contains(&"mc cmd center all modules".to_string()));
+        assert_eq!(queries[0], "mc cmd center all modules");
         assert!(queries.contains(&"mc cmd center".to_string()));
         assert!(queries.contains(&"mc career".to_string()));
         assert!(!queries.contains(&"mccc".to_string()));
+    }
+
+    #[test]
+    fn caps_curseforge_queries_to_limit_lag() {
+        let files = (0..20)
+            .map(|index| FingerprintFile {
+                relative_path: format!("BigMod/package_part_{index}.package"),
+                size: 10,
+            })
+            .collect::<Vec<_>>();
+        let fingerprint = build_mod_fingerprint("BigMod_AllModules_1_0", Some("BigMod_AllModules_1_0"), &files, None, None);
+
+        let queries = curseforge_queries(&fingerprint);
+
+        assert!(queries.len() <= MAX_CURSEFORGE_QUERIES);
+        assert_eq!(queries[0], "big mod all modules");
+        assert!(queries.contains(&"big mod".to_string()));
     }
 
     #[test]

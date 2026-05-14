@@ -382,4 +382,19 @@ mod tests {
         assert_eq!(parse_search_response("not json"), Err(SourceLookupError::InvalidResponse));
         assert_eq!(parse_files_response("{}"), Err(SourceLookupError::InvalidResponse));
     }
+
+    #[test]
+    #[ignore = "requires CURSEFORGE_API_KEY in environment"]
+    fn live_search_mccc_returns_results() {
+        let api_key = std::env::var("CURSEFORGE_API_KEY").expect("CURSEFORGE_API_KEY env var");
+        let client = CurseForgeClient::new(Some(&api_key), UreqCurseForgeTransport).expect("client");
+
+        let mods = client.search_mods("mc command center").expect("search");
+
+        eprintln!("live CurseForge results: {mods:#?}");
+        assert!(mods.iter().any(|candidate| {
+            candidate.slug.as_deref() == Some("mc-command-center")
+                || candidate.name.to_lowercase().contains("command center")
+        }));
+    }
 }
