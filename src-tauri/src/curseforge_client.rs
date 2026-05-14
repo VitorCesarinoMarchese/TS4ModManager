@@ -104,7 +104,7 @@ pub fn build_search_request(api_key: Option<&str>, search_filter: &str) -> Resul
     let key = api_key.map(str::trim).filter(|key| !key.is_empty()).ok_or(SourceLookupError::MissingApiKey)?;
     let query = encode_query(search_filter.trim());
     Ok(CurseForgeRequest {
-        url: format!("{CURSEFORGE_API_BASE}/v1/mods/search?gameId={SIMS4_GAME_ID}&classId=0&searchFilter={query}"),
+        url: format!("{CURSEFORGE_API_BASE}/v1/mods/search?gameId={SIMS4_GAME_ID}&searchFilter={query}"),
         api_key: key.to_string(),
     })
 }
@@ -300,7 +300,7 @@ mod tests {
     fn builds_search_and_files_requests() {
         let search = build_search_request(Some("key"), "mc command center").expect("request");
         assert_eq!(search.api_key, "key");
-        assert_eq!(search.url, "https://api.curseforge.com/v1/mods/search?gameId=7806&classId=0&searchFilter=mc+command+center");
+        assert_eq!(search.url, "https://api.curseforge.com/v1/mods/search?gameId=7806&searchFilter=mc+command+center");
 
         let files = build_files_request(Some("key"), 551680).expect("request");
         assert_eq!(files.url, "https://api.curseforge.com/v1/mods/551680/files");

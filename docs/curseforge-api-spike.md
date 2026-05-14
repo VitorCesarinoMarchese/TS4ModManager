@@ -7,7 +7,7 @@ See also: [Source Lookup Live Smoke Checklist](source-lookup-live-smoke.md).
 ## Verified in code
 
 - Sims 4 `gameId`: `7806`.
-- Search endpoint shape: `GET /v1/mods/search?gameId=7806&classId=0&searchFilter=...`.
+- Search endpoint shape: `GET /v1/mods/search?gameId=7806&searchFilter=...`.
 - File endpoint shape: `GET /v1/mods/{projectId}/files`.
 - API key is required and must be passed as `x-api-key` by the future live client.
 - Tests parse mocked fixtures matching the expected CurseForge response shape.
@@ -42,7 +42,7 @@ Useful for stronger verification:
 
 - Whether CurseForge hashes are compatible with local extracted `.package`/`.ts4script` files or only uploaded archives.
 - Whether Sims 4 file metadata consistently includes meaningful `fileName` / `displayName`.
-- Whether `classId=0` is acceptable or a Sims 4 mods class ID should be used.
+- Whether adding a Sims 4-specific class ID improves precision without hiding valid mods.
 - Rate-limit behavior in practice.
 - Whether search results for popular Sims 4 mods return stable slugs and website URLs.
 
