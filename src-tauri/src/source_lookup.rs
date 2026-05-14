@@ -80,29 +80,23 @@ pub fn curseforge_queries(fingerprint: &ModFingerprint) -> Vec<String> {
     if let Some(folder) = &fingerprint.folder_name {
         queries.push(normalize_name(folder));
     }
-    if let Some(first_file) = fingerprint.package_script_basenames.first() {
-        queries.push(normalize_name(first_file));
-    }
-    let aliases = queries.iter().flat_map(|query| curseforge_query_aliases(query)).collect::<Vec<_>>();
-    queries.extend(aliases);
+    queries.extend(fingerprint.package_script_basenames.iter().map(|file| normalize_name(file)));
+    let simplified = queries.iter().filter_map(|query| without_packaging_terms(query)).collect::<Vec<_>>();
+    queries.extend(simplified);
     queries.retain(|query| !query.trim().is_empty());
     queries.sort();
     queries.dedup();
     queries
 }
 
-fn curseforge_query_aliases(query: &str) -> Vec<String> {
-    let compact = canonical_compact_text(query);
-    let mut aliases = vec![];
-    if compact.contains("mccmdcenter") || compact.contains("mccenter") || compact.contains("mccmd") {
-        aliases.push("mc command center".to_string());
-        aliases.push("mc cmd center".to_string());
-        aliases.push("mccc".to_string());
-    }
-    if compact.contains("mccommandcenter") {
-        aliases.push("mc cmd center".to_string());
-    }
-    aliases
+fn without_packaging_terms(query: &str) -> Option<String> {
+    let packaging_terms = ["all", "module", "modules", "merged", "package", "packages", "script", "scripts", "files"];
+    let filtered = query
+        .split_whitespace()
+        .filter(|part| !packaging_terms.contains(part))
+        .collect::<Vec<_>>()
+        .join(" ");
+    (!filtered.is_empty() && filtered != query).then_some(filtered)
 }
 
 pub fn candidate_from_curseforge(
@@ -301,20 +295,24 @@ mod tests {
     }
 
     #[test]
-    fn builds_curseforge_queries_from_fingerprint() {
+    fn builds_general_curseforge_queries_from_fingerprint() {
         let fingerprint = build_mod_fingerprint(
-            "Mc Command Center",
+            "McCmdCenter_AllModules_2026_2_0",
             Some("McCmdCenter_AllModules_2026_2_0"),
-            &[FingerprintFile { relative_path: "McCmdCenter_AllModules_2026_2_0/mc_cmd_center.package".to_string(), size: 10 }],
+            &[
+                FingerprintFile { relative_path: "McCmdCenter_AllModules_2026_2_0/mc_career.ts4script".to_string(), size: 10 },
+                FingerprintFile { relative_path: "McCmdCenter_AllModules_2026_2_0/mc_cmd_center.package".to_string(), size: 10 },
+            ],
             None,
             None,
         );
 
         let queries = curseforge_queries(&fingerprint);
 
-        assert!(queries.contains(&"mccmdcenter allmodules".to_string()));
+        assert!(queries.contains(&"mc cmd center all modules".to_string()));
         assert!(queries.contains(&"mc cmd center".to_string()));
-        assert!(queries.contains(&"mc command center".to_string()));
+        assert!(queries.contains(&"mc career".to_string()));
+        assert!(!queries.contains(&"mccc".to_string()));
     }
 
     #[test]

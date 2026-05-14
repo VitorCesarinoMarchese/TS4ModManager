@@ -91,7 +91,7 @@ pub fn is_useful_source_evidence(path: &str) -> bool {
 }
 
 pub fn normalize_name(raw: &str) -> String {
-    let without_versions = strip_version_tokens(raw);
+    let without_versions = split_word_boundaries(&strip_version_tokens(raw));
     without_versions
         .chars()
         .map(|ch| if ch.is_ascii_alphanumeric() { ch.to_ascii_lowercase() } else { ' ' })
@@ -99,6 +99,25 @@ pub fn normalize_name(raw: &str) -> String {
         .split_whitespace()
         .collect::<Vec<_>>()
         .join(" ")
+}
+
+fn split_word_boundaries(raw: &str) -> String {
+    let chars = raw.chars().collect::<Vec<_>>();
+    let mut out = String::new();
+    for (index, ch) in chars.iter().enumerate() {
+        let previous = index.checked_sub(1).and_then(|previous| chars.get(previous));
+        let next = chars.get(index + 1);
+        let starts_new_word = ch.is_ascii_uppercase()
+            && previous.is_some_and(|previous| previous.is_ascii_lowercase() || previous.is_ascii_digit())
+            || ch.is_ascii_uppercase()
+                && previous.is_some_and(|previous| previous.is_ascii_uppercase())
+                && next.is_some_and(|next| next.is_ascii_lowercase());
+        if starts_new_word {
+            out.push(' ');
+        }
+        out.push(*ch);
+    }
+    out
 }
 
 pub fn extract_version_tokens(raw: &str) -> Vec<String> {
@@ -188,6 +207,12 @@ mod tests {
     }
 
     #[test]
+    fn normalizes_camel_case_mod_names() {
+        assert_eq!(normalize_name("McCmdCenter_AllModules_2026_2_0"), "mc cmd center all modules");
+        assert_eq!(normalize_name("WonderfulWhims.package"), "wonderful whims package");
+    }
+
+    #[test]
     fn ignores_images_logs_and_app_metadata() {
         assert!(!is_useful_source_evidence("Pack/cover.jpg"));
         assert!(!is_useful_source_evidence("Pack/preview.png"));
@@ -212,7 +237,7 @@ mod tests {
             Some("https://www.curseforge.com/sims4/mods/mc-command-center"),
         );
 
-        assert_eq!(fingerprint.normalized_name, "mccmdcenter allmodules");
+        assert_eq!(fingerprint.normalized_name, "mc cmd center all modules");
         assert_eq!(fingerprint.relative_paths.len(), 2);
         assert_eq!(fingerprint.extensions, vec!["package", "ts4script"]);
         assert_eq!(fingerprint.package_script_basenames, vec!["mc_career", "mc_cmd_center"]);
