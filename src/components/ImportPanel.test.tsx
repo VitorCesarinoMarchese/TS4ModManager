@@ -1,6 +1,6 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
-import { ImportPanel } from "./ImportPanel";
+import { archivePathFromBrowserDrop, archivePathFromTauriDrop, ImportPanel } from "./ImportPanel";
 
 describe("ImportPanel", () => {
   it("submits archive path and name", () => {
@@ -18,6 +18,18 @@ describe("ImportPanel", () => {
     fireEvent.click(screen.getByRole("button", { name: "Import Archive" }));
 
     expect(onImport).toHaveBeenCalledWith("/tmp/mod.zip", "MyMod", undefined);
+  });
+
+  it("extracts archive paths from Tauri drag drop payloads", () => {
+    expect(archivePathFromTauriDrop({ type: "drop", paths: ["/tmp/tauri.zip"] })).toBe("/tmp/tauri.zip");
+    expect(archivePathFromTauriDrop({ type: "over", paths: ["/tmp/ignore.zip"] })).toBeNull();
+    expect(archivePathFromTauriDrop({ type: "drop", paths: [] })).toBeNull();
+  });
+
+  it("extracts browser drop paths", () => {
+    expect(archivePathFromBrowserDrop([{ path: "/tmp/drop.zip", name: "drop.zip" } as File & { path: string }])).toBe("/tmp/drop.zip");
+    expect(archivePathFromBrowserDrop([{ name: "fallback.zip" } as File])).toBe("fallback.zip");
+    expect(archivePathFromBrowserDrop([])).toBeNull();
   });
 
   it("accepts dropped archive path", () => {

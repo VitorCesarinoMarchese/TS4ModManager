@@ -1,15 +1,50 @@
 import { Archive, UploadSimple } from "@phosphor-icons/react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 type ImportPanelProps = {
   onImport: (archivePath: string, name: string, slug?: string) => void | Promise<void>;
 };
+
+type BrowserDropFile = File & { path?: string };
+type TauriDragDropPayload = { type?: string; paths?: string[] };
+
+export function archivePathFromBrowserDrop(files?: FileList | BrowserDropFile[] | null): string | null {
+  const file = files?.[0] as BrowserDropFile | undefined;
+  return file?.path || file?.name || null;
+}
+
+export function archivePathFromTauriDrop(payload: TauriDragDropPayload): string | null {
+  return payload.type === "drop" ? payload.paths?.[0] ?? null : null;
+}
 
 export function ImportPanel({ onImport }: ImportPanelProps) {
   const [archivePath, setArchivePath] = useState("");
   const [name, setName] = useState("");
   const [slug, setSlug] = useState("");
   const inputClass = "h-9 rounded-md border !border-[var(--color-border)] bg-white px-3 py-1.5 text-slate-950 dark:bg-slate-800 dark:text-slate-100";
+
+  useEffect(() => {
+    if (!("__TAURI_INTERNALS__" in window)) return;
+
+    let disposed = false;
+    let unlisten: (() => void) | undefined;
+
+    void import("@tauri-apps/api/webview")
+      .then(({ getCurrentWebview }) => getCurrentWebview().onDragDropEvent((event) => {
+        const path = archivePathFromTauriDrop(event.payload);
+        if (path) setArchivePath(path);
+      }))
+      .then((cleanup) => {
+        if (disposed) cleanup();
+        else unlisten = cleanup;
+      })
+      .catch(() => {});
+
+    return () => {
+      disposed = true;
+      unlisten?.();
+    };
+  }, []);
 
   return (
     <section aria-label="import-panel" className="import-panel grid gap-4">
@@ -56,8 +91,7 @@ export function ImportPanel({ onImport }: ImportPanelProps) {
         onDragOver={(e) => e.preventDefault()}
         onDrop={(e) => {
           e.preventDefault();
-          const file = e.dataTransfer.files?.[0] as File & { path?: string };
-          const path = file?.path || file?.name;
+          const path = archivePathFromBrowserDrop(e.dataTransfer.files);
           if (path) setArchivePath(path);
         }}
       >
