@@ -18,7 +18,9 @@ fn detect_game_instances() -> Result<Vec<crate::path_detection::GameInstance>, M
 }
 
 #[tauri::command]
-fn validate_custom_instance(path: String) -> Result<crate::path_detection::GameInstance, ManagerError> {
+fn validate_custom_instance(
+    path: String,
+) -> Result<crate::path_detection::GameInstance, ManagerError> {
     commands::cmd_validate_custom_instance(PathBuf::from(path))
 }
 
@@ -71,14 +73,20 @@ fn migrate_external_mod(
     mod_id: String,
     instance_id: String,
 ) -> Result<crate::external_migration::MigrateResult, ManagerError> {
-    commands::cmd_migrate_external_mod(managed_root()?, mods_dir_from_instance_id(&instance_id)?, mod_id)
+    commands::cmd_migrate_external_mod(
+        managed_root()?,
+        mods_dir_from_instance_id(&instance_id)?,
+        mod_id,
+    )
 }
 
 #[tauri::command]
 fn detect_orphan_symlinks(
     instance_id: String,
 ) -> Result<Vec<crate::orphan::OrphanSymlink>, ManagerError> {
-    Ok(commands::cmd_detect_orphan_symlinks(mods_dir_from_instance_id(&instance_id)?))
+    Ok(commands::cmd_detect_orphan_symlinks(
+        mods_dir_from_instance_id(&instance_id)?,
+    ))
 }
 
 #[tauri::command]
@@ -115,12 +123,23 @@ fn remove_source_url(mod_id: String) -> Result<crate::managed_storage::ModMetada
 }
 
 #[tauri::command]
-fn find_source_candidates(
+async fn find_source_candidates(
     mod_id: String,
     instance_id: String,
     api_key: Option<String>,
 ) -> Result<Vec<crate::source_candidates::SourceCandidate>, ManagerError> {
-    commands::cmd_find_source_candidates(managed_root()?, mods_dir_from_instance_id(&instance_id)?, mod_id, api_key)
+    let managed_root = managed_root()?;
+    let mods_dir = mods_dir_from_instance_id(&instance_id)?;
+    tauri::async_runtime::spawn_blocking(move || {
+        commands::cmd_find_source_candidates(managed_root, mods_dir, mod_id, api_key)
+    })
+    .await
+    .map_err(|err| {
+        ManagerError::new(
+            crate::error::ErrorCode::InternalError,
+            format!("Source lookup task failed: {err}"),
+        )
+    })?
 }
 
 #[tauri::command]
@@ -128,7 +147,11 @@ fn uninstall_managed_mod(
     mod_id: String,
     instance_id: String,
 ) -> Result<crate::lifecycle::UninstallResult, ManagerError> {
-    commands::cmd_uninstall_managed_mod(managed_root()?, mods_dir_from_instance_id(&instance_id)?, mod_id)
+    commands::cmd_uninstall_managed_mod(
+        managed_root()?,
+        mods_dir_from_instance_id(&instance_id)?,
+        mod_id,
+    )
 }
 
 #[tauri::command]
@@ -146,7 +169,11 @@ fn restore_trashed_mod(
     trash_name: String,
     instance_id: String,
 ) -> Result<crate::lifecycle::RestoreResult, ManagerError> {
-    commands::cmd_restore_trashed_mod(managed_root()?, mods_dir_from_instance_id(&instance_id)?, trash_name)
+    commands::cmd_restore_trashed_mod(
+        managed_root()?,
+        mods_dir_from_instance_id(&instance_id)?,
+        trash_name,
+    )
 }
 
 #[tauri::command]
