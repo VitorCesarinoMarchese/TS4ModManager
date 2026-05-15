@@ -177,7 +177,7 @@ pub fn curseforge_queries(fingerprint: &ModFingerprint) -> Vec<String> {
 }
 
 fn structured_filename_queries(fingerprint: &ModFingerprint) -> Vec<String> {
-    let mut queries = vec![];
+    let mut queries = collection_filename_queries(fingerprint);
     let mut sources = vec![fingerprint.display_name.as_str()];
     if let Some(folder) = &fingerprint.folder_name {
         sources.push(folder.as_str());
@@ -212,6 +212,106 @@ fn structured_filename_queries(fingerprint: &ModFingerprint) -> Vec<String> {
         }
     }
     queries
+}
+
+fn collection_filename_queries(fingerprint: &ModFingerprint) -> Vec<String> {
+    let parsed = fingerprint
+        .package_script_basenames
+        .iter()
+        .filter_map(|name| parse_author_mod_filename(name))
+        .collect::<Vec<_>>();
+    if parsed.len() < 2 {
+        return vec![];
+    }
+
+    let tokenized_mods = parsed
+        .iter()
+        .map(|parts| searchable_tokens(&parts.mod_name))
+        .filter(|tokens| !tokens.is_empty())
+        .collect::<Vec<_>>();
+    let common_prefix = common_token_prefix(&tokenized_mods);
+    if common_prefix.len() < 2 {
+        return vec![];
+    }
+
+    let collection_name = common_prefix.join(" ");
+    let display_context = normalize_name(&format!(
+        "{} {}",
+        fingerprint.display_name,
+        fingerprint.folder_name.as_deref().unwrap_or_default()
+    ));
+    let mut authors = vec![];
+    for parts in &parsed {
+        for author in split_collaboration_authors(&parts.author) {
+            push_query(&mut authors, author);
+        }
+    }
+    authors.sort_by_key(|author| !display_context.contains(author));
+
+    let mut queries = vec![];
+    for author in authors {
+        push_query(&mut queries, format!("{author} {collection_name}"));
+        push_query(&mut queries, format!("{collection_name} {author}"));
+    }
+    queries
+}
+
+fn searchable_tokens(raw: &str) -> Vec<String> {
+    normalize_name(raw)
+        .split_whitespace()
+        .filter(|token| !is_catalog_code_token(token))
+        .filter(|token| !matches!(*token, "file" | "files" | "package" | "packages"))
+        .map(ToString::to_string)
+        .collect()
+}
+
+fn common_token_prefix(token_lists: &[Vec<String>]) -> Vec<String> {
+    let Some(first) = token_lists.first() else {
+        return vec![];
+    };
+    let mut prefix = vec![];
+    for (index, token) in first.iter().enumerate() {
+        if token_lists
+            .iter()
+            .all(|tokens| tokens.get(index) == Some(token))
+        {
+            prefix.push(token.clone());
+        } else {
+            break;
+        }
+    }
+    prefix
+}
+
+fn split_collaboration_authors(raw: &str) -> Vec<String> {
+    let tokens = normalize_name(raw)
+        .split_whitespace()
+        .map(ToString::to_string)
+        .collect::<Vec<_>>();
+    let has_separator = tokens
+        .iter()
+        .any(|token| matches!(token.as_str(), "x" | "and"));
+    if !has_separator {
+        let author = tokens.join(" ");
+        return (!author.is_empty()).then_some(author).into_iter().collect();
+    }
+
+    let mut authors = vec![];
+    let mut current = vec![];
+    for token in tokens {
+        if matches!(token.as_str(), "x" | "and") {
+            if !current.is_empty() {
+                push_query(&mut authors, current.join(" "));
+                current.clear();
+            }
+        } else {
+            current.push(token);
+        }
+    }
+    if !current.is_empty() {
+        push_query(&mut authors, current.join(" "));
+    }
+    authors
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -727,6 +827,37 @@ mod tests {
                 mod_name: "botanica_f_tattoo".to_string(),
             })
         );
+    }
+
+    #[test]
+    fn builds_collection_queries_from_shared_file_prefix_and_display_author() {
+        let fingerprint = build_mod_fingerprint(
+            "Sweater Weather Qicc's",
+            Some("Sweater Weather Qicc's"),
+            &[
+                FingerprintFile {
+                    relative_path: "[oakiyo_x_QICC]Sweater_Weather_Bronwyn_Outfit.package"
+                        .to_string(),
+                    size: 10,
+                },
+                FingerprintFile {
+                    relative_path: "[oakiyo_x_QICC]Sweater_Weather_Demeter_Cardigan.package"
+                        .to_string(),
+                    size: 10,
+                },
+                FingerprintFile {
+                    relative_path: "[oakiyo_x_QICC]Sweater_Weather_Gaia_Hair.package".to_string(),
+                    size: 10,
+                },
+            ],
+            None,
+            None,
+        );
+
+        let queries = curseforge_queries(&fingerprint);
+
+        assert_eq!(queries[0], "qicc sweater weather");
+        assert!(queries.contains(&"sweater weather qicc".to_string()));
     }
 
     #[test]
