@@ -14,7 +14,8 @@
         "title": "TS4 Mod Manager",
         "width": 1200,
         "height": 800,
-        "decorations": false
+        "decorations": false,
+        "dragDropEnabled": true
       }
     ]
   },

@@ -113,9 +113,10 @@ export function createBackendApi(invoke: InvokeFn) {
       }
     },
 
-    async importArchive(archivePath: string, name: string, slug?: string): Promise<{ modId: string }> {
+    async importArchive(archivePath: string, name: string, slug?: string): Promise<Mod> {
       try {
-        return await invoke<{ modId: string }>("import_archive", { archivePath, name, slug });
+        const mod = await invoke<ModMetadataDto>("import_archive", { archivePath, name, slug });
+        return modFromMetadata(mod, mod.modId ?? mod.id ?? name, name);
       } catch (error) {
         throw normalizeError(error);
       }

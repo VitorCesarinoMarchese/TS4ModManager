@@ -36,7 +36,7 @@ function makeApi(overrides: Record<string, unknown> = {}) {
     applyToggle: vi.fn().mockResolvedValue({ applied: true, issues: [] }),
     migrateExternalMod: vi.fn().mockResolvedValue({ managedModId: "mod-1", issues: [] }),
     validateCustomInstance: vi.fn().mockResolvedValue({ id: "custom-1", path: "/x", source: "custom" }),
-    importArchive: vi.fn().mockResolvedValue({ modId: "m1" }),
+    importArchive: vi.fn().mockResolvedValue({ id: "m1", name: "Imported", files: ["imported.package"], enabled: false, source: "managed" }),
     renameModDisplayName: vi.fn().mockImplementation((modId: string, displayName: string) =>
       Promise.resolve({
         id: modId,
@@ -657,7 +657,7 @@ describe("App redesign", () => {
 
     await waitFor(() => {
       expect(api.importArchive).toHaveBeenCalledWith("/tmp/mod.zip", "MyZip", undefined);
-      expect(api.scanMods).toHaveBeenCalledWith("inst-1");
+      expect(screen.getByText("Imported")).toBeInTheDocument();
     });
   });
 });

@@ -11,7 +11,7 @@ export type MigrateResult = {
   issues: Issue[];
 };
 
-export type ImportResult = { modId: string };
+export type ImportResult = Mod;
 
 export type UninstallResult = {
   modId: string;
@@ -60,7 +60,7 @@ const defaultApi: BackendApi = {
   scanMods: async () => [],
   detectOrphanSymlinks: async () => [],
   validateCustomInstance: async (path) => ({ id: `custom:${path}`, path, source: "custom" }),
-  importArchive: async () => ({ modId: "" }),
+  importArchive: async () => ({ id: "", name: "", files: [], enabled: false, source: "managed" }),
   dryRunToggle: async () => ({ canApply: true, operations: [], issues: [] }),
   applyToggle: async () => ({ applied: true, issues: [] }),
   migrateExternalMod: async (modId) => ({ managedModId: modId, issues: [] }),
@@ -494,11 +494,10 @@ export function createAppStore(apiOverrides: Partial<BackendApi> = {}) {
     },
     importArchive: async (archivePath, name, slug) => {
       try {
-        await api.importArchive(archivePath, name, slug);
-        const id = get().selectedInstanceId;
-        if (!id) return;
-        const mods = await api.scanMods(id);
-        set({ mods });
+        const imported = await api.importArchive(archivePath, name, slug);
+        set((state) => ({
+          mods: [imported, ...state.mods.filter((mod) => mod.id !== imported.id)]
+        }));
       } catch (error) {
         set((state) => ({
           issues: mergeIssueList(state.issues, toIssue(error, "import", "Import failed"))

@@ -17,6 +17,11 @@ export function archivePathFromTauriDrop(payload: TauriDragDropPayload): string 
   return payload.type === "drop" ? payload.paths?.[0] ?? null : null;
 }
 
+export function archiveNameFromPath(path: string): string {
+  const filename = path.split(/[\\/]/).filter(Boolean).at(-1) ?? path;
+  return filename.replace(/\.(zip|rar|7z)$/i, "").trim();
+}
+
 export function ImportPanel({ onImport }: ImportPanelProps) {
   const [archivePath, setArchivePath] = useState("");
   const [name, setName] = useState("");
@@ -104,7 +109,7 @@ export function ImportPanel({ onImport }: ImportPanelProps) {
         className="inline-flex w-fit items-center gap-2 rounded-md border !border-[var(--color-border)] bg-white px-3 py-1.5 text-sm hover:border-accent hover:bg-accent/10 focus:outline-none focus:ring-2 focus:ring-accent/40 dark:bg-slate-800 dark:hover:border-accent dark:hover:bg-accent/10"
         onClick={() => {
           const p = archivePath.trim();
-          const n = name.trim();
+          const n = name.trim() || archiveNameFromPath(p);
           if (!p || !n) return;
           void onImport(p, n, slug.trim() || undefined);
           setArchivePath("");

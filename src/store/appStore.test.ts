@@ -578,19 +578,16 @@ describe("app store bootstrap", () => {
     expect(store.getState().mods[0].name).toBe("Custom");
   });
 
-  it("imports archive then rescans selected instance", async () => {
+  it("imports archive and shows disabled managed mod immediately", async () => {
     const api = {
       detectGameInstances: vi.fn().mockResolvedValue([]),
-      scanMods: vi
-        .fn()
-        .mockResolvedValueOnce([])
-        .mockResolvedValueOnce([{ id: "m2", name: "Imported", files: ["a.package"], enabled: false, source: "managed" }]),
+      scanMods: vi.fn().mockResolvedValue([]),
       detectOrphanSymlinks: vi.fn().mockResolvedValue([]),
       dryRunToggle: vi.fn().mockResolvedValue({ canApply: true, operations: [], issues: [] }),
       applyToggle: vi.fn().mockResolvedValue({ applied: true, issues: [] }),
       migrateExternalMod: vi.fn().mockResolvedValue({ managedModId: "m1", issues: [] }),
       validateCustomInstance: vi.fn().mockResolvedValue({ id: "c", path: "/x", source: "custom" }),
-      importArchive: vi.fn().mockResolvedValue({ modId: "m2" })
+      importArchive: vi.fn().mockResolvedValue({ id: "m2", name: "Imported", files: ["a.package"], enabled: false, source: "managed" })
     };
 
     const store = createAppStore(api);
@@ -598,7 +595,7 @@ describe("app store bootstrap", () => {
     await store.getState().importArchive("/tmp/mod.zip", "ZipMod");
 
     expect(api.importArchive).toHaveBeenCalledWith("/tmp/mod.zip", "ZipMod", undefined);
-    expect(api.scanMods).toHaveBeenLastCalledWith("inst-1");
+    expect(api.scanMods).toHaveBeenCalledTimes(1);
     expect(store.getState().mods.at(-1)?.name).toBe("Imported");
   });
 

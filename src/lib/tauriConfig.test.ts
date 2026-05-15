@@ -12,4 +12,8 @@ describe("Tauri release config", () => {
     expect(config.bundle.category).toBe("Utility");
     expect(config.bundle.shortDescription).toContain("Sims 4");
   });
+
+  it("enables native file drops for archive import", () => {
+    expect(config.app.windows[0].dragDropEnabled).toBe(true);
+  });
 });

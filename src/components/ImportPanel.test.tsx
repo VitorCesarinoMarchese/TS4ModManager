@@ -32,6 +32,18 @@ describe("ImportPanel", () => {
     expect(archivePathFromBrowserDrop([])).toBeNull();
   });
 
+  it("submits with a derived mod name when name is empty", () => {
+    const onImport = vi.fn();
+    render(<ImportPanel onImport={onImport} />);
+
+    fireEvent.change(screen.getByLabelText("Archive path"), {
+      target: { value: "/tmp/My Cool Mod.zip" }
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Import Archive" }));
+
+    expect(onImport).toHaveBeenCalledWith("/tmp/My Cool Mod.zip", "My Cool Mod", undefined);
+  });
+
   it("accepts dropped archive path", () => {
     const onImport = vi.fn();
     render(<ImportPanel onImport={onImport} />);

@@ -401,12 +401,12 @@ describe("backend api wrapper", () => {
   });
 
   it("calls import archive command", async () => {
-    const invoke = vi.fn().mockResolvedValue({ modId: "m7" });
+    const invoke = vi.fn().mockResolvedValue({ modId: "m7", displayName: "A", files: ["a.package"] });
     const api = createBackendApi(invoke);
 
     const res = await api.importArchive("/tmp/a.zip", "A", "a");
 
-    expect(res.modId).toBe("m7");
+    expect(res).toMatchObject({ id: "m7", name: "A", files: ["a.package"], enabled: false, source: "managed" });
     expect(invoke).toHaveBeenCalledWith("import_archive", {
       archivePath: "/tmp/a.zip",
       name: "A",
