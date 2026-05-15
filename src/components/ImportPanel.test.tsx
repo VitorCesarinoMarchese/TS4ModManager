@@ -79,6 +79,19 @@ describe("ImportPanel", () => {
     expect(onImport).toHaveBeenCalledWith("/tmp/drop.zip", "Dropped", undefined);
   });
 
+  it("chooses an archive path from a native file picker", async () => {
+    const onImport = vi.fn();
+    const onChooseArchive = vi.fn().mockResolvedValue("/tmp/chosen-file.zip");
+    render(<ImportPanel onImport={onImport} onChooseArchive={onChooseArchive} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Choose Archive" }));
+    await waitFor(() => expect(screen.getByLabelText("Archive path")).toHaveValue("/tmp/chosen-file.zip"));
+
+    fireEvent.click(screen.getByRole("button", { name: "Import Archive" }));
+    expect(onChooseArchive).toHaveBeenCalledTimes(1);
+    expect(onImport).toHaveBeenCalledWith("/tmp/chosen-file.zip", "chosen-file", undefined);
+  });
+
   it("listens for native Tauri window file-drop events", async () => {
     Object.defineProperty(window, "__TAURI_INTERNALS__", {
       configurable: true,

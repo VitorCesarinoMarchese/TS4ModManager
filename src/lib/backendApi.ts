@@ -122,6 +122,14 @@ export function createBackendApi(invoke: InvokeFn) {
       }
     },
 
+    async pickArchiveFile(): Promise<string | null> {
+      try {
+        return await invoke<string | null>("pick_archive_file");
+      } catch (error) {
+        throw normalizeError(error);
+      }
+    },
+
     async dryRunToggle(
       modId: string,
       targetEnabled: boolean,

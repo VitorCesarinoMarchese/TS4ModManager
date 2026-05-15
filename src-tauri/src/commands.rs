@@ -4,16 +4,24 @@ use std::process::{Command, Stdio};
 use crate::archive_import::import_archive_to_managed;
 use crate::error::{ErrorCode, ManagerError};
 use crate::external_migration::{migrate_external_mod, MigrateResult};
+use crate::lifecycle::{
+    list_trash_entries, restore_trashed_mod, uninstall_managed_mod, RestoreResult, TrashEntry,
+    UninstallResult,
+};
 use crate::logging::append_issue_log;
-use crate::lifecycle::{list_trash_entries, restore_trashed_mod, uninstall_managed_mod, RestoreResult, TrashEntry, UninstallResult};
-use crate::managed_storage::{remove_source_url, set_custom_display_name, set_source_url, ModMetadata, SourceAttachmentMetadata};
+use crate::managed_storage::{
+    remove_source_url, set_custom_display_name, set_source_url, ModMetadata,
+    SourceAttachmentMetadata,
+};
 use crate::mod_scan::ScannedMod;
 use crate::orphan::{detect_orphan_symlinks, OrphanSymlink};
 use crate::path_detection::{detect_game_instances, validate_custom_instance, GameInstance};
 use serde::{Deserialize, Serialize};
 
-use crate::runtime_env::{desktop_open_env, WAYLAND_WORKAROUND_DISABLE_ENV, WAYLAND_WORKAROUND_ENV};
-use crate::runtime_paths::{managed_root, managed_mods_dir, trash_files_dir};
+use crate::runtime_env::{
+    desktop_open_env, WAYLAND_WORKAROUND_DISABLE_ENV, WAYLAND_WORKAROUND_ENV,
+};
+use crate::runtime_paths::{managed_mods_dir, managed_root, trash_files_dir};
 use crate::source_candidates::SourceCandidate;
 use crate::source_lookup::find_source_candidates;
 use crate::source_metadata::resolve_source_metadata;
@@ -38,6 +46,124 @@ pub fn cmd_import_archive(
     slug: Option<String>,
 ) -> Result<ModMetadata, ManagerError> {
     import_archive_to_managed(&managed_root, &archive_path, name, slug)
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct FilePickerCommand {
+    program: &'static str,
+    args: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum FilePickerResult {
+    Selected(String),
+    Cancelled,
+}
+
+pub fn cmd_pick_archive_file() -> Result<Option<String>, ManagerError> {
+    let mut failures = vec![];
+
+    for picker in archive_file_picker_commands() {
+        match run_file_picker(&picker) {
+            Ok(FilePickerResult::Selected(path)) => return Ok(Some(path)),
+            Ok(FilePickerResult::Cancelled) => return Ok(None),
+            Err(error) => failures.push(error),
+        }
+    }
+
+    let detail = if failures.is_empty() {
+        "no supported file picker found".to_string()
+    } else {
+        failures.join("; ")
+    };
+    Err(ManagerError::new(
+        ErrorCode::IoError,
+        format!("Archive picker failed: {detail}"),
+    ))
+}
+
+fn archive_file_picker_commands() -> Vec<FilePickerCommand> {
+    let home = std::env::var("HOME")
+        .ok()
+        .filter(|path| !path.trim().is_empty())
+        .unwrap_or_else(|| ".".to_string());
+    let zenity_args = vec![
+        "--file-selection".to_string(),
+        "--title=Choose mod archive".to_string(),
+        "--file-filter=Archives (*.zip *.rar *.7z) | *.zip *.rar *.7z".to_string(),
+        "--file-filter=All files | *".to_string(),
+    ];
+
+    vec![
+        FilePickerCommand {
+            program: "zenity",
+            args: zenity_args.clone(),
+        },
+        FilePickerCommand {
+            program: "qarma",
+            args: zenity_args,
+        },
+        FilePickerCommand {
+            program: "kdialog",
+            args: vec![
+                "--title".to_string(),
+                "Choose mod archive".to_string(),
+                "--getopenfilename".to_string(),
+                home,
+                "*.zip *.rar *.7z|Archive files".to_string(),
+            ],
+        },
+        FilePickerCommand {
+            program: "yad",
+            args: vec![
+                "--file-selection".to_string(),
+                "--title=Choose mod archive".to_string(),
+                "--file-filter=Archives (*.zip *.rar *.7z) | *.zip *.rar *.7z".to_string(),
+                "--file-filter=All files | *".to_string(),
+            ],
+        },
+    ]
+}
+
+fn run_file_picker(picker: &FilePickerCommand) -> Result<FilePickerResult, String> {
+    let output = Command::new(picker.program)
+        .args(&picker.args)
+        .stdin(Stdio::null())
+        .envs(desktop_open_env())
+        .output()
+        .map_err(|error| format!("{}: {error}", picker.program))?;
+
+    let selected = parse_picker_stdout(&output.stdout);
+    if output.status.success() {
+        return Ok(selected
+            .map(FilePickerResult::Selected)
+            .unwrap_or(FilePickerResult::Cancelled));
+    }
+
+    let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+    if output.status.code() == Some(1) && selected.is_none() && stderr.is_empty() {
+        return Ok(FilePickerResult::Cancelled);
+    }
+
+    let status = output
+        .status
+        .code()
+        .map(|code| code.to_string())
+        .unwrap_or_else(|| "signal".to_string());
+    let detail = if stderr.is_empty() {
+        format!("exited with {status}")
+    } else {
+        format!("exited with {status}: {stderr}")
+    };
+    Err(format!("{} {detail}", picker.program))
+}
+
+fn parse_picker_stdout(stdout: &[u8]) -> Option<String> {
+    String::from_utf8_lossy(stdout)
+        .lines()
+        .map(str::trim)
+        .find(|line| !line.is_empty())
+        .map(ToString::to_string)
 }
 
 pub fn cmd_dry_run_toggle(
@@ -105,7 +231,11 @@ pub fn cmd_attach_source_url(
         None
     };
     let final_display_name = display_name
-        .or_else(|| source_attachment.as_ref().map(|attachment| attachment.title.clone()))
+        .or_else(|| {
+            source_attachment
+                .as_ref()
+                .map(|attachment| attachment.title.clone())
+        })
         .or_else(|| resolved.as_ref().and_then(|meta| meta.display_name.clone()));
     let final_preview_url = preview_url.or_else(|| resolved.and_then(|meta| meta.preview_url));
 
@@ -120,7 +250,10 @@ pub fn cmd_attach_source_url(
     )
 }
 
-pub fn cmd_remove_source_url(managed_root: PathBuf, mod_id: String) -> Result<ModMetadata, ManagerError> {
+pub fn cmd_remove_source_url(
+    managed_root: PathBuf,
+    mod_id: String,
+) -> Result<ModMetadata, ManagerError> {
     remove_source_url(&managed_root, &mod_id)
 }
 
@@ -138,7 +271,8 @@ pub fn cmd_uninstall_managed_mod(
     game_mods_dir: PathBuf,
     mod_id: String,
 ) -> Result<UninstallResult, ManagerError> {
-    let result = uninstall_managed_mod(&managed_root, &game_mods_dir, &trash_files_dir()?, &mod_id)?;
+    let result =
+        uninstall_managed_mod(&managed_root, &game_mods_dir, &trash_files_dir()?, &mod_id)?;
     for issue in &result.issues {
         let _ = append_issue_log(&managed_root, issue);
     }
@@ -167,7 +301,10 @@ pub fn cmd_runtime_diagnostics() -> Result<RuntimeDiagnostics, ManagerError> {
         managed_mods_dir: managed_mods_dir()?.to_string_lossy().to_string(),
         trash_files_dir: trash_files_dir()?.to_string_lossy().to_string(),
         wayland_workaround: std::env::var(WAYLAND_WORKAROUND_ENV).ok(),
-        wayland_workaround_disabled: std::env::var(WAYLAND_WORKAROUND_DISABLE_ENV).ok().as_deref() == Some("1"),
+        wayland_workaround_disabled: std::env::var(WAYLAND_WORKAROUND_DISABLE_ENV)
+            .ok()
+            .as_deref()
+            == Some("1"),
         app_version: env!("CARGO_PKG_VERSION").to_string(),
         build_target: format!("{}-{}", std::env::consts::OS, std::env::consts::ARCH),
     })
@@ -178,7 +315,12 @@ pub fn cmd_restore_trashed_mod(
     game_mods_dir: PathBuf,
     trash_name: String,
 ) -> Result<RestoreResult, ManagerError> {
-    restore_trashed_mod(&managed_root, &game_mods_dir, &trash_files_dir()?, &trash_name)
+    restore_trashed_mod(
+        &managed_root,
+        &game_mods_dir,
+        &trash_files_dir()?,
+        &trash_name,
+    )
 }
 
 fn validate_external_url(url: &str) -> Result<(), ManagerError> {
@@ -232,7 +374,10 @@ pub fn cmd_open_trash_folder() -> Result<(), ManagerError> {
 
 #[cfg(test)]
 mod tests {
-    use super::{cmd_runtime_diagnostics, validate_external_url};
+    use super::{
+        archive_file_picker_commands, cmd_runtime_diagnostics, parse_picker_stdout,
+        validate_external_url,
+    };
 
     #[test]
     fn runtime_diagnostics_returns_runtime_paths() {
@@ -242,9 +387,15 @@ mod tests {
 
         let diagnostics = cmd_runtime_diagnostics().expect("diagnostics");
 
-        assert!(diagnostics.managed_root.ends_with(".local/share/sims4-mod-manager"));
-        assert!(diagnostics.managed_mods_dir.ends_with(".local/share/sims4-mod-manager/mods"));
-        assert!(diagnostics.trash_files_dir.ends_with(".local/share/Trash/files"));
+        assert!(diagnostics
+            .managed_root
+            .ends_with(".local/share/sims4-mod-manager"));
+        assert!(diagnostics
+            .managed_mods_dir
+            .ends_with(".local/share/sims4-mod-manager/mods"));
+        assert!(diagnostics
+            .trash_files_dir
+            .ends_with(".local/share/Trash/files"));
         assert_eq!(diagnostics.app_version, env!("CARGO_PKG_VERSION"));
         assert!(diagnostics.build_target.contains(std::env::consts::OS));
     }
@@ -255,5 +406,30 @@ mod tests {
         assert!(validate_external_url("http://example.test/mod").is_ok());
         assert!(validate_external_url("file:///home/user/.bashrc").is_err());
         assert!(validate_external_url("javascript:alert(1)").is_err());
+    }
+
+    #[test]
+    fn picker_stdout_uses_first_non_empty_line() {
+        assert_eq!(
+            parse_picker_stdout(b"\n/tmp/mod.zip\n/tmp/ignored.zip\n"),
+            Some("/tmp/mod.zip".to_string())
+        );
+        assert_eq!(parse_picker_stdout(b"\n  \n"), None);
+    }
+
+    #[test]
+    fn archive_picker_commands_filter_supported_archives() {
+        let commands = archive_file_picker_commands();
+
+        assert!(commands.iter().any(|command| command.program == "zenity"));
+        let joined_args = commands
+            .iter()
+            .flat_map(|command| command.args.iter())
+            .cloned()
+            .collect::<Vec<_>>()
+            .join(" ");
+        assert!(joined_args.contains("*.zip"));
+        assert!(joined_args.contains("*.rar"));
+        assert!(joined_args.contains("*.7z"));
     }
 }

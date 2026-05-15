@@ -1,8 +1,9 @@
-import { Archive, UploadSimple } from "@phosphor-icons/react";
+import { Archive, FolderOpen, UploadSimple } from "@phosphor-icons/react";
 import { useEffect, useState } from "react";
 
 type ImportPanelProps = {
   onImport: (archivePath: string, name: string, slug?: string) => void | Promise<void>;
+  onChooseArchive?: () => Promise<string | null>;
 };
 
 type BrowserDropFile = File & { path?: string };
@@ -22,11 +23,13 @@ export function archiveNameFromPath(path: string): string {
   return filename.replace(/\.(zip|rar|7z)$/i, "").trim();
 }
 
-export function ImportPanel({ onImport }: ImportPanelProps) {
+export function ImportPanel({ onImport, onChooseArchive }: ImportPanelProps) {
   const [archivePath, setArchivePath] = useState("");
   const [name, setName] = useState("");
   const [slug, setSlug] = useState("");
+  const [choosingArchive, setChoosingArchive] = useState(false);
   const inputClass = "h-9 rounded-md border !border-[var(--color-border)] bg-white px-3 py-1.5 text-slate-950 dark:bg-slate-800 dark:text-slate-100";
+  const buttonClass = "inline-flex w-fit items-center gap-2 rounded-md border !border-[var(--color-border)] bg-white px-3 py-1.5 text-sm hover:border-accent hover:bg-accent/10 focus:outline-none focus:ring-2 focus:ring-accent/40 disabled:cursor-not-allowed disabled:opacity-60 dark:bg-slate-800 dark:hover:border-accent dark:hover:bg-accent/10";
 
   useEffect(() => {
     if (!("__TAURI_INTERNALS__" in window)) return;
@@ -59,13 +62,33 @@ export function ImportPanel({ onImport }: ImportPanelProps) {
         <label className="text-sm font-medium" htmlFor="archive-path">
           Archive path
         </label>
-        <input
-          id="archive-path"
-          className={inputClass}
-          value={archivePath}
-          onChange={(e) => setArchivePath(e.target.value)}
-          placeholder="/path/mod.zip"
-        />
+        <div className="flex gap-2">
+          <input
+            id="archive-path"
+            className={`${inputClass} min-w-0 flex-1`}
+            value={archivePath}
+            onChange={(e) => setArchivePath(e.target.value)}
+            placeholder="/path/mod.zip"
+          />
+          <button
+            type="button"
+            className={buttonClass}
+            disabled={!onChooseArchive || choosingArchive}
+            onClick={async () => {
+              if (!onChooseArchive) return;
+              setChoosingArchive(true);
+              try {
+                const chosen = await onChooseArchive();
+                if (chosen) setArchivePath(chosen);
+              } finally {
+                setChoosingArchive(false);
+              }
+            }}
+          >
+            <FolderOpen size={16} weight="regular" aria-hidden="true" />
+            Choose Archive
+          </button>
+        </div>
 
         <label className="text-sm font-medium" htmlFor="mod-name">
           Mod name
@@ -106,7 +129,7 @@ export function ImportPanel({ onImport }: ImportPanelProps) {
 
       <button
         type="button"
-        className="inline-flex w-fit items-center gap-2 rounded-md border !border-[var(--color-border)] bg-white px-3 py-1.5 text-sm hover:border-accent hover:bg-accent/10 focus:outline-none focus:ring-2 focus:ring-accent/40 dark:bg-slate-800 dark:hover:border-accent dark:hover:bg-accent/10"
+        className={buttonClass}
         onClick={() => {
           const p = archivePath.trim();
           const n = name.trim() || archiveNameFromPath(p);

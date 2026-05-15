@@ -91,6 +91,7 @@ export function App({ store = defaultStore }: AppProps) {
   const toggleMod = useStore(store, (s) => s.toggleMod);
   const addCustomInstance = useStore(store, (s) => s.addCustomInstance);
   const importArchive = useStore(store, (s) => s.importArchive);
+  const pickArchiveFile = useStore(store, (s) => s.pickArchiveFile);
   const renameModDisplayName = useStore(store, (s) => s.renameModDisplayName);
   const attachSourceUrl = useStore(store, (s) => s.attachSourceUrl);
   const removeSourceUrl = useStore(store, (s) => s.removeSourceUrl);
@@ -360,7 +361,10 @@ export function App({ store = defaultStore }: AppProps) {
               onRestoreTrash={(trashName) => void restoreTrashedMod(trashName)}
             />
 
-            <ImportPanel onImport={(archivePath, name, slug) => importArchive(archivePath, name, slug)} />
+            <ImportPanel
+              onImport={(archivePath, name, slug) => importArchive(archivePath, name, slug)}
+              onChooseArchive={pickArchiveFile}
+            />
           </motion.section>
         </motion.div>
         ) : null}

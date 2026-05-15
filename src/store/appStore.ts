@@ -31,6 +31,7 @@ export type BackendApi = {
   detectOrphanSymlinks: (instanceId: string) => Promise<{ path: string; target: string }[]>;
   validateCustomInstance: (path: string) => Promise<GameInstance>;
   importArchive: (archivePath: string, name: string, slug?: string) => Promise<ImportResult>;
+  pickArchiveFile: () => Promise<string | null>;
   dryRunToggle: (
     modId: string,
     targetEnabled: boolean,
@@ -61,6 +62,7 @@ const defaultApi: BackendApi = {
   detectOrphanSymlinks: async () => [],
   validateCustomInstance: async (path) => ({ id: `custom:${path}`, path, source: "custom" }),
   importArchive: async () => ({ id: "", name: "", files: [], enabled: false, source: "managed" }),
+  pickArchiveFile: async () => null,
   dryRunToggle: async () => ({ canApply: true, operations: [], issues: [] }),
   applyToggle: async () => ({ applied: true, issues: [] }),
   migrateExternalMod: async (modId) => ({ managedModId: modId, issues: [] }),
@@ -122,6 +124,7 @@ export type AppState = {
   addIssue: (issue: Issue) => void;
   addCustomInstance: (path: string) => Promise<void>;
   importArchive: (archivePath: string, name: string, slug?: string) => Promise<void>;
+  pickArchiveFile: () => Promise<string | null>;
   renameModDisplayName: (modId: string, displayName: string) => Promise<Mod | null>;
   attachSourceUrl: (modId: string, sourceUrl: string, providerId?: string, metadata?: SourceMetadata) => Promise<Mod | null>;
   findSourceCandidates: (modId: string, apiKey?: string) => Promise<SourceCandidate[]>;
@@ -502,6 +505,16 @@ export function createAppStore(apiOverrides: Partial<BackendApi> = {}) {
         set((state) => ({
           issues: mergeIssueList(state.issues, toIssue(error, "import", "Import failed"))
         }));
+      }
+    },
+    pickArchiveFile: async () => {
+      try {
+        return await api.pickArchiveFile();
+      } catch (error) {
+        set((state) => ({
+          issues: mergeIssueList(state.issues, toIssue(error, "archive-picker", "Archive picker failed"))
+        }));
+        return null;
       }
     },
     toggleMod: async (mod, targetEnabled, instanceId) => {

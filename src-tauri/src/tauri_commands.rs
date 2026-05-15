@@ -41,6 +41,18 @@ fn import_archive(
 }
 
 #[tauri::command]
+async fn pick_archive_file() -> Result<Option<String>, ManagerError> {
+    tauri::async_runtime::spawn_blocking(commands::cmd_pick_archive_file)
+        .await
+        .map_err(|err| {
+            ManagerError::new(
+                crate::error::ErrorCode::InternalError,
+                format!("Archive picker task failed: {err}"),
+            )
+        })?
+}
+
+#[tauri::command]
 fn dry_run_toggle(
     mod_id: String,
     target_enabled: bool,
@@ -204,6 +216,7 @@ pub fn run() {
             validate_custom_instance,
             scan_mods,
             import_archive,
+            pick_archive_file,
             dry_run_toggle,
             apply_toggle,
             migrate_external_mod,

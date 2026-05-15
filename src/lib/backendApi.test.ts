@@ -414,6 +414,14 @@ describe("backend api wrapper", () => {
     });
   });
 
+  it("calls archive file picker command", async () => {
+    const invoke = vi.fn().mockResolvedValue("/tmp/a.zip");
+    const api = createBackendApi(invoke);
+
+    await expect(api.pickArchiveFile()).resolves.toBe("/tmp/a.zip");
+    expect(invoke).toHaveBeenCalledWith("pick_archive_file");
+  });
+
   it("calls detect orphan symlinks command", async () => {
     const invoke = vi.fn().mockResolvedValue([{ path: "Mods/dead.package", target: "/x" }]);
     const api = createBackendApi(invoke);
