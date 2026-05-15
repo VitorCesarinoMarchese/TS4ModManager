@@ -149,6 +149,13 @@ pub fn curseforge_queries(fingerprint: &ModFingerprint) -> Vec<String> {
     for query in simplified_roots {
         push_query(&mut queries, query);
     }
+    let without_catalog_codes = queries
+        .iter()
+        .filter_map(|query| without_catalog_code_tokens(query))
+        .collect::<Vec<_>>();
+    for query in without_catalog_codes {
+        push_query(&mut queries, query);
+    }
     let expanded = queries
         .iter()
         .flat_map(|query| abbreviation_expansions(query))
@@ -195,6 +202,22 @@ fn abbreviation_expansions(query: &str) -> Vec<String> {
         );
     }
     expansions
+}
+
+fn without_catalog_code_tokens(query: &str) -> Option<String> {
+    let filtered = query
+        .split_whitespace()
+        .filter(|part| !is_catalog_code_token(part))
+        .collect::<Vec<_>>()
+        .join(" ");
+    (!filtered.is_empty() && filtered != query).then_some(filtered)
+}
+
+fn is_catalog_code_token(token: &str) -> bool {
+    let trimmed = token.trim_matches(|ch: char| !ch.is_ascii_alphanumeric());
+    let has_digit = trimmed.chars().any(|ch| ch.is_ascii_digit());
+    let has_alpha = trimmed.chars().any(|ch| ch.is_ascii_alphabetic());
+    has_digit && has_alpha && trimmed.len() <= 8
 }
 
 fn without_packaging_terms(query: &str) -> Option<String> {
@@ -331,6 +354,30 @@ fn text_related(left: &str, right: &str) -> bool {
         || right.contains(left)
         || canonical_compact_text(left).contains(&canonical_compact_text(right))
         || canonical_compact_text(right).contains(&canonical_compact_text(left))
+        || significant_token_overlap(left, right)
+}
+
+fn significant_token_overlap(left: &str, right: &str) -> bool {
+    let left_tokens = meaningful_tokens(left);
+    let right_tokens = meaningful_tokens(right);
+    if left_tokens.len() < 2 || right_tokens.len() < 2 {
+        return false;
+    }
+    let shared = left_tokens
+        .iter()
+        .filter(|token| right_tokens.contains(token))
+        .count();
+    shared >= 2 && shared * 2 >= left_tokens.len().min(right_tokens.len())
+}
+
+fn meaningful_tokens(value: &str) -> Vec<String> {
+    value
+        .split_whitespace()
+        .map(str::trim)
+        .filter(|token| token.len() >= 3)
+        .filter(|token| !is_catalog_code_token(token))
+        .map(|token| token.replace("command", "cmd"))
+        .collect()
 }
 
 fn canonical_compact_text(value: &str) -> String {
@@ -547,6 +594,57 @@ mod tests {
         assert!(queries.contains(&"mc command center".to_string()));
         assert!(queries.contains(&"mc career".to_string()));
         assert!(!queries.contains(&"mccc".to_string()));
+    }
+
+    #[test]
+    fn removes_catalog_codes_from_curseforge_queries() {
+        let fingerprint = build_mod_fingerprint(
+            "Aurum HairstyleF178 Serana",
+            Some("Aurum HairstyleF178 Serana"),
+            &[FingerprintFile {
+                relative_path: "Aurum_HairstyleF178_Serana.package".to_string(),
+                size: 10,
+            }],
+            None,
+            None,
+        );
+
+        let queries = curseforge_queries(&fingerprint);
+
+        assert!(queries.contains(&"aurum hairstyle serana".to_string()));
+    }
+
+    #[test]
+    fn matches_reordered_title_when_catalog_code_differs() {
+        let fingerprint = build_mod_fingerprint(
+            "Aurum HairstyleF178 Serana",
+            Some("Aurum HairstyleF178 Serana"),
+            &[FingerprintFile {
+                relative_path: "Aurum_HairstyleF178_Serana.package".to_string(),
+                size: 10,
+            }],
+            None,
+            None,
+        );
+        let mod_summary = CurseForgeModSummary {
+            project_id: 1291154,
+            name: "Aurum - Serana hairstyle".to_string(),
+            slug: Some("aurum-serana-hairstyle".to_string()),
+            source_url: Some(
+                "https://www.curseforge.com/sims4/create-a-sim/aurum-serana-hairstyle".to_string(),
+            ),
+            preview_url: None,
+            authors: vec!["Aurum".to_string()],
+        };
+
+        let candidate =
+            candidate_from_curseforge(&fingerprint, mod_summary, &[]).expect("candidate");
+
+        assert_eq!(candidate.project_id, Some(1291154));
+        assert!(candidate
+            .evidence
+            .iter()
+            .any(|item| item.kind == "packageName"));
     }
 
     #[test]
