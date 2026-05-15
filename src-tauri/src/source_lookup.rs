@@ -6,7 +6,8 @@ use crate::curseforge_client::{
     UreqCurseForgeTransport,
 };
 use crate::error::{ErrorCode, ManagerError};
-use crate::mod_scan::scan_mods;
+use crate::managed_storage::read_managed_mod;
+use crate::mod_scan::{scan_mods, ScannedMod};
 use crate::source_candidates::{SourceCandidate, SourceProviderId};
 use crate::source_fingerprint::{
     build_mod_fingerprint, normalize_name, FingerprintFile, ModFingerprint,
@@ -21,39 +22,7 @@ pub fn find_source_candidates(
     mod_id: &str,
     api_key: Option<&str>,
 ) -> Result<Vec<SourceCandidate>, ManagerError> {
-    let scanned = scan_mods(game_mods_dir, managed_root);
-    let selected = scanned
-        .iter()
-        .find(|mod_entry| {
-            mod_entry.id.as_deref() == Some(mod_id)
-                || mod_entry.key == mod_id
-                || mod_entry.name == mod_id
-        })
-        .ok_or_else(|| {
-            ManagerError::new(
-                ErrorCode::NotFound,
-                format!("Mod not found for source lookup: {mod_id}"),
-            )
-        })?;
-
-    let files = selected
-        .files
-        .iter()
-        .map(|relative| FingerprintFile {
-            relative_path: relative.clone(),
-            size: fs::metadata(game_mods_dir.join(relative))
-                .map(|meta| meta.len())
-                .unwrap_or(0),
-        })
-        .collect::<Vec<_>>();
-    let folder_name = selected.group_path.first().map(String::as_str);
-    let fingerprint = build_mod_fingerprint(
-        &selected.name,
-        folder_name,
-        &files,
-        None,
-        selected.source_url.as_deref(),
-    );
+    let fingerprint = fingerprint_for_lookup(managed_root, game_mods_dir, mod_id)?;
 
     if api_key.is_some_and(|key| !key.trim().is_empty()) {
         match find_with_curseforge(&fingerprint, api_key) {
@@ -64,6 +33,67 @@ pub fn find_source_candidates(
     }
 
     Ok(fixture_provider_candidates(&fingerprint))
+}
+
+fn fingerprint_for_lookup(
+    managed_root: &Path,
+    game_mods_dir: &Path,
+    mod_id: &str,
+) -> Result<ModFingerprint, ManagerError> {
+    let scanned = scan_mods(game_mods_dir, managed_root);
+    if let Some(selected) = scanned
+        .iter()
+        .find(|mod_entry| matches_mod_id(mod_entry, mod_id))
+    {
+        let files = selected
+            .files
+            .iter()
+            .map(|relative| FingerprintFile {
+                relative_path: relative.clone(),
+                size: fs::metadata(game_mods_dir.join(relative))
+                    .map(|meta| meta.len())
+                    .unwrap_or(0),
+            })
+            .collect::<Vec<_>>();
+        let folder_name = selected.group_path.first().map(String::as_str);
+        return Ok(build_mod_fingerprint(
+            &selected.name,
+            folder_name,
+            &files,
+            None,
+            selected.source_url.as_deref(),
+        ));
+    }
+
+    let meta = read_managed_mod(managed_root, mod_id).map_err(|_| {
+        ManagerError::new(
+            ErrorCode::NotFound,
+            format!("Mod not found for source lookup: {mod_id}"),
+        )
+    })?;
+    let files_root = managed_root.join("mods").join(&meta.mod_id).join("files");
+    let files = meta
+        .files
+        .iter()
+        .map(|relative| FingerprintFile {
+            relative_path: relative.clone(),
+            size: fs::metadata(files_root.join(relative))
+                .map(|meta| meta.len())
+                .unwrap_or(0),
+        })
+        .collect::<Vec<_>>();
+    let folder_name = meta.files.first().and_then(|file| file.split('/').next());
+    Ok(build_mod_fingerprint(
+        meta.effective_display_name(),
+        folder_name,
+        &files,
+        None,
+        meta.source_url.as_deref(),
+    ))
+}
+
+fn matches_mod_id(mod_entry: &ScannedMod, mod_id: &str) -> bool {
+    mod_entry.id.as_deref() == Some(mod_id) || mod_entry.key == mod_id || mod_entry.name == mod_id
 }
 
 fn source_lookup_error(err: SourceLookupError) -> ManagerError {
@@ -446,6 +476,7 @@ pub fn fixture_provider_candidates(fingerprint: &ModFingerprint) -> Vec<SourceCa
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::managed_storage::{write_managed_mod, ModMetadata};
     use crate::source_candidates::ConfidenceLevel;
     use tempfile::TempDir;
 
@@ -701,6 +732,50 @@ mod tests {
         assert_eq!(
             source_lookup_error(SourceLookupError::InvalidResponse).code,
             ErrorCode::SourceInvalidResponse
+        );
+    }
+
+    #[test]
+    fn command_finds_disabled_imported_managed_mod_by_metadata() {
+        let tmp = TempDir::new().expect("tmp");
+        let managed = tmp.path().join("managed");
+        let mods = tmp.path().join("Mods");
+        let mod_id = "imported-id";
+        let managed_file =
+            managed.join("mods/imported-id/files/Aurum_HairstyleF178_Serana.package");
+        fs::create_dir_all(managed_file.parent().expect("parent")).expect("managed dirs");
+        fs::create_dir_all(&mods).expect("mods");
+        fs::write(&managed_file, b"pkg").expect("pkg");
+        write_managed_mod(
+            &managed,
+            &ModMetadata {
+                version: 1,
+                created_by: "sims4-mod-manager".to_string(),
+                mod_id: mod_id.to_string(),
+                name: "Aurum Hairstylef178 Serana".to_string(),
+                display_name: "Aurum Hairstylef178 Serana".to_string(),
+                detected_name: Some("Aurum Hairstylef178 Serana".to_string()),
+                custom_name: None,
+                slug: None,
+                files: vec!["Aurum_HairstyleF178_Serana.package".to_string()],
+                source: "local".to_string(),
+                source_url: None,
+                preview_url: None,
+                local_preview_path: None,
+                source_attachment: None,
+                locked_name: false,
+                updated_at: None,
+            },
+        )
+        .expect("meta");
+
+        let candidates = find_source_candidates(&managed, &mods, mod_id, None).expect("lookup");
+
+        assert_eq!(
+            candidates,
+            fixture_provider_candidates(
+                &fingerprint_for_lookup(&managed, &mods, mod_id).expect("fingerprint")
+            )
         );
     }
 
