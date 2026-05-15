@@ -1,6 +1,24 @@
-import { fireEvent, render, screen } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { archivePathFromBrowserDrop, archivePathFromTauriDrop, ImportPanel } from "./ImportPanel";
+
+const tauriDropHandlers = vi.hoisted(() => [] as Array<(event: { payload: { type: string; paths?: string[] } }) => void>);
+const tauriUnlisten = vi.hoisted(() => vi.fn());
+const onDragDropEvent = vi.hoisted(() => vi.fn((handler: (event: { payload: { type: string; paths?: string[] } }) => void) => {
+  tauriDropHandlers.push(handler);
+  return Promise.resolve(tauriUnlisten);
+}));
+
+vi.mock("@tauri-apps/api/window", () => ({
+  getCurrentWindow: () => ({ onDragDropEvent })
+}));
+
+afterEach(() => {
+  delete (window as Window & { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__;
+  tauriDropHandlers.length = 0;
+  tauriUnlisten.mockClear();
+  onDragDropEvent.mockClear();
+});
 
 describe("ImportPanel", () => {
   it("submits archive path and name", () => {
@@ -59,5 +77,21 @@ describe("ImportPanel", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Import Archive" }));
     expect(onImport).toHaveBeenCalledWith("/tmp/drop.zip", "Dropped", undefined);
+  });
+
+  it("listens for native Tauri window file-drop events", async () => {
+    Object.defineProperty(window, "__TAURI_INTERNALS__", {
+      configurable: true,
+      value: { metadata: { currentWindow: { label: "main" } } }
+    });
+    const onImport = vi.fn();
+    render(<ImportPanel onImport={onImport} />);
+
+    await waitFor(() => expect(onDragDropEvent).toHaveBeenCalledTimes(1));
+    tauriDropHandlers[0]?.({ payload: { type: "drop", paths: ["/tmp/native-drop.zip"] } });
+    await waitFor(() => expect(screen.getByLabelText("Archive path")).toHaveValue("/tmp/native-drop.zip"));
+
+    fireEvent.click(screen.getByRole("button", { name: "Import Archive" }));
+    expect(onImport).toHaveBeenCalledWith("/tmp/native-drop.zip", "native-drop", undefined);
   });
 });

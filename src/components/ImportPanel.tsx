@@ -34,8 +34,8 @@ export function ImportPanel({ onImport }: ImportPanelProps) {
     let disposed = false;
     let unlisten: (() => void) | undefined;
 
-    void import("@tauri-apps/api/webview")
-      .then(({ getCurrentWebview }) => getCurrentWebview().onDragDropEvent((event) => {
+    void import("@tauri-apps/api/window")
+      .then(({ getCurrentWindow }) => getCurrentWindow().onDragDropEvent((event) => {
         const path = archivePathFromTauriDrop(event.payload);
         if (path) setArchivePath(path);
       }))
