@@ -137,6 +137,9 @@ fn find_with_curseforge(
 
 pub fn curseforge_queries(fingerprint: &ModFingerprint) -> Vec<String> {
     let mut queries = vec![];
+    for query in structured_filename_queries(fingerprint) {
+        push_query(&mut queries, query);
+    }
     push_query(&mut queries, fingerprint.normalized_name.clone());
     push_query(&mut queries, normalize_name(&fingerprint.display_name));
     if let Some(folder) = &fingerprint.folder_name {
@@ -171,6 +174,82 @@ pub fn curseforge_queries(fingerprint: &ModFingerprint) -> Vec<String> {
     }
     queries.truncate(MAX_CURSEFORGE_QUERIES);
     queries
+}
+
+fn structured_filename_queries(fingerprint: &ModFingerprint) -> Vec<String> {
+    let mut queries = vec![];
+    let mut sources = vec![fingerprint.display_name.as_str()];
+    if let Some(folder) = &fingerprint.folder_name {
+        sources.push(folder.as_str());
+    }
+    sources.extend(
+        fingerprint
+            .package_script_basenames
+            .iter()
+            .map(String::as_str),
+    );
+
+    for source in sources {
+        if let Some(parts) = parse_author_mod_filename(source) {
+            let author = normalize_name(&parts.author);
+            let mod_name = normalize_name(&parts.mod_name);
+            let author_mod = format!("{author} {mod_name}");
+            let author_mod_without_packaging = without_packaging_terms(&author_mod);
+            if let Some(without_packaging) = author_mod_without_packaging.clone() {
+                push_query(&mut queries, without_packaging);
+            }
+            if let Some(without_codes) = without_catalog_code_tokens(
+                author_mod_without_packaging
+                    .as_deref()
+                    .unwrap_or(&author_mod),
+            ) {
+                push_query(&mut queries, without_codes);
+            }
+            push_query(&mut queries, author_mod);
+            if let Some(mod_without_codes) = without_catalog_code_tokens(&mod_name) {
+                push_query(&mut queries, format!("{author} {mod_without_codes}"));
+            }
+        }
+    }
+    queries
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct ParsedFilenameParts {
+    author: String,
+    mod_name: String,
+}
+
+fn parse_author_mod_filename(raw: &str) -> Option<ParsedFilenameParts> {
+    let stem = raw
+        .rsplit('/')
+        .next()
+        .unwrap_or(raw)
+        .rsplit_once('.')
+        .map(|(stem, _)| stem)
+        .unwrap_or(raw)
+        .trim();
+    if stem.is_empty() {
+        return None;
+    }
+    if let Some(rest) = stem.strip_prefix('[') {
+        let (author, mod_name) = rest.split_once(']')?;
+        let author = author.trim();
+        let mod_name = mod_name.trim();
+        if !author.is_empty() && !mod_name.is_empty() {
+            return Some(ParsedFilenameParts {
+                author: author.to_string(),
+                mod_name: mod_name.to_string(),
+            });
+        }
+    }
+    let (author, mod_name) = stem.split_once('_')?;
+    let author = author.trim();
+    let mod_name = mod_name.trim();
+    (!author.is_empty() && !mod_name.is_empty()).then(|| ParsedFilenameParts {
+        author: author.to_string(),
+        mod_name: mod_name.to_string(),
+    })
 }
 
 fn push_query(queries: &mut Vec<String>, query: String) {
@@ -252,6 +331,21 @@ pub fn candidate_from_curseforge(
         .is_some_and(|slug| text_related(slug, &fingerprint.normalized_name))
     {
         evidence_items.push(evidence("slug", "Slug similarity", 10));
+    }
+    let shared_tokens = shared_meaningful_token_count(
+        &fingerprint.normalized_name,
+        &format!(
+            "{} {}",
+            normalized_title,
+            normalized_slug.as_deref().unwrap_or_default()
+        ),
+    );
+    if shared_tokens >= 2 {
+        evidence_items.push(evidence(
+            "tokenOverlap",
+            "Provider title/slug shares distinctive local filename tokens",
+            (shared_tokens.min(3) * 5) as i16,
+        ));
     }
     if looks_like_translation_project(&mod_summary.name, mod_summary.slug.as_deref())
         && !looks_like_translation_project(
@@ -357,6 +451,15 @@ fn text_related(left: &str, right: &str) -> bool {
         || significant_token_overlap(left, right)
 }
 
+fn shared_meaningful_token_count(left: &str, right: &str) -> usize {
+    let left_tokens = meaningful_tokens(left);
+    let right_tokens = meaningful_tokens(right);
+    left_tokens
+        .iter()
+        .filter(|token| right_tokens.contains(token))
+        .count()
+}
+
 fn significant_token_overlap(left: &str, right: &str) -> bool {
     let left_tokens = meaningful_tokens(left);
     let right_tokens = meaningful_tokens(right);
@@ -415,6 +518,11 @@ fn preliminary_mod_rank(fingerprint: &ModFingerprint, candidate: &CurseForgeModS
     if !normalized_slug.is_empty() && text_related(&normalized_slug, &fingerprint.normalized_name) {
         score += 20;
     }
+    score += (shared_meaningful_token_count(
+        &fingerprint.normalized_name,
+        &format!("{normalized_title} {normalized_slug}"),
+    ) as i16)
+        * 5;
     if looks_like_translation_project(&candidate.name, candidate.slug.as_deref())
         && !looks_like_translation_project(
             &fingerprint.display_name,
@@ -589,11 +697,36 @@ mod tests {
 
         let queries = curseforge_queries(&fingerprint);
 
-        assert_eq!(queries[0], "mc cmd center all modules");
+        assert_eq!(queries[0], "mc cmd center");
         assert!(queries.contains(&"mc cmd center".to_string()));
         assert!(queries.contains(&"mc command center".to_string()));
         assert!(queries.contains(&"mc career".to_string()));
         assert!(!queries.contains(&"mccc".to_string()));
+    }
+
+    #[test]
+    fn parses_structured_author_mod_filenames() {
+        assert_eq!(
+            parse_author_mod_filename("Aurum_HairstyleF178_Serana.package"),
+            Some(ParsedFilenameParts {
+                author: "Aurum".to_string(),
+                mod_name: "HairstyleF178_Serana".to_string(),
+            })
+        );
+        assert_eq!(
+            parse_author_mod_filename("[Gabymelove Sims] Converse Platform High Tops (M).package"),
+            Some(ParsedFilenameParts {
+                author: "Gabymelove Sims".to_string(),
+                mod_name: "Converse Platform High Tops (M)".to_string(),
+            })
+        );
+        assert_eq!(
+            parse_author_mod_filename("moonmoonsim_botanica_f_tattoo.package"),
+            Some(ParsedFilenameParts {
+                author: "moonmoonsim".to_string(),
+                mod_name: "botanica_f_tattoo".to_string(),
+            })
+        );
     }
 
     #[test]
@@ -611,6 +744,7 @@ mod tests {
 
         let queries = curseforge_queries(&fingerprint);
 
+        assert_eq!(queries[0], "aurum hairstyle serana");
         assert!(queries.contains(&"aurum hairstyle serana".to_string()));
     }
 
@@ -645,6 +779,50 @@ mod tests {
             .evidence
             .iter()
             .any(|item| item.kind == "packageName"));
+        assert!(candidate
+            .evidence
+            .iter()
+            .any(|item| item.kind == "tokenOverlap"));
+    }
+
+    #[test]
+    fn ranks_specific_token_matches_above_generic_author_matches() {
+        let fingerprint = build_mod_fingerprint(
+            "Aurum HairstyleF178 Serana",
+            Some("Aurum HairstyleF178 Serana"),
+            &[FingerprintFile {
+                relative_path: "Aurum_HairstyleF178_Serana.package".to_string(),
+                size: 10,
+            }],
+            None,
+            None,
+        );
+        let serana = CurseForgeModSummary {
+            project_id: 1291154,
+            name: "Aurum - Serana hairstyle".to_string(),
+            slug: Some("aurum-serana-hairstyle".to_string()),
+            source_url: Some(
+                "https://www.curseforge.com/sims4/create-a-sim/aurum-serana-hairstyle".to_string(),
+            ),
+            preview_url: None,
+            authors: vec!["Aurum".to_string()],
+        };
+        let lisa = CurseForgeModSummary {
+            project_id: 1533589,
+            name: "Aurum - Lisa hairstyle (skysims edit)".to_string(),
+            slug: Some("aurum-lisa-hairstyle-skysims-edit".to_string()),
+            source_url: Some(
+                "https://www.curseforge.com/sims4/create-a-sim/aurum-lisa-hairstyle-skysims-edit"
+                    .to_string(),
+            ),
+            preview_url: None,
+            authors: vec!["AuSims".to_string()],
+        };
+
+        let serana = candidate_from_curseforge(&fingerprint, serana, &[]).expect("serana");
+        let lisa = candidate_from_curseforge(&fingerprint, lisa, &[]).expect("lisa");
+
+        assert!(serana.confidence > lisa.confidence);
     }
 
     #[test]
@@ -666,7 +844,7 @@ mod tests {
         let queries = curseforge_queries(&fingerprint);
 
         assert!(queries.len() <= MAX_CURSEFORGE_QUERIES);
-        assert_eq!(queries[0], "big mod all modules");
+        assert_eq!(queries[0], "big mod");
         assert!(queries.contains(&"big mod".to_string()));
     }
 
