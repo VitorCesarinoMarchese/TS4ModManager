@@ -82,6 +82,33 @@ describe("ModGrid pagination", () => {
     });
   });
 
+  it("supports author and mod scoped filename search", () => {
+    const mods = [
+      {
+        id: "aurum",
+        name: "Aurum HairstyleF178 Serana",
+        files: ["Aurum_HairstyleF178_Serana.package"],
+        enabled: false,
+        source: "managed" as const
+      },
+      {
+        id: "moon",
+        name: "Botanica Tattoo",
+        files: ["moonmoonsim_botanica_f_tattoo.package"],
+        enabled: false,
+        source: "managed" as const
+      }
+    ];
+
+    const { rerender } = render(<ModGrid mods={mods} search="author:Aurum" />);
+    expect(screen.getByText("Aurum HairstyleF178 Serana")).toBeInTheDocument();
+    expect(screen.queryByText("Botanica Tattoo")).not.toBeInTheDocument();
+
+    rerender(<ModGrid mods={mods} search="mod:botanica" />);
+    expect(screen.queryByText("Aurum HairstyleF178 Serana")).not.toBeInTheDocument();
+    expect(screen.getByText("Botanica Tattoo")).toBeInTheDocument();
+  });
+
   it("shows empty search state", () => {
     render(<ModGrid mods={makeMods(5)} search="zzz" />);
 

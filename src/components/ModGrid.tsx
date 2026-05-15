@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { matchesModSearch } from "../lib/modFilename";
 import { getPagination } from "../lib/pagination";
 import type { Mod } from "../lib/types";
 import { ModCard } from "./ModCard";
@@ -18,10 +19,7 @@ export function ModGrid({ mods, search, onToggle, onDetails, toggleDisabledById 
   const q = search.trim().toLowerCase();
   const filtered = useMemo(
     () =>
-      mods.filter((mod) => {
-        if (!q) return true;
-        return mod.name.toLowerCase().includes(q) || mod.files.some((f) => f.toLowerCase().includes(q));
-      }),
+      mods.filter((mod) => matchesModSearch(mod, q)),
     [mods, q]
   );
 
