@@ -84,14 +84,63 @@ pub fn scan_mods(mods_dir: &Path, managed_root: &Path) -> Vec<ScannedMod> {
         }
     }
 
-    groups
+    let mut scanned = groups
         .into_iter()
         .filter_map(|(key, mut files)| {
             files.sort_by(|a, b| a.relative.cmp(&b.relative));
             let scanned = build_scanned_mod(key, files, managed_root);
             (!scanned.mod_files.is_empty()).then_some(scanned)
         })
-        .collect()
+        .collect::<Vec<_>>();
+
+    append_disabled_managed_mods(&mut scanned, managed_root);
+    scanned
+}
+
+fn append_disabled_managed_mods(scanned: &mut Vec<ScannedMod>, managed_root: &Path) {
+    let managed_mods = managed_root.join("mods");
+    let Ok(entries) = fs::read_dir(&managed_mods) else {
+        return;
+    };
+
+    for entry in entries.flatten() {
+        let mod_id = entry.file_name().to_string_lossy().to_string();
+        if scanned
+            .iter()
+            .any(|mod_entry| mod_entry.id.as_deref() == Some(&mod_id))
+        {
+            continue;
+        }
+        let Ok(meta) = read_managed_mod(managed_root, &mod_id) else {
+            continue;
+        };
+        let scanned_mod = scanned_mod_from_metadata(meta);
+        if !scanned_mod.mod_files.is_empty() {
+            scanned.push(scanned_mod);
+        }
+    }
+}
+
+fn scanned_mod_from_metadata(meta: ModMetadata) -> ScannedMod {
+    let name = meta.effective_display_name().to_string();
+    let mod_files = meta
+        .files
+        .iter()
+        .filter(|path| is_mod_file(path))
+        .cloned()
+        .collect::<Vec<_>>();
+    ScannedMod {
+        key: meta.mod_id.clone(),
+        id: Some(meta.mod_id),
+        name: name.clone(),
+        files: meta.files,
+        mod_files,
+        preview: meta.local_preview_path.or(meta.preview_url),
+        source_url: meta.source_url,
+        source_attachment: meta.source_attachment,
+        source: ModSource::Managed,
+        group_path: vec![name],
+    }
 }
 
 fn build_scanned_mod(key: String, files: Vec<FileEntry>, managed_root: &Path) -> ScannedMod {
@@ -358,6 +407,45 @@ mod tests {
             scanned[0].preview.as_deref(),
             Some(mods.join("Pack/preview_big.png").to_string_lossy().as_ref())
         );
+    }
+
+    #[test]
+    fn includes_disabled_managed_mods_from_metadata() {
+        let root = TempDir::new().expect("tmp");
+        let mods = root.path().join("Mods");
+        let managed = root.path().join("managed");
+        fs::create_dir_all(&mods).expect("mods");
+        fs::create_dir_all(managed.join("mods/id/files")).expect("managed");
+        fs::write(managed.join("mods/id/files/Imported.package"), b"pkg").expect("pkg");
+        write_managed_mod(
+            &managed,
+            &ModMetadata {
+                version: 1,
+                created_by: "sims4-mod-manager".to_string(),
+                mod_id: "id".to_string(),
+                name: "Imported".to_string(),
+                display_name: "Imported".to_string(),
+                detected_name: Some("Imported".to_string()),
+                custom_name: None,
+                slug: None,
+                files: vec!["Imported.package".to_string()],
+                source: "local".to_string(),
+                source_url: None,
+                preview_url: None,
+                local_preview_path: None,
+                source_attachment: None,
+                locked_name: false,
+                updated_at: None,
+            },
+        )
+        .expect("meta");
+
+        let scanned = scan_mods(&mods, &managed);
+
+        assert_eq!(scanned.len(), 1);
+        assert_eq!(scanned[0].id.as_deref(), Some("id"));
+        assert_eq!(scanned[0].name, "Imported");
+        assert_eq!(scanned[0].source, ModSource::Managed);
     }
 
     #[test]
