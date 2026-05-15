@@ -105,8 +105,7 @@ fn build_scanned_mod(key: String, files: Vec<FileEntry>, managed_root: &Path) ->
 
     let source = if files.iter().any(|f| {
         f.is_symlink
-            && f
-                .symlink_target
+            && f.symlink_target
                 .as_ref()
                 .is_some_and(|target| target.starts_with(managed_root.join("mods")))
     }) {
@@ -120,10 +119,16 @@ fn build_scanned_mod(key: String, files: Vec<FileEntry>, managed_root: &Path) ->
     let metadata = managed_metadata_from_files(&files, managed_root);
     let id = metadata.as_ref().map(|meta| meta.mod_id.clone());
     let source_url = metadata.as_ref().and_then(|meta| meta.source_url.clone());
-    let source_attachment = metadata.as_ref().and_then(|meta| meta.source_attachment.clone());
+    let source_attachment = metadata
+        .as_ref()
+        .and_then(|meta| meta.source_attachment.clone());
     let preview = metadata
         .as_ref()
-        .and_then(|meta| meta.local_preview_path.clone().or_else(|| meta.preview_url.clone()))
+        .and_then(|meta| {
+            meta.local_preview_path
+                .clone()
+                .or_else(|| meta.preview_url.clone())
+        })
         .or_else(|| choose_preview(&files));
     let name = metadata
         .as_ref()
@@ -175,6 +180,15 @@ fn group_key(relative: &Path) -> String {
 
 fn filename_prefix(filename: &str) -> String {
     let stem = filename.split('.').next().unwrap_or(filename);
+    if let Some(rest) = stem.trim_start().strip_prefix('[') {
+        if let Some((prefix, _)) = rest.split_once(']') {
+            let prefix = prefix.trim();
+            if !prefix.is_empty() {
+                return prefix.to_string();
+            }
+        }
+    }
+
     let mut out = String::new();
 
     for ch in stem.chars() {
@@ -225,7 +239,9 @@ mod tests {
     use image::{ImageBuffer, Rgba};
     use tempfile::TempDir;
 
-    use crate::managed_storage::{write_managed_mod, ModMetadata, SourceAttachmentMetadata, SourceEvidence};
+    use crate::managed_storage::{
+        write_managed_mod, ModMetadata, SourceAttachmentMetadata, SourceEvidence,
+    };
 
     use super::{scan_mods, ModSource};
 
@@ -244,6 +260,25 @@ mod tests {
         assert_eq!(scanned.len(), 1);
         assert_eq!(scanned[0].key, "MyMod");
         assert_eq!(scanned[0].files.len(), 2);
+    }
+
+    #[test]
+    fn groups_bracketed_loose_cc_by_full_creator_prefix() {
+        let root = TempDir::new().expect("tmp");
+        let mods = root.path().join("Mods");
+        let managed = root.path().join("managed");
+
+        fs::create_dir_all(&mods).expect("mods");
+        fs::create_dir_all(&managed).expect("managed");
+        fs::write(
+            mods.join("[Gabymelove Sims] Converse Platform High Tops (M) • CF Edition — Base Colors Update C80.package"),
+            b"pkg",
+        )
+        .expect("pkg");
+
+        let scanned = scan_mods(&mods, &managed);
+        assert_eq!(scanned[0].key, "Gabymelove Sims");
+        assert_eq!(scanned[0].name, "Gabymelove Sims");
     }
 
     #[test]
@@ -319,7 +354,10 @@ mod tests {
             .expect("save big");
 
         let scanned = scan_mods(&mods, &managed);
-        assert_eq!(scanned[0].preview.as_deref(), Some(mods.join("Pack/preview_big.png").to_string_lossy().as_ref()));
+        assert_eq!(
+            scanned[0].preview.as_deref(),
+            Some(mods.join("Pack/preview_big.png").to_string_lossy().as_ref())
+        );
     }
 
     #[test]
@@ -361,7 +399,8 @@ mod tests {
         let root = TempDir::new().expect("tmp");
         let mods = root.path().join("Mods");
         let managed = root.path().join("managed");
-        let managed_file = managed.join("mods/uuid-123/files/McCmdCenter_AllModules_2026_2_0/mc_cmd_center.package");
+        let managed_file = managed
+            .join("mods/uuid-123/files/McCmdCenter_AllModules_2026_2_0/mc_cmd_center.package");
 
         fs::create_dir_all(&mods).expect("mods");
         fs::create_dir_all(managed_file.parent().expect("parent")).expect("managed tree");
@@ -459,8 +498,17 @@ mod tests {
             scanned[0].source_url.as_deref(),
             Some("https://www.curseforge.com/sims4/mods/example")
         );
-        assert_eq!(scanned[0].preview.as_deref(), Some("https://img.example/cover.jpg"));
-        assert_eq!(scanned[0].source_attachment.as_ref().and_then(|source| source.project_id), Some(551680));
+        assert_eq!(
+            scanned[0].preview.as_deref(),
+            Some("https://img.example/cover.jpg")
+        );
+        assert_eq!(
+            scanned[0]
+                .source_attachment
+                .as_ref()
+                .and_then(|source| source.project_id),
+            Some(551680)
+        );
     }
 
     #[test]

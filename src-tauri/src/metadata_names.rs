@@ -5,6 +5,10 @@ pub fn detect_display_name(raw: &str) -> String {
         .unwrap_or(raw)
         .trim();
 
+    if let Some(bracketed) = bracketed_prefix(without_extension) {
+        return bracketed;
+    }
+
     let normalized = without_extension.to_ascii_lowercase();
     let compact = normalized
         .chars()
@@ -25,10 +29,7 @@ pub fn detect_display_name(raw: &str) -> String {
         .map(str::trim)
         .collect::<Vec<_>>();
 
-    while parts
-        .last()
-        .is_some_and(|part| is_version_token(part))
-    {
+    while parts.last().is_some_and(|part| is_version_token(part)) {
         parts.pop();
     }
 
@@ -45,6 +46,20 @@ pub fn detect_display_name(raw: &str) -> String {
         .map(title_case_token)
         .collect::<Vec<_>>()
         .join(" ")
+}
+
+fn bracketed_prefix(raw: &str) -> Option<String> {
+    let trimmed = raw.trim_start();
+    let rest = trimmed.strip_prefix('[')?;
+    let (prefix, _) = rest.split_once(']')?;
+    let prefix = prefix.trim();
+    (!prefix.is_empty()).then(|| {
+        prefix
+            .split_whitespace()
+            .map(title_case_token)
+            .collect::<Vec<_>>()
+            .join(" ")
+    })
 }
 
 fn is_version_token(token: &str) -> bool {
@@ -72,7 +87,10 @@ mod tests {
 
     #[test]
     fn detects_known_mccc_alias() {
-        assert_eq!(detect_display_name("McCmdCenter_AllModules_2026_2_0"), "Mc Command Center");
+        assert_eq!(
+            detect_display_name("McCmdCenter_AllModules_2026_2_0"),
+            "Mc Command Center"
+        );
     }
 
     #[test]
@@ -82,6 +100,17 @@ mod tests {
 
     #[test]
     fn removes_versions_and_title_cases_unknown_names() {
-        assert_eq!(detect_display_name("random_mod_file_1_2_3"), "Random Mod File");
+        assert_eq!(
+            detect_display_name("random_mod_file_1_2_3"),
+            "Random Mod File"
+        );
+    }
+
+    #[test]
+    fn uses_bracketed_creator_prefix_without_brackets() {
+        assert_eq!(
+            detect_display_name("[Gabymelove Sims] Converse Platform High Tops (M) • CF Edition — Base Colors Update C80.package"),
+            "Gabymelove Sims"
+        );
     }
 }
