@@ -1,13 +1,17 @@
+use std::collections::HashMap;
 use std::fs;
-use std::io::{Read, Write};
+use std::io::Read;
 use std::path::{Path, PathBuf};
-use std::process::Command;
 
 use uuid::Uuid;
 use zip::read::ZipArchive;
 
 use crate::error::{ErrorCode, ManagerError};
 use crate::managed_storage::{create_managed_mod, ImportRequest, ModMetadata};
+
+const MAX_ZIP_ENTRIES: usize = 100_000;
+const MAX_ZIP_ENTRY_BYTES: u64 = 2 * 1024 * 1024 * 1024;
+const MAX_ZIP_TOTAL_BYTES: u64 = 8 * 1024 * 1024 * 1024;
 
 pub fn import_archive_to_managed(
     managed_root: &Path,
@@ -21,7 +25,10 @@ pub fn import_archive_to_managed(
     fs::create_dir_all(&temp_extract).map_err(|e| {
         ManagerError::new(
             ErrorCode::IoError,
-            format!("Create temp extract dir failed {}: {e}", temp_extract.display()),
+            format!(
+                "Create temp extract dir failed {}: {e}",
+                temp_extract.display()
+            ),
         )
     })?;
 
@@ -53,7 +60,6 @@ pub fn extract_archive(archive_path: &Path, destination: &Path) -> Result<(), Ma
 
     match ext.as_str() {
         "zip" => extract_zip(archive_path, destination),
-        "rar" | "7z" => extract_with_7z(archive_path, destination),
         _ => Err(ManagerError::new(
             ErrorCode::ArchiveUnsupported,
             format!("Unsupported archive extension: .{ext}"),
@@ -76,93 +82,124 @@ fn extract_zip(archive_path: &Path, destination: &Path) -> Result<(), ManagerErr
         )
     })?;
 
+    if archive.len() > MAX_ZIP_ENTRIES {
+        return Err(extraction_error("ZIP exceeds the 100,000-entry limit"));
+    }
+    let mut paths = HashMap::new();
+    let mut total_bytes = 0_u64;
+    // Inspect the complete archive before writing any of its contents.
     for i in 0..archive.len() {
-        let mut entry = archive.by_index(i).map_err(|e| {
+        let entry = archive.by_index(i).map_err(|e| {
             ManagerError::new(
                 ErrorCode::ArchiveExtractionFailed,
                 format!("Read zip entry failed: {e}"),
             )
         })?;
 
-        let name = entry.name().replace('\\', "/");
+        let name = std::str::from_utf8(entry.name_raw())
+            .map_err(|_| extraction_error("ZIP entry name is not UTF-8"))?
+            .replace('\\', "/");
         let out_path = sanitize_zip_path(destination, &name)?;
-
-        if entry.is_dir() {
-            fs::create_dir_all(&out_path).map_err(|e| {
-                ManagerError::new(
-                    ErrorCode::ArchiveExtractionFailed,
-                    format!("Create dir failed {}: {e}", out_path.display()),
-                )
-            })?;
-            continue;
+        let kind = entry.unix_mode().unwrap_or(0) & 0o170000;
+        if !matches!(kind, 0 | 0o100000 | 0o040000) {
+            return Err(extraction_error(format!(
+                "ZIP contains a link or special file: {name}"
+            )));
         }
-
-        if let Some(parent) = out_path.parent() {
-            fs::create_dir_all(parent).map_err(|e| {
-                ManagerError::new(
-                    ErrorCode::ArchiveExtractionFailed,
-                    format!("Create parent failed {}: {e}", parent.display()),
-                )
-            })?;
+        if paths.insert(out_path.clone(), entry.is_dir()).is_some() {
+            return Err(extraction_error(format!("Duplicate ZIP path: {name}")));
         }
-
-        let mut out = fs::File::create(&out_path).map_err(|e| {
-            ManagerError::new(
-                ErrorCode::ArchiveExtractionFailed,
-                format!("Create file failed {}: {e}", out_path.display()),
-            )
-        })?;
-
-        let mut buf = Vec::new();
-        entry.read_to_end(&mut buf).map_err(|e| {
-            ManagerError::new(
-                ErrorCode::ArchiveExtractionFailed,
-                format!("Read entry content failed {}: {e}", name),
-            )
-        })?;
-
-        out.write_all(&buf).map_err(|e| {
-            ManagerError::new(
-                ErrorCode::ArchiveExtractionFailed,
-                format!("Write extracted content failed {}: {e}", out_path.display()),
-            )
-        })?;
+        if entry.size() > MAX_ZIP_ENTRY_BYTES {
+            return Err(extraction_error(format!("ZIP entry exceeds 2 GiB: {name}")));
+        }
+        total_bytes = total_bytes
+            .checked_add(entry.size())
+            .filter(|total| *total <= MAX_ZIP_TOTAL_BYTES)
+            .ok_or_else(|| extraction_error("ZIP exceeds the 8 GiB expanded-size limit"))?;
+        check_extraction_path(destination, &out_path)?;
+        if let Ok(existing) = fs::symlink_metadata(&out_path) {
+            if !(entry.is_dir() && existing.is_dir() && !existing.file_type().is_symlink()) {
+                return Err(extraction_error(format!(
+                    "Extraction target already exists: {name}"
+                )));
+            }
+        }
+    }
+    for path in paths.keys() {
+        let mut parent = path.parent();
+        while let Some(ancestor) = parent.filter(|ancestor| ancestor.starts_with(destination)) {
+            if paths.get(ancestor) == Some(&false) {
+                return Err(extraction_error("ZIP file and directory paths conflict"));
+            }
+            parent = ancestor.parent();
+        }
     }
 
+    for i in 0..archive.len() {
+        let mut entry = archive
+            .by_index(i)
+            .map_err(|error| extraction_error(error.to_string()))?;
+        let name = entry.name().replace('\\', "/");
+        let path = sanitize_zip_path(destination, &name)?;
+        check_extraction_path(destination, &path)?;
+        if entry.is_dir() {
+            fs::create_dir_all(&path).map_err(|error| extraction_error(error.to_string()))?;
+            continue;
+        }
+        if let Some(parent) = path.parent() {
+            fs::create_dir_all(parent).map_err(|error| extraction_error(error.to_string()))?;
+        }
+        check_extraction_path(destination, &path)?;
+        let mut output = fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&path)
+            .map_err(|error| extraction_error(format!("Create extracted file failed: {error}")))?;
+        let expected = entry.size();
+        let copied = std::io::copy(&mut (&mut entry).take(expected + 1), &mut output)
+            .map_err(|error| extraction_error(format!("Read ZIP entry failed: {error}")))?;
+        if copied != expected {
+            return Err(extraction_error(format!("ZIP entry size mismatch: {name}")));
+        }
+        output
+            .sync_all()
+            .map_err(|error| extraction_error(error.to_string()))?;
+    }
     Ok(())
 }
 
-fn extract_with_7z(archive_path: &Path, destination: &Path) -> Result<(), ManagerError> {
-    let output = Command::new("7z")
-        .arg("x")
-        .arg("-y")
-        .arg(format!("-o{}", destination.display()))
-        .arg(archive_path)
-        .output()
-        .map_err(|e| {
-            ManagerError::new(
-                ErrorCode::ArchiveExtractionFailed,
-                format!("7z tool unavailable: {e}"),
-            )
-        })?;
+fn extraction_error(message: impl Into<String>) -> ManagerError {
+    ManagerError::new(ErrorCode::ArchiveExtractionFailed, message)
+}
 
-    if !output.status.success() {
-        return Err(ManagerError::new(
-            ErrorCode::ArchiveExtractionFailed,
-            format!(
-                "7z extraction failed: {}",
-                String::from_utf8_lossy(&output.stderr)
-            ),
-        ));
+fn check_extraction_path(root: &Path, path: &Path) -> Result<(), ManagerError> {
+    let relative = path
+        .strip_prefix(root)
+        .map_err(|_| extraction_error("Extraction path escapes its root"))?;
+    let mut current = root.to_path_buf();
+    for component in std::iter::once(None).chain(relative.components().map(Some)) {
+        if let Some(component) = component {
+            current.push(component);
+        }
+        match fs::symlink_metadata(&current) {
+            Ok(metadata) if metadata.file_type().is_symlink() => {
+                return Err(extraction_error("Extraction path contains a symlink"))
+            }
+            Ok(_) => {}
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Err(error) => return Err(extraction_error(error.to_string())),
+        }
     }
-
     Ok(())
 }
 
 fn sanitize_zip_path(destination: &Path, entry_name: &str) -> Result<PathBuf, ManagerError> {
     let candidate = Path::new(entry_name);
 
-    if candidate.is_absolute() {
+    if candidate.is_absolute()
+        || entry_name.as_bytes().get(1) == Some(&b':')
+        || entry_name.contains('\0')
+    {
         return Err(ManagerError::new(
             ErrorCode::ArchiveExtractionFailed,
             format!("Absolute path entry blocked: {entry_name}"),
@@ -171,7 +208,8 @@ fn sanitize_zip_path(destination: &Path, entry_name: &str) -> Result<PathBuf, Ma
 
     if candidate
         .components()
-        .any(|c| matches!(c, std::path::Component::ParentDir))
+        .any(|c| !matches!(c, std::path::Component::Normal(_)))
+        || candidate.as_os_str().is_empty()
     {
         return Err(ManagerError::new(
             ErrorCode::ArchiveExtractionFailed,
@@ -210,7 +248,10 @@ mod tests {
     fn imports_zip_happy_path_into_managed_storage() {
         let tmp = TempDir::new().expect("tmp");
         let archive = tmp.path().join("mod.zip");
-        make_zip(&archive, vec![("a.package", b"AAA"), ("docs/readme.txt", b"TXT")]);
+        make_zip(
+            &archive,
+            vec![("a.package", b"AAA"), ("docs/readme.txt", b"TXT")],
+        );
 
         let meta = import_archive_to_managed(
             tmp.path(),
@@ -278,26 +319,22 @@ mod tests {
     }
 
     #[test]
-    fn seven_zip_extension_uses_external_extractor_or_fails_typed() {
+    fn seven_zip_requires_a_bounded_extractor() {
         let tmp = TempDir::new().expect("tmp");
         let archive = tmp.path().join("mod.7z");
         fs::write(&archive, b"fake-7z").expect("write");
 
-        let result = extract_archive(&archive, tmp.path());
-        if let Err(err) = result {
-            assert_eq!(err.code.as_str(), "ARCHIVE_EXTRACTION_FAILED");
-        }
+        let err = extract_archive(&archive, tmp.path()).expect_err("unsupported extractor");
+        assert_eq!(err.code.as_str(), "ARCHIVE_UNSUPPORTED");
     }
 
     #[test]
-    fn rar_extension_uses_external_extractor_or_fails_typed() {
+    fn rar_requires_a_bounded_extractor() {
         let tmp = TempDir::new().expect("tmp");
         let archive = tmp.path().join("mod.rar");
         fs::write(&archive, b"fake-rar").expect("write");
 
-        let result = extract_archive(&archive, tmp.path());
-        if let Err(err) = result {
-            assert_eq!(err.code.as_str(), "ARCHIVE_EXTRACTION_FAILED");
-        }
+        let err = extract_archive(&archive, tmp.path()).expect_err("unsupported extractor");
+        assert_eq!(err.code.as_str(), "ARCHIVE_UNSUPPORTED");
     }
 }
