@@ -4,6 +4,10 @@ Linux-first desktop mod manager for **The Sims 4**. Built with React, TypeScript
 
 The app focuses on local, inspectable, safe filesystem management: scan your Sims 4 `Mods` folder, identify installed mods, attach metadata, manage display names/source URLs, move mods to trash, restore trashed mods, and optionally migrate existing installed mods into manager-owned storage.
 
+## Native UI pilot
+
+A read-only Fastframe/egui catalog pilot is available alongside the existing app. Run `cargo run --manifest-path native/Cargo.toml --locked`. See [native/README.md](native/README.md) for custom game paths, verification, and current limits.
+
 ## Current State
 
 Phase 2 is complete: metadata, themes, game instance UX, safe lifecycle management, and Linux desktop hardening are implemented.
