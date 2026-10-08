@@ -1,0 +1,192 @@
+use std::path::PathBuf;
+use ts4_mod_manager_core::mod_scan::ScannedMod;
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum EntryId {
+    Managed(String),
+    External(String),
+}
+
+impl EntryId {
+    pub fn of(entry: &ScannedMod) -> Self {
+        match &entry.id {
+            Some(id) => Self::Managed(id.clone()),
+            None => Self::External(entry.key.clone()),
+        }
+    }
+}
+
+#[derive(Default)]
+pub struct Catalog {
+    pub mods: Vec<ScannedMod>,
+    pub visible: Vec<usize>,
+    pub selected: Option<EntryId>,
+    pub loading: bool,
+    pub error: Option<String>,
+    pub root: Option<PathBuf>,
+    pub query: String,
+    generation: u64,
+    search_keys: Vec<String>,
+}
+
+impl Catalog {
+    pub fn generation(&self) -> u64 {
+        self.generation
+    }
+
+    pub fn begin_scan(&mut self, root: PathBuf) -> u64 {
+        self.generation += 1;
+        if self.root.as_ref() != Some(&root) {
+            self.mods.clear();
+            self.search_keys.clear();
+            self.visible.clear();
+            self.selected = None;
+        }
+        self.root = Some(root);
+        self.loading = true;
+        self.error = None;
+        self.generation
+    }
+
+    pub fn accept_scan(
+        &mut self,
+        generation: u64,
+        result: Result<Vec<ScannedMod>, String>,
+    ) -> bool {
+        if generation != self.generation {
+            return false;
+        }
+        self.loading = false;
+        match result {
+            Ok(mut mods) => {
+                mods.sort_by_cached_key(|entry| entry.name.to_lowercase());
+                self.search_keys = mods
+                    .iter()
+                    .map(|entry| {
+                        std::iter::once(entry.name.as_str())
+                            .chain(entry.files.iter().map(String::as_str))
+                            .collect::<Vec<_>>()
+                            .join("\n")
+                            .to_lowercase()
+                    })
+                    .collect();
+                self.mods = mods;
+                if self.selected_mod().is_none() {
+                    self.selected = None;
+                }
+                self.error = None;
+                self.filter();
+            }
+            Err(error) => self.error = Some(error),
+        }
+        true
+    }
+
+    pub fn search(&mut self, query: String) {
+        if self.query != query {
+            self.query = query;
+            self.filter();
+        }
+    }
+
+    fn filter(&mut self) {
+        let query = self.query.trim().to_lowercase();
+        self.visible = self
+            .search_keys
+            .iter()
+            .enumerate()
+            .filter_map(|(index, text)| text.contains(&query).then_some(index))
+            .collect();
+    }
+
+    pub fn select(&mut self, index: usize) {
+        self.selected = self.mods.get(index).map(EntryId::of);
+    }
+
+    pub fn selected_mod(&self) -> Option<&ScannedMod> {
+        let selected = self.selected.as_ref()?;
+        self.mods
+            .iter()
+            .find(|entry| EntryId::of(entry) == *selected)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use ts4_mod_manager_core::mod_scan::ModSource;
+
+    fn entry(name: &str, id: Option<&str>) -> ScannedMod {
+        serde_json::from_value(serde_json::json!({
+            "key": name, "id": id, "name": name, "files": [format!("{name}/script.ts4script")],
+            "mod_files": [format!("{name}/script.ts4script")], "preview": null,
+            "source": if id.is_some() { "managed" } else { "external" },
+            "group_path": [name], "enabled": true
+        }))
+        .expect("fixture")
+    }
+
+    #[test]
+    fn late_scan_and_error_cannot_replace_current_instance_or_loading_state() {
+        let mut catalog = Catalog::default();
+        let a = catalog.begin_scan("A".into());
+        let b = catalog.begin_scan("B".into());
+        assert!(!catalog.accept_scan(a, Err("old failure".into())));
+        assert!(catalog.loading);
+        assert!(catalog.error.is_none());
+        assert!(catalog.accept_scan(b, Ok(vec![entry("B", None)])));
+        assert!(!catalog.accept_scan(a, Ok(vec![entry("A", None)])));
+        assert_eq!(catalog.mods[0].name, "B");
+        assert!(!catalog.loading);
+    }
+
+    #[test]
+    fn repeated_scan_of_same_instance_uses_new_generation_and_preserves_selection() {
+        let mut catalog = Catalog::default();
+        let a = catalog.begin_scan("A".into());
+        catalog.accept_scan(a, Ok(vec![entry("First", Some("id"))]));
+        catalog.select(0);
+        let b = catalog.begin_scan("A".into());
+        assert_ne!(a, b);
+        assert!(!catalog.accept_scan(a, Ok(vec![])));
+        catalog.accept_scan(b, Ok(vec![entry("Renamed", Some("id"))]));
+        assert_eq!(catalog.selected_mod().expect("selection").name, "Renamed");
+        catalog.begin_scan("B".into());
+        assert!(catalog.mods.is_empty());
+        assert!(catalog.selected.is_none());
+    }
+
+    #[test]
+    fn search_matches_unicode_and_filenames_without_changing_selection() {
+        let mut catalog = Catalog::default();
+        let generation = catalog.begin_scan("A".into());
+        catalog.accept_scan(
+            generation,
+            Ok(vec![entry("Café", None), entry("Other", None)]),
+        );
+        catalog.select(0);
+        catalog.search("CAFÉ".into());
+        assert_eq!(catalog.visible, vec![0]);
+        catalog.search("ts4script".into());
+        assert_eq!(catalog.visible.len(), 2);
+        catalog.search("missing".into());
+        assert!(catalog.visible.is_empty());
+        assert_eq!(catalog.selected_mod().expect("selection").name, "Café");
+    }
+
+    #[test]
+    fn managed_and_external_ids_with_same_text_stay_distinct() {
+        let mut catalog = Catalog::default();
+        let generation = catalog.begin_scan("A".into());
+        catalog.accept_scan(
+            generation,
+            Ok(vec![entry("same", Some("same")), entry("same", None)]),
+        );
+        catalog.select(1);
+        assert_eq!(catalog.selected, Some(EntryId::External("same".into())));
+        assert_eq!(
+            catalog.selected_mod().expect("selection").source,
+            ModSource::External
+        );
+    }
+}
