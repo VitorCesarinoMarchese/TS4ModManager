@@ -7,13 +7,16 @@ use ts4_mod_manager_core::path_detection::GameInstance;
 fastframe_icons::icons! {
     pub enum Icon {
         prefix: "ts4-native-",
-        directory: ".",
+        directory: "../icons/",
         Search => lucide "search",
         Refresh => lucide "refresh-cw",
         Moon => lucide "moon",
         Sun => lucide "sun",
         Back => lucide "arrow-left",
         Copy => lucide "copy",
+        Folder => "folder",
+        File => "file",
+        Check => lucide "check",
     }
 }
 
@@ -32,7 +35,7 @@ pub fn setup(ctx: &egui::Context) {
             Color32::from_rgb(248, 250, 252)
         };
         style.visuals.extreme_bg_color = if dark {
-            Color32::from_rgb(17, 24, 39)
+            Color32::from_rgb(28, 31, 36)
         } else {
             Color32::WHITE
         };
@@ -53,6 +56,29 @@ pub fn setup(ctx: &egui::Context) {
         };
         style.spacing.item_spacing = egui::vec2(10.0, 8.0);
         style.spacing.button_padding = egui::vec2(12.0, 8.0);
+        style.spacing.interact_size.y = 34.0;
+        style.visuals.widgets.noninteractive.bg_stroke.color = if dark {
+            Color32::from_rgb(53, 58, 66)
+        } else {
+            Color32::from_rgb(220, 225, 231)
+        };
+        style.visuals.widgets.noninteractive.fg_stroke.color = if dark {
+            Color32::from_rgb(170, 179, 190)
+        } else {
+            Color32::from_rgb(85, 97, 112)
+        };
+        for widget in [
+            &mut style.visuals.widgets.inactive,
+            &mut style.visuals.widgets.hovered,
+            &mut style.visuals.widgets.active,
+        ] {
+            widget.corner_radius = egui::CornerRadius::same(6);
+        }
+        style.visuals.widgets.inactive.weak_bg_fill = if dark {
+            Color32::from_rgb(39, 43, 50)
+        } else {
+            Color32::from_rgb(237, 241, 245)
+        };
         rendering.apply_to_visuals(&mut style.visuals);
     });
 }
@@ -64,6 +90,8 @@ pub struct View {
     pub scan_ms: Option<f64>,
     pub stats: RenderStats,
     detail_only: bool,
+    editing_root: bool,
+    copied: Option<(EntryId, f64)>,
 }
 
 #[derive(Default)]
@@ -72,6 +100,8 @@ pub struct RenderStats {
     pub files: usize,
     pub search: Option<egui::Rect>,
     pub first_row: Option<egui::Rect>,
+    pub back: Option<egui::Rect>,
+    pub copy: Option<egui::Rect>,
 }
 
 impl View {
@@ -85,11 +115,11 @@ impl View {
             .frame(
                 egui::Frame::new()
                     .fill(ui.visuals().panel_fill)
-                    .inner_margin(20),
+                    .inner_margin(egui::Margin::symmetric(24, 16)),
             )
             .show(ui, |ui| {
                 ui.horizontal(|ui| {
-                    ui.label(RichText::new("Sims 4 Mod Manager").size(23.0).strong());
+                    ui.label(RichText::new("Sims 4 Mod Manager").size(22.0).strong());
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                         let dark = ui.visuals().dark_mode;
                         let icon = if dark { Icon::Sun } else { Icon::Moon };
@@ -109,25 +139,64 @@ impl View {
                         }
                     });
                 });
-                ui.add_space(10.0);
+                ui.add_space(14.0);
                 ui.horizontal(|ui| {
-                    ui.label("Game folder");
-                    let width = (ui.available_width() - 95.0).max(100.0);
-                    let response = ui.add(
-                        egui::TextEdit::singleline(&mut self.root_input)
-                            .hint_text("Folder containing Mods")
-                            .desired_width(width),
-                    );
-                    let enter = response.lost_focus()
-                        && ui.input(|input| input.key_pressed(egui::Key::Enter));
-                    if ui.button("Open").clicked() || enter {
-                        let value = self.root_input.trim();
-                        if !value.is_empty() {
-                            scan_root = Some(PathBuf::from(value));
+                    ui.add(Icon::Folder.image(ui.visuals().weak_text_color(), 18.0));
+                    match catalog.root.as_ref().filter(|_| !self.editing_root) {
+                        None => {
+                            let response = ui.add_sized(
+                                [(ui.available_width() - 80.0).max(100.0), 36.0],
+                                egui::TextEdit::singleline(&mut self.root_input)
+                                    .hint_text("Game folder containing Mods")
+                                    .margin(egui::vec2(10.0, 9.0)),
+                            );
+                            let enter = response.lost_focus()
+                                && ui.input(|input| input.key_pressed(egui::Key::Enter));
+                            if ui.button("Open").clicked() || enter {
+                                let value = self.root_input.trim();
+                                if !value.is_empty() {
+                                    scan_root = Some(PathBuf::from(value));
+                                    self.editing_root = false;
+                                }
+                            }
+                        }
+                        Some(root) => {
+                            let path = root.to_string_lossy();
+                            let tail: String = path
+                                .chars()
+                                .rev()
+                                .take(64)
+                                .collect::<String>()
+                                .chars()
+                                .rev()
+                                .collect();
+                            let display = if tail.len() < path.len() {
+                                format!("…{tail}")
+                            } else {
+                                tail
+                            };
+                            ui.allocate_ui_with_layout(
+                                egui::vec2((ui.available_width() - 130.0).max(100.0), 34.0),
+                                egui::Layout::left_to_right(egui::Align::Center),
+                                |ui| {
+                                    ui.add(
+                                        egui::Label::new(
+                                            RichText::new(display)
+                                                .color(ui.visuals().weak_text_color()),
+                                        )
+                                        .truncate(),
+                                    )
+                                    .on_hover_text(path.as_ref());
+                                },
+                            );
+                            if ui.button("Change folder").clicked() {
+                                self.root_input = path.into_owned();
+                                self.editing_root = true;
+                            }
                         }
                     }
                 });
-                if !self.instances.is_empty() {
+                if (self.editing_root || catalog.root.is_none()) && !self.instances.is_empty() {
                     egui::ComboBox::from_id_salt("instances")
                         .selected_text("Detected game folders")
                         .show_ui(ui, |ui| {
@@ -142,6 +211,7 @@ impl View {
                                 {
                                     self.root_input = label.into_owned();
                                     scan_root = Some(instance.path.clone());
+                                    self.editing_root = false;
                                 }
                             }
                         });
@@ -153,29 +223,39 @@ impl View {
             .frame(
                 egui::Frame::new()
                     .fill(ui.visuals().panel_fill)
-                    .inner_margin(12),
+                    .inner_margin(egui::Margin::symmetric(24, 10)),
             )
             .show(ui, |ui| {
                 ui.horizontal_wrapped(|ui| {
-                    ui.small("Read-only pilot");
+                    ui.label(
+                        RichText::new("Read-only pilot")
+                            .size(12.0)
+                            .color(ui.visuals().weak_text_color()),
+                    );
                     ui.separator();
                     if catalog.loading {
                         ui.spinner();
-                        ui.small("Scanning your Mods folder...");
+                        ui.label(RichText::new("Scanning your Mods folder...").size(12.0));
                     } else if let Some(ms) = self.scan_ms {
-                        ui.small(format!(
-                            "{} mods · scanned in {ms:.0} ms",
-                            catalog.mods.len()
-                        ));
+                        ui.label(
+                            RichText::new(format!(
+                                "{} mods · scanned in {ms:.0} ms",
+                                catalog.mods.len()
+                            ))
+                            .size(12.0)
+                            .color(ui.visuals().weak_text_color()),
+                        );
                     } else {
-                        ui.small("Choose a game folder to browse your mods.");
+                        ui.label(
+                            RichText::new("Choose a game folder to browse your mods.").size(12.0),
+                        );
                     }
                 });
             });
 
         if !narrow {
             egui::Panel::right("mod-details")
-                .default_size(360.0)
+                .default_size(350.0)
                 .min_size(280.0)
                 .max_size(480.0)
                 .frame(
@@ -196,7 +276,9 @@ impl View {
                     ui.add_space(16.0);
                 }
                 if narrow && self.detail_only && catalog.selected_mod().is_some() {
-                    if ui.add(egui::Button::image_and_text(Icon::Back.image(foreground, 16.0), "Back to mods")).clicked() {
+                    let back = ui.add(egui::Button::image_and_text(Icon::Back.image(foreground, 16.0), "Back to mods"));
+                    self.stats.back = Some(back.rect);
+                    if back.clicked() {
                         self.detail_only = false;
                     }
                     ui.add_space(16.0);
@@ -204,8 +286,8 @@ impl View {
                     return;
                 }
                 ui.horizontal(|ui| {
-                    ui.heading("Your mods");
-                    ui.label(format!("{}", catalog.mods.len()));
+                    ui.label(RichText::new("Your mods").size(24.0).strong());
+                    ui.label(RichText::new(format!("{}", catalog.mods.len())).size(14.0).color(ui.visuals().weak_text_color()));
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                         if ui.add_enabled(catalog.root.is_some() && !catalog.loading,
                             egui::Button::image_and_text(Icon::Refresh.image(foreground, 16.0), "Rescan")).clicked() {
@@ -214,16 +296,29 @@ impl View {
                     });
                 });
                 ui.add_space(12.0);
-                ui.horizontal(|ui| {
-                    ui.add(Icon::Search.image(foreground, 18.0));
-                    let mut query = catalog.query.clone();
-                    let response = ui.add(egui::TextEdit::singleline(&mut query)
-                        .hint_text("Search mods or filenames") .desired_width(ui.available_width()));
-                    self.stats.search = Some(response.rect);
-                    if response.changed() { catalog.search(query); }
-                });
-                ui.add_space(12.0);
-                if !catalog.query.is_empty() { ui.small(format!("{} matching mods", catalog.visible.len())); }
+                egui::Frame::new()
+                    .fill(ui.visuals().extreme_bg_color)
+                    .stroke(ui.visuals().widgets.noninteractive.bg_stroke)
+                    .corner_radius(8)
+                    .inner_margin(egui::Margin::symmetric(12, 0))
+                    .show(ui, |ui| {
+                        ui.horizontal(|ui| {
+                            ui.add(Icon::Search.image(ui.visuals().weak_text_color(), 18.0));
+                            let mut query = catalog.query.clone();
+                            let response = ui.add_sized(
+                                [ui.available_width(), 40.0],
+                                egui::TextEdit::singleline(&mut query)
+                                    .hint_text("Search mods or filenames")
+                                    .frame(egui::Frame::NONE.inner_margin(egui::Margin::symmetric(0, 11))),
+                            );
+                            self.stats.search = Some(response.rect);
+                            if response.changed() { catalog.search(query); }
+                        });
+                    });
+                ui.add_space(16.0);
+                if !catalog.query.is_empty() {
+                    ui.label(RichText::new(format!("{} matching mods", catalog.visible.len())).size(12.0).color(ui.visuals().weak_text_color()));
+                }
                 if catalog.visible.is_empty() {
                     ui.add_space(32.0);
                     let (title, message) = if catalog.loading {
@@ -240,7 +335,7 @@ impl View {
                 }
                 let root_id = catalog.root.clone();
                 egui::ScrollArea::vertical().id_salt(("catalog", root_id)).auto_shrink([false, false])
-                    .show_rows(ui, 62.0, catalog.visible.len(), |ui, range| {
+                    .show_rows(ui, 64.0, catalog.visible.len(), |ui, range| {
                         for visible_index in range {
                             let index = catalog.visible[visible_index];
                             let entry = &catalog.mods[index];
@@ -250,18 +345,27 @@ impl View {
                                 ts4_mod_manager_core::mod_scan::ModSource::External => "External",
                             };
                             let state = if entry.enabled { "Installed" } else { "Stored" };
-                            let subtitle = format!("{origin} · {state} · {} mod files", entry.mod_files.len());
+                            let count = entry.mod_files.len();
+                            let subtitle = format!("{origin} · {count} {}", if count == 1 { "mod file" } else { "mod files" });
                             let selected = catalog.selected.as_ref() == Some(&identity);
                             let response = ui.push_id(identity, |ui| {
-                                let (rect, response) = ui.allocate_exact_size(egui::vec2(ui.available_width(), 62.0), egui::Sense::click());
+                                let (rect, response) = ui.allocate_exact_size(egui::vec2(ui.available_width(), 64.0), egui::Sense::click());
                                 let visuals = ui.style().interact_selectable(&response, selected);
                                 if selected || response.hovered() || response.has_focus() {
                                     ui.painter().rect_filled(rect, 6.0, visuals.bg_fill);
                                 }
-                                let mut row = ui.new_child(egui::UiBuilder::new().max_rect(rect.shrink2(egui::vec2(12.0, 8.0))).layout(egui::Layout::top_down(egui::Align::Min)));
-                                row.spacing_mut().item_spacing.y = 4.0;
-                                row.add(egui::Label::new(RichText::new(&entry.name).size(16.0).color(foreground)).truncate());
-                                row.add(egui::Label::new(RichText::new(subtitle).size(12.0).color(ui.visuals().weak_text_color())).truncate());
+                                let inner = rect.shrink2(egui::vec2(12.0, 10.0));
+                                let mut row = ui.new_child(egui::UiBuilder::new()
+                                    .max_rect(egui::Rect::from_min_max(inner.min, egui::pos2(inner.right() - 92.0, inner.bottom())))
+                                    .layout(egui::Layout::top_down(egui::Align::Min)));
+                                row.spacing_mut().item_spacing.y = 5.0;
+                                row.add(egui::Label::new(RichText::new(&entry.name).size(15.0).color(foreground)).truncate());
+                                let secondary = if selected { ui.visuals().selection.stroke.color } else { ui.visuals().weak_text_color() };
+                                row.add(egui::Label::new(RichText::new(subtitle).size(12.0).color(secondary)).truncate());
+                                let mut status = ui.new_child(egui::UiBuilder::new()
+                                    .max_rect(egui::Rect::from_min_max(egui::pos2(inner.right() - 84.0, inner.top()), inner.max))
+                                    .layout(egui::Layout::right_to_left(egui::Align::Center)));
+                                status.label(RichText::new(state).size(12.0).color(secondary));
                                 response.widget_info(|| egui::WidgetInfo::selected(egui::WidgetType::SelectableLabel, ui.is_enabled(), selected, &entry.name));
                                 response.on_hover_text(&entry.name)
                             }).inner;
@@ -284,20 +388,34 @@ impl View {
             ui.label("Its files and saved source details will appear here.");
             return;
         };
-        ui.add(egui::Label::new(RichText::new(&entry.name).size(21.0).strong()).wrap());
-        ui.add_space(8.0);
-        ui.label(if entry.enabled {
+        ui.add(egui::Label::new(RichText::new(&entry.name).size(23.0).strong()).wrap());
+        ui.add_space(12.0);
+        let state = if entry.enabled {
             "Installed in this game folder"
         } else {
             "Stored in managed storage"
-        });
-        ui.add_space(16.0);
+        };
+        egui::Frame::new()
+            .fill(ui.visuals().widgets.inactive.weak_bg_fill)
+            .corner_radius(6)
+            .inner_margin(egui::Margin::symmetric(10, 7))
+            .show(ui, |ui| {
+                ui.label(
+                    RichText::new(state)
+                        .size(12.0)
+                        .color(ui.visuals().weak_text_color()),
+                );
+            });
+        ui.add_space(24.0);
         if let Some(source) = &entry.source_url {
-            ui.strong("Saved source");
-            ui.add(egui::Label::new(source).selectable(true).wrap());
+            ui.label(RichText::new("Saved source").size(14.0).strong());
             if let Some(attachment) = &entry.source_attachment {
                 if let Some(author) = &attachment.author {
-                    ui.label(author);
+                    ui.label(
+                        RichText::new(author)
+                            .size(13.0)
+                            .color(ui.visuals().weak_text_color()),
+                    );
                 }
                 if attachment
                     .confidence
@@ -306,34 +424,85 @@ impl View {
                     ui.label("Low confidence. Verify this source before relying on it.");
                 }
             }
-            ui.add_space(16.0);
+            ui.add(
+                egui::Label::new(
+                    RichText::new(source)
+                        .size(12.0)
+                        .color(ui.visuals().weak_text_color()),
+                )
+                .selectable(true)
+                .wrap(),
+            );
+            ui.add_space(24.0);
         }
         ui.separator();
-        ui.horizontal(|ui| {
-            ui.strong(format!("Files ({})", entry.files.len()));
-            if ui
-                .add(egui::Button::image_and_text(
-                    Icon::Copy.image(ui.visuals().text_color(), 14.0),
-                    "Copy",
-                ))
-                .clicked()
-            {
-                ui.ctx().copy_text(entry.files.join("\n"));
-            }
-        });
+        ui.add_space(12.0);
         let identity = EntryId::of(entry);
+        let now = ui.input(|input| input.time);
+        let copied = self
+            .copied
+            .as_ref()
+            .is_some_and(|(id, until)| *id == identity && now < *until);
+        ui.horizontal(|ui| {
+            ui.label(RichText::new("Files").size(16.0).strong());
+            ui.label(
+                RichText::new(format!("{}", entry.files.len()))
+                    .size(13.0)
+                    .color(ui.visuals().weak_text_color()),
+            );
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                let icon = if copied { Icon::Check } else { Icon::Copy };
+                let copy = ui.add(egui::Button::image_and_text(
+                    icon.image(ui.visuals().text_color(), 14.0),
+                    if copied { "Copied" } else { "Copy" },
+                ));
+                self.stats.copy = Some(copy.rect);
+                if copy.clicked() {
+                    ui.ctx().copy_text(entry.files.join("\n"));
+                    self.copied = Some((identity.clone(), now + 2.0));
+                    ui.ctx()
+                        .request_repaint_after(std::time::Duration::from_secs(2));
+                }
+            });
+        });
+        ui.add_space(12.0);
         egui::ScrollArea::vertical()
             .id_salt(("files", catalog.root.clone(), identity))
             .auto_shrink([false, false])
-            .show_rows(ui, 24.0, entry.files.len(), |ui, range| {
+            .show_rows(ui, 48.0, entry.files.len(), |ui, range| {
                 for index in range {
-                    ui.add_sized(
-                        [ui.available_width(), 24.0],
-                        egui::Label::new(&entry.files[index])
-                            .truncate()
-                            .selectable(true),
-                    )
-                    .on_hover_text(&entry.files[index]);
+                    let file = &entry.files[index];
+                    let (parent, basename) = file.rsplit_once(['/', '\\']).unwrap_or(("", file));
+                    let (rect, _) = ui.allocate_exact_size(
+                        egui::vec2(ui.available_width(), 48.0),
+                        egui::Sense::hover(),
+                    );
+                    let mut row = ui.new_child(
+                        egui::UiBuilder::new()
+                            .max_rect(rect)
+                            .layout(egui::Layout::left_to_right(egui::Align::Min)),
+                    );
+                    row.add(Icon::File.image(ui.visuals().weak_text_color(), 16.0));
+                    row.vertical(|ui| {
+                        ui.spacing_mut().item_spacing.y = 4.0;
+                        ui.add(
+                            egui::Label::new(RichText::new(basename).size(13.0))
+                                .truncate()
+                                .selectable(true),
+                        )
+                        .on_hover_text(file);
+                        if !parent.is_empty() {
+                            ui.add(
+                                egui::Label::new(
+                                    RichText::new(parent)
+                                        .size(11.0)
+                                        .color(ui.visuals().weak_text_color()),
+                                )
+                                .truncate(),
+                            )
+                            .on_hover_text(file);
+                        }
+                    });
                     self.stats.files += 1;
                 }
             });
@@ -362,7 +531,7 @@ mod tests {
         catalog: &mut Catalog,
         events: Vec<egui::Event>,
         width: f32,
-    ) {
+    ) -> egui::FullOutput {
         let input = egui::RawInput {
             screen_rect: Some(egui::Rect::from_min_size(
                 egui::Pos2::ZERO,
@@ -375,6 +544,7 @@ mod tests {
             view.show(ui, catalog);
         });
         output.textures_delta.clear();
+        output
     }
 
     #[test]
@@ -388,6 +558,62 @@ mod tests {
         assert!(view.stats.files > 0 && view.stats.files < 40);
         render(&ctx, &mut view, &mut catalog, vec![], 680.0);
         assert!(view.stats.rows < 30);
+    }
+
+    #[test]
+    fn search_has_a_comfortable_input_target_in_both_layouts() {
+        for width in [680.0, 940.0, 1200.0] {
+            let mut catalog = populated_catalog();
+            let mut view = View::default();
+            let ctx = egui::Context::default();
+            setup(&ctx);
+            render(&ctx, &mut view, &mut catalog, vec![], width);
+            render(&ctx, &mut view, &mut catalog, vec![], width);
+            let search = view.stats.search.expect("search");
+            assert!(search.height() >= 36.0, "search too short: {search:?}");
+            assert!(search.right() <= width, "search outside window");
+        }
+    }
+
+    #[test]
+    fn narrow_details_return_to_catalog_and_copy_full_paths() {
+        let mut catalog = populated_catalog();
+        let mut view = View::default();
+        let ctx = egui::Context::default();
+        setup(&ctx);
+        let click = |pos| {
+            vec![
+                egui::Event::PointerMoved(pos),
+                egui::Event::PointerButton {
+                    pos,
+                    button: egui::PointerButton::Primary,
+                    pressed: true,
+                    modifiers: Default::default(),
+                },
+                egui::Event::PointerButton {
+                    pos,
+                    button: egui::PointerButton::Primary,
+                    pressed: false,
+                    modifiers: Default::default(),
+                },
+            ]
+        };
+        render(&ctx, &mut view, &mut catalog, vec![], 680.0);
+        render(&ctx, &mut view, &mut catalog, vec![], 680.0);
+        let row = view.stats.first_row.expect("row").center();
+        render(&ctx, &mut view, &mut catalog, click(row), 680.0);
+        render(&ctx, &mut view, &mut catalog, vec![], 680.0);
+        assert!(view.stats.rows == 0 && view.stats.files > 0);
+        let copy = view.stats.copy.expect("copy").center();
+        let output = render(&ctx, &mut view, &mut catalog, click(copy), 680.0);
+        assert!(output.platform_output.commands.iter().any(|command| matches!(
+            command, egui::OutputCommand::CopyText(text) if *text == catalog.selected_mod().unwrap().files.join("\n")
+        )));
+        assert!(view.copied.is_some());
+        let back = view.stats.back.expect("back").center();
+        render(&ctx, &mut view, &mut catalog, click(back), 680.0);
+        render(&ctx, &mut view, &mut catalog, vec![], 680.0);
+        assert!(view.stats.rows > 0 && view.stats.files == 0);
     }
 
     #[test]

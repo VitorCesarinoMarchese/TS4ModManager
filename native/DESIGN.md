@@ -15,7 +15,7 @@ Values below describe `src/ui.rs`. Dimensions use egui logical points.
 | Role | Light | Dark |
 | --- | --- | --- |
 | Header, catalog, status background | `#F8FAFC` | `#15171C` |
-| Details and extreme background | `#FFFFFF` | `#111827` |
+| Details and extreme background | `#FFFFFF` | `#1C1F24` |
 | Main text | `#020617` | `#F8FAFC` |
 | Selection background | `#D1FAE5` | `#0A4636` |
 | Selection stroke | `#065F46` | `#6EE7B7` |
@@ -24,25 +24,29 @@ Other widget colors, weak text, and error colors follow egui's theme. Use Fastfr
 
 | Element | Size or spacing |
 | --- | --- |
-| App title | 23, strong |
-| Selected mod title | 21, strong, wrapped |
-| Catalog name / metadata | 16 / 12, truncated |
-| Header / catalog and details / status margins | 20 / 24 / 12 |
+| App title | 22, strong |
+| Catalog / selected mod title | 24 / 23, strong |
+| Catalog name / metadata | 15 / 12, truncated |
+| Header margins | 24 horizontal, 16 vertical |
+| Catalog and details / status margins | 24 / 24 horizontal, 10 vertical |
 | Global item spacing | 10 horizontal, 8 vertical |
 | Button padding | 12 horizontal, 8 vertical |
-| Catalog row | 62 high; 12 horizontal and 8 vertical inner inset |
-| Row name-to-metadata spacing | 4 |
+| Catalog row | 64 high; 12 horizontal and 10 vertical inner inset |
+| Row name-to-metadata spacing | 5 |
 | Row highlight corner radius | 6 |
-| File row | 24 high |
+| File row | 48 high; basename 13, folder path 11 |
+| Search field | 40 high; 8 corner radius |
+| Buttons | Minimum 34 high; 6 corner radius |
+| Muted text, light / dark | `#556170` / `#AAB3BE` noninteractive foreground |
 | Search / general action / Copy icon | 18 / 16 / 14 |
 
 ## Layout and interaction
 
-At available widths of 900 or greater, show the catalog beside a right details pane. The pane starts at 360 wide and has limits of 280 and 480. Below 900, selecting a mod replaces the catalog with details; Back to mods restores the list. Keep the game-folder header and status visible in both views.
+At available widths of 900 or greater, show the catalog beside a right details pane. The pane starts at 350 wide and has limits of 280 and 480. Below 900, selecting a mod replaces the catalog with details; Back to mods restores the list. Keep the game-folder header and status visible in both views.
 
-Follow the desktop theme initially. The Light/Dark button switches themes. Open accepts a nonempty trimmed path; Enter in the folder field also opens it. Choosing a detected folder starts a scan. Disable Rescan while loading or before a root exists.
+Follow the desktop theme initially. The Light/Dark button switches themes. The current folder appears as a compact path summary with a full-path tooltip. Change folder reveals the path editor and detected-folder menu. On first launch the editor is already visible. Open accepts a nonempty trimmed path; Enter in the folder field also opens it. Choosing a detected folder starts a scan. Disable Rescan while loading or before a root exists.
 
-Search filters as the text changes and displays the match count. Catalog rows use egui's selected, hover, and focus visuals. Full mod names appear in hover text. Files truncate with full-path tooltips, support text selection, and Copy copies the complete file list.
+Search filters as the text changes and displays the match count. Catalog rows use egui's selected, hover, and focus visuals. Full mod names appear in hover text. Rows separate the name and ownership/file count from installed/stored state. File rows show the basename first and the folder below it, with full-path tooltips and selectable basenames. Copy copies the complete file list and confirms with Copied for two seconds. Selected-row secondary text uses the green selection foreground.
 
 Render only visible catalog and file rows. Show separate guidance for initial folder selection, scanning, empty catalogs, and no matches. Errors explain how to retry. Saved source URLs are selectable wrapped text. Keep the read-only status visible throughout.
 

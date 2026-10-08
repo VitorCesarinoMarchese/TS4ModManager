@@ -19,7 +19,7 @@ cargo run --manifest-path native/Cargo.toml --locked -- \
   --root '/path/to/The Sims 4'
 ```
 
-The window follows the desktop theme, with a light/dark switch. Choose another detected game folder or enter a path and select Open. Search works over display names and filenames. Select a row to inspect files and saved source metadata. On narrow windows, details replace the catalog and offer Back to mods. Copy copies the full file list; truncated names have full-path tooltips.
+The window follows the desktop theme, with a light/dark switch. Select Change folder to choose another detected game folder or enter a path and select Open. Search works over display names and filenames. Select a row to inspect files and saved source metadata. On narrow windows, details replace the catalog and offer Back to mods. Copy copies the full file list and confirms with Copied. Files show their basename above the containing folder; truncated names have full-path tooltips.
 
 The default managed root is `~/.local/share/sims4-mod-manager`. Scanning does not create it. Override it with `--managed-root PATH`. Use `--help` for all options. The scanner still suppresses some nested filesystem read errors; a successful scan is not proof that every nested path was readable.
 
@@ -51,3 +51,5 @@ Initial debug verification on this workspace measured about 137 ms to scan 10,00
 The scanner ownership fix and native controller use failing-before regression tests. Scanner tests prove managed mods stay separate when they share a folder with each other or external files, and relative managed links report installed state. Native tests cover stale success/error rejection, stable identities, same-instance refresh, Unicode/filename search, pending-request replacement, unchanged temporary inputs, CLI validation, and actual egui search interaction and virtualized rendering.
 
 See [the investigation](../docs/fastframe-investigation.md) for the original bug inventory and [the chosen design](../docs/native-pilot-design.md) for the controller rationale. The inventory describes the pre-pilot revision. This work fixes shared-folder scan identity and supplies scan enabled state; it does not fix the other lifecycle or source-lookup defects.
+
+Folder and file icons are vendored from [Lucide](https://github.com/lucide-icons/lucide/tree/main/icons), with white strokes for Fastframe tinting. Their license is included in `licenses/Lucide-LICENSE.txt`.
