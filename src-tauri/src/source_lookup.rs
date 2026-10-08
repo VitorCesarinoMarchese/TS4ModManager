@@ -24,15 +24,7 @@ pub fn find_source_candidates(
 ) -> Result<Vec<SourceCandidate>, ManagerError> {
     let fingerprint = fingerprint_for_lookup(managed_root, game_mods_dir, mod_id)?;
 
-    if api_key.is_some_and(|key| !key.trim().is_empty()) {
-        match find_with_curseforge(&fingerprint, api_key) {
-            Ok(candidates) => return Ok(candidates),
-            Err(SourceLookupError::MissingApiKey) => {}
-            Err(err) => return Err(source_lookup_error(err)),
-        }
-    }
-
-    Ok(fixture_provider_candidates(&fingerprint))
+    find_with_curseforge(&fingerprint, api_key).map_err(source_lookup_error)
 }
 
 fn fingerprint_for_lookup(
@@ -670,64 +662,6 @@ fn dedupe_mods(mods: Vec<CurseForgeModSummary>) -> Vec<CurseForgeModSummary> {
     deduped
 }
 
-pub fn fixture_provider_candidates(fingerprint: &ModFingerprint) -> Vec<SourceCandidate> {
-    let joined = format!(
-        "{} {} {}",
-        fingerprint.normalized_name,
-        fingerprint.package_script_basenames.join(" "),
-        fingerprint.archive_name.as_deref().unwrap_or_default()
-    )
-    .to_lowercase();
-
-    if !(joined.contains("mccmdcenter")
-        || joined.contains("mc command")
-        || joined.contains("mc_cmd_center"))
-    {
-        return vec![];
-    }
-
-    let mut evidence_items = vec![
-        evidence(
-            "fileName",
-            "Matched MC Command Center package/script basename",
-            25,
-        ),
-        evidence("title", "Title/name similarity", 20),
-        evidence("slug", "Slug similarity", 10),
-    ];
-    if fingerprint
-        .version_tokens
-        .iter()
-        .any(|token| token == "2026.2.0")
-    {
-        evidence_items.push(evidence("version", "Version token match: 2026.2.0", 20));
-    }
-
-    let Some(score) = score_candidate(CandidateScoreInput {
-        evidence: evidence_items.clone(),
-        has_file_metadata: true,
-        has_file_evidence: true,
-        name_only: false,
-        fingerprint_match: false,
-    }) else {
-        return vec![];
-    };
-
-    vec![SourceCandidate {
-        provider_id: SourceProviderId::Curseforge,
-        title: "MC Command Center".to_string(),
-        source_url: "https://www.curseforge.com/sims4/mods/mc-command-center".to_string(),
-        preview_url: Some("https://media.forgecdn.net/avatars/mccc.png".to_string()),
-        author: Some("Deaderpool".to_string()),
-        project_id: Some(551680),
-        file_id: None,
-        confidence: score.confidence,
-        confidence_level: score.confidence_level,
-        reasons: score.reasons,
-        evidence: evidence_items,
-    }]
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -736,42 +670,27 @@ mod tests {
     use tempfile::TempDir;
 
     #[test]
-    fn fixture_provider_returns_candidate_from_file_evidence() {
-        let fingerprint = build_mod_fingerprint(
-            "Mc Command Center",
-            Some("McCmdCenter_AllModules_2026_2_0"),
-            &[FingerprintFile {
-                relative_path: "McCmdCenter_AllModules_2026_2_0/mc_cmd_center.package".to_string(),
-                size: 10,
-            }],
-            None,
-            None,
-        );
-
-        let candidates = fixture_provider_candidates(&fingerprint);
-        assert_eq!(candidates.len(), 1);
-        assert_eq!(candidates[0].provider_id, SourceProviderId::Curseforge);
-        assert_eq!(candidates[0].confidence_level, ConfidenceLevel::Medium);
-        assert!(candidates[0]
-            .reasons
-            .iter()
-            .any(|reason| reason.contains("package/script")));
-    }
-
-    #[test]
-    fn fixture_provider_returns_empty_for_unrelated_mod() {
-        let fingerprint = build_mod_fingerprint(
-            "Random Trait",
-            Some("RandomTrait"),
-            &[FingerprintFile {
-                relative_path: "RandomTrait/random_trait.package".to_string(),
-                size: 10,
-            }],
-            None,
-            None,
-        );
-
-        assert!(fixture_provider_candidates(&fingerprint).is_empty());
+    fn missing_key_never_returns_fabricated_provider_candidates() {
+        let tmp = TempDir::new().expect("tmp");
+        let mods = tmp.path().join("Mods");
+        fs::create_dir_all(mods.join("McCmdCenter_AllModules_2026_2_0")).unwrap();
+        fs::write(
+            mods.join("McCmdCenter_AllModules_2026_2_0/mc_cmd_center.package"),
+            b"original package",
+        )
+        .unwrap();
+        for key in [None, Some(""), Some("   ")] {
+            let result = find_source_candidates(
+                &tmp.path().join("managed"),
+                &mods,
+                "McCmdCenter_AllModules_2026_2_0",
+                key,
+            );
+            assert_eq!(
+                result.expect_err("lookup needs a real provider").code,
+                ErrorCode::SourceMissingApiKey
+            );
+        }
     }
 
     #[test]
@@ -1176,13 +1095,13 @@ mod tests {
         )
         .expect("meta");
 
-        let candidates = find_source_candidates(&managed, &mods, mod_id, None).expect("lookup");
-
+        let fingerprint = fingerprint_for_lookup(&managed, &mods, mod_id).expect("fingerprint");
+        assert_eq!(fingerprint.display_name, "Aurum Hairstylef178 Serana");
         assert_eq!(
-            candidates,
-            fixture_provider_candidates(
-                &fingerprint_for_lookup(&managed, &mods, mod_id).expect("fingerprint")
-            )
+            find_source_candidates(&managed, &mods, mod_id, None)
+                .unwrap_err()
+                .code,
+            ErrorCode::SourceMissingApiKey,
         );
     }
 
@@ -1196,13 +1115,12 @@ mod tests {
         fs::write(&package, b"pkg").expect("pkg");
 
         let before = fs::metadata(&package).expect("before").len();
-        let candidates =
+        let error =
             find_source_candidates(&managed, &mods, "McCmdCenter_AllModules_2026_2_0", None)
-                .expect("lookup");
+                .expect_err("missing provider key");
         let after = fs::metadata(&package).expect("after").len();
 
         assert_eq!(before, after);
-        assert_eq!(candidates.len(), 1);
-        assert_eq!(candidates[0].title, "MC Command Center");
+        assert_eq!(error.code, ErrorCode::SourceMissingApiKey);
     }
 }
