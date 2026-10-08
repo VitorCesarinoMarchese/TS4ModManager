@@ -92,6 +92,7 @@ pub struct View {
     detail_only: bool,
     editing_root: bool,
     copied: Option<(EntryId, f64)>,
+    previews: crate::preview::Previews,
 }
 
 #[derive(Default)]
@@ -102,10 +103,13 @@ pub struct RenderStats {
     pub first_row: Option<egui::Rect>,
     pub back: Option<egui::Rect>,
     pub copy: Option<egui::Rect>,
+    pub photos: usize,
+    pub missing_photos: usize,
 }
 
 impl View {
     pub fn show(&mut self, ui: &mut egui::Ui, catalog: &mut Catalog) -> Option<PathBuf> {
+        self.previews.begin_frame(ui.ctx(), catalog.generation());
         self.stats = RenderStats::default();
         let mut scan_root = None;
         let narrow = ui.available_width() < 900.0;
@@ -355,8 +359,10 @@ impl View {
                                     ui.painter().rect_filled(rect, 6.0, visuals.bg_fill);
                                 }
                                 let inner = rect.shrink2(egui::vec2(12.0, 10.0));
+                                let thumbnail = egui::Rect::from_min_size(inner.min, egui::Vec2::splat(44.0));
+                                self.paint_preview(ui, entry.preview.as_deref(), catalog.root.as_deref(), thumbnail, true);
                                 let mut row = ui.new_child(egui::UiBuilder::new()
-                                    .max_rect(egui::Rect::from_min_max(inner.min, egui::pos2(inner.right() - 92.0, inner.bottom())))
+                                    .max_rect(egui::Rect::from_min_max(egui::pos2(inner.left() + 56.0, inner.top()), egui::pos2(inner.right() - 92.0, inner.bottom())))
                                     .layout(egui::Layout::top_down(egui::Align::Min)));
                                 row.spacing_mut().item_spacing.y = 5.0;
                                 row.add(egui::Label::new(RichText::new(&entry.name).size(15.0).color(foreground)).truncate());
@@ -388,53 +394,79 @@ impl View {
             ui.label("Its files and saved source details will appear here.");
             return;
         };
-        ui.add(egui::Label::new(RichText::new(&entry.name).size(23.0).strong()).wrap());
-        ui.add_space(12.0);
-        let state = if entry.enabled {
-            "Installed in this game folder"
-        } else {
-            "Stored in managed storage"
-        };
-        egui::Frame::new()
-            .fill(ui.visuals().widgets.inactive.weak_bg_fill)
-            .corner_radius(6)
-            .inner_margin(egui::Margin::symmetric(10, 7))
+        egui::ScrollArea::vertical()
+            .id_salt(("detail-summary", EntryId::of(entry)))
+            .max_height((ui.available_height() - 150.0).max(80.0))
+            .auto_shrink([false, true])
             .show(ui, |ui| {
-                ui.label(
-                    RichText::new(state)
-                        .size(12.0)
-                        .color(ui.visuals().weak_text_color()),
+                ui.add(egui::Label::new(RichText::new(&entry.name).size(23.0).strong()).wrap());
+                ui.add_space(12.0);
+                let state = if entry.enabled {
+                    "Installed in this game folder"
+                } else {
+                    "Stored in managed storage"
+                };
+                egui::Frame::new()
+                    .fill(ui.visuals().widgets.inactive.weak_bg_fill)
+                    .corner_radius(6)
+                    .inner_margin(egui::Margin::symmetric(10, 7))
+                    .show(ui, |ui| {
+                        ui.label(
+                            RichText::new(state)
+                                .size(12.0)
+                                .color(ui.visuals().weak_text_color()),
+                        );
+                    });
+                ui.add_space(24.0);
+                let (photo, response) = ui.allocate_exact_size(
+                    egui::vec2(ui.available_width(), 180.0),
+                    egui::Sense::hover(),
                 );
-            });
-        ui.add_space(24.0);
-        if let Some(source) = &entry.source_url {
-            ui.label(RichText::new("Saved source").size(14.0).strong());
-            if let Some(attachment) = &entry.source_attachment {
-                if let Some(author) = &attachment.author {
-                    ui.label(
-                        RichText::new(author)
-                            .size(13.0)
-                            .color(ui.visuals().weak_text_color()),
+                self.paint_preview(
+                    ui,
+                    entry.preview.as_deref(),
+                    catalog.root.as_deref(),
+                    photo,
+                    false,
+                );
+                response.widget_info(|| {
+                    egui::WidgetInfo::labeled(
+                        egui::WidgetType::Image,
+                        ui.is_enabled(),
+                        format!("Preview of {}", entry.name),
+                    )
+                });
+                ui.add_space(24.0);
+                if let Some(source) = &entry.source_url {
+                    ui.label(RichText::new("Saved source").size(14.0).strong());
+                    if let Some(attachment) = &entry.source_attachment {
+                        if let Some(author) = &attachment.author {
+                            ui.label(
+                                RichText::new(author)
+                                    .size(13.0)
+                                    .color(ui.visuals().weak_text_color()),
+                            );
+                        }
+                        if attachment
+                            .confidence
+                            .is_some_and(|confidence| confidence < 70)
+                        {
+                            ui.label("Low confidence. Verify this source before relying on it.");
+                        }
+                    }
+                    ui.add(
+                        egui::Label::new(
+                            RichText::new(source)
+                                .size(12.0)
+                                .color(ui.visuals().weak_text_color()),
+                        )
+                        .selectable(true)
+                        .wrap(),
                     );
+                    ui.add_space(24.0);
                 }
-                if attachment
-                    .confidence
-                    .is_some_and(|confidence| confidence < 70)
-                {
-                    ui.label("Low confidence. Verify this source before relying on it.");
-                }
-            }
-            ui.add(
-                egui::Label::new(
-                    RichText::new(source)
-                        .size(12.0)
-                        .color(ui.visuals().weak_text_color()),
-                )
-                .selectable(true)
-                .wrap(),
-            );
-            ui.add_space(24.0);
-        }
+            });
+        ui.add_space(12.0);
         ui.separator();
         ui.add_space(12.0);
         let identity = EntryId::of(entry);
@@ -507,6 +539,60 @@ impl View {
                 }
             });
     }
+
+    fn paint_preview(
+        &mut self,
+        ui: &egui::Ui,
+        preview: Option<&str>,
+        root: Option<&std::path::Path>,
+        rect: egui::Rect,
+        thumbnail: bool,
+    ) {
+        ui.painter()
+            .rect_filled(rect, 6.0, ui.visuals().widgets.inactive.weak_bg_fill);
+        match self.previews.load(ui.ctx(), preview, root) {
+            crate::preview::State::Ready(texture) => {
+                let image = egui::Image::new(texture).corner_radius(6);
+                if thumbnail {
+                    let aspect = texture.size.x / texture.size.y;
+                    let crop = if aspect > 1.0 {
+                        egui::vec2(1.0 / aspect, 1.0)
+                    } else {
+                        egui::vec2(1.0, aspect)
+                    };
+                    let uv = egui::Rect::from_center_size(egui::pos2(0.5, 0.5), crop);
+                    image.uv(uv).paint_at(ui, rect);
+                } else {
+                    let scale = (rect.width() / texture.size.x).min(rect.height() / texture.size.y);
+                    image.paint_at(
+                        ui,
+                        egui::Rect::from_center_size(rect.center(), texture.size * scale),
+                    );
+                }
+                self.stats.photos += 1;
+            }
+            crate::preview::State::Pending => {
+                egui::Spinner::new().size(18.0).paint_at(
+                    ui,
+                    egui::Rect::from_center_size(rect.center(), egui::Vec2::splat(18.0)),
+                );
+            }
+            crate::preview::State::Missing => {
+                ui.painter().text(
+                    rect.center(),
+                    egui::Align2::CENTER_CENTER,
+                    if thumbnail {
+                        "No\nPreview"
+                    } else {
+                        "No Preview"
+                    },
+                    egui::FontId::proportional(if thumbnail { 9.0 } else { 14.0 }),
+                    ui.visuals().weak_text_color(),
+                );
+                self.stats.missing_photos += 1;
+            }
+        }
+    }
 }
 
 #[cfg(test)]
@@ -558,6 +644,43 @@ mod tests {
         assert!(view.stats.files > 0 && view.stats.files < 40);
         render(&ctx, &mut view, &mut catalog, vec![], 680.0);
         assert!(view.stats.rows < 30);
+    }
+
+    #[test]
+    fn photo_is_painted_in_catalog_and_details_with_fallback_when_missing() {
+        let temp = tempfile::tempdir().unwrap();
+        let path = temp.path().join("preview.png");
+        image::RgbaImage::from_pixel(80, 40, image::Rgba([10, 100, 80, 255]))
+            .save(&path)
+            .unwrap();
+        let mut catalog = populated_catalog();
+        catalog.mods[0].preview = Some(path.to_string_lossy().into_owned());
+        let ctx = egui::Context::default();
+        setup(&ctx);
+        let mut cache = crate::preview::Previews::default();
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+        let texture = loop {
+            if let crate::preview::State::Ready(texture) = cache.load(&ctx, path.to_str(), None) {
+                break texture;
+            }
+            assert!(std::time::Instant::now() < deadline, "photo did not load");
+            std::thread::sleep(std::time::Duration::from_millis(5));
+        };
+        let mut view = View::default();
+        render(&ctx, &mut view, &mut catalog, vec![], 1200.0);
+        let output = render(&ctx, &mut view, &mut catalog, vec![], 1200.0);
+        let photos = output
+            .shapes
+            .iter()
+            .filter(|shape| shape.shape.texture_id() == texture.id)
+            .count();
+        assert!(
+            photos >= 2,
+            "expected thumbnail and detail photo, got {photos}"
+        );
+        catalog.mods[0].preview = None;
+        let output = render(&ctx, &mut view, &mut catalog, vec![], 1200.0);
+        assert!(output.shapes.iter().any(|shape| matches!(&shape.shape, egui::epaint::Shape::Text(text) if text.galley.text() == "No Preview")));
     }
 
     #[test]

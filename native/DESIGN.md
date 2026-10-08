@@ -4,7 +4,7 @@ This Fastframe/egui pilot extends TS4 Mod Manager's existing green accent and li
 
 ## Scope
 
-The pilot reads game folders, searches mod names and filenames, and displays installed/stored state, files, and saved source metadata. It makes no provider requests and offers no import, enable/disable, download, update, source attachment, trash/restore, or preview loading actions.
+The pilot reads game folders, searches mod names and filenames, and displays installed/stored state, files, photos, and saved source metadata. It makes no provider API requests and offers no import, enable/disable, mod download/update, source attachment, or trash/restore actions. Saved preview images may be fetched; the pilot never writes preview files or attaches sources.
 
 Any future source attachment must require explicit user confirmation. Keep weak-match warnings visible; saved metadata does not establish a verified match. The current details view warns when an attachment's recorded confidence is below 70.
 
@@ -34,6 +34,8 @@ Other widget colors, weak text, and error colors follow egui's theme. Use Fastfr
 | Catalog row | 64 high; 12 horizontal and 10 vertical inner inset |
 | Row name-to-metadata spacing | 5 |
 | Row highlight corner radius | 6 |
+| Catalog thumbnail | 44 square, centered crop, 6 corner radius |
+| Detail photo | 180 high, contain, 6 corner radius |
 | File row | 48 high; basename 13, folder path 11 |
 | Search field | 40 high; 8 corner radius |
 | Buttons | Minimum 34 high; 6 corner radius |
@@ -48,7 +50,7 @@ Follow the desktop theme initially. The Light/Dark button switches themes. The c
 
 Search filters as the text changes and displays the match count. Catalog rows use egui's selected, hover, and focus visuals. Full mod names appear in hover text. Rows separate the name and ownership/file count from installed/stored state. File rows show the basename first and the folder below it, with full-path tooltips and selectable basenames. Copy copies the complete file list and confirms with Copied for two seconds. Selected-row secondary text uses the green selection foreground.
 
-Render only visible catalog and file rows. Show separate guidance for initial folder selection, scanning, empty catalogs, and no matches. Errors explain how to retry. Saved source URLs are selectable wrapped text. Keep the read-only status visible throughout.
+Render only visible catalog and file rows. Load saved image paths and URLs in the background, showing a spinner while pending and No Preview when absent or broken. The detail summary has its own scroll area, reserving 150 points for file controls and rows where space allows. Its minimum viewport is 80 points. Local relative previews resolve under the chosen Mods folder. Reset preview caching on a new scan; retain at most 32 URIs. HTTP requests and redirects send no Referer header. Show separate guidance for initial folder selection, scanning, empty catalogs, and no matches. Errors explain how to retry. Saved source URLs are selectable wrapped text. Keep the read-only status visible throughout.
 
 ## Evidence
 

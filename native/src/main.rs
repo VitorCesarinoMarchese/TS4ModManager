@@ -221,7 +221,11 @@ impl eframe::App for NativeApp {
                 Some(Err("Screenshot timed out".into()));
             ui.ctx().send_viewport_cmd(egui::ViewportCommand::Close);
         } else if !self.catalog.loading && !self.capture_requested {
-            self.stable_frames += 1;
+            if ui.ctx().has_pending_images() {
+                self.stable_frames = 0;
+            } else {
+                self.stable_frames += 1;
+            }
             if self.stable_frames >= 3 {
                 ui.ctx()
                     .send_viewport_cmd(egui::ViewportCommand::Screenshot(Default::default()));
