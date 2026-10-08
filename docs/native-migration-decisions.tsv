@@ -1,0 +1,2 @@
+ts	phase	decision	why	evidence	result
+2026-10-08T18:12:49Z	frame	Scoped seven remaining migration workstreams	Preserve storage compatibility and verify safety before exposing writes	docs/native-migration-plan.md	open
