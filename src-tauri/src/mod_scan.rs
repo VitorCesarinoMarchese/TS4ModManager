@@ -28,6 +28,7 @@ pub struct ScannedMod {
     #[serde(rename = "sourceAttachment", skip_serializing_if = "Option::is_none")]
     pub source_attachment: Option<SourceAttachmentMetadata>,
     pub source: ModSource,
+    pub enabled: bool,
     pub group_path: Vec<String>,
 }
 
@@ -39,8 +40,14 @@ struct FileEntry {
     symlink_target: Option<PathBuf>,
 }
 
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
+enum GroupOwner {
+    Managed(String),
+    External(String),
+}
+
 pub fn scan_mods(mods_dir: &Path, managed_root: &Path) -> Vec<ScannedMod> {
-    let mut groups: BTreeMap<String, Vec<FileEntry>> = BTreeMap::new();
+    let mut groups: BTreeMap<GroupOwner, (String, Vec<FileEntry>)> = BTreeMap::new();
     let mut stack = vec![mods_dir.to_path_buf()];
 
     while let Some(dir) = stack.pop() {
@@ -70,23 +77,39 @@ pub fn scan_mods(mods_dir: &Path, managed_root: &Path) -> Vec<ScannedMod> {
             let relative = rel.to_string_lossy().replace('\\', "/");
             let key = group_key(rel);
             let symlink_target = if meta.file_type().is_symlink() {
-                fs::read_link(&path).ok()
+                fs::read_link(&path).ok().map(|target| {
+                    let absolute = if target.is_absolute() {
+                        target
+                    } else {
+                        dir.join(target)
+                    };
+                    absolute.canonicalize().unwrap_or(absolute)
+                })
             } else {
                 None
             };
 
-            groups.entry(key).or_default().push(FileEntry {
-                relative,
-                absolute: path,
-                is_symlink: meta.file_type().is_symlink(),
-                symlink_target,
-            });
+            let owner = symlink_target
+                .as_ref()
+                .and_then(|target| managed_mod_id_from_target(target, managed_root))
+                .map(GroupOwner::Managed)
+                .unwrap_or_else(|| GroupOwner::External(key.clone()));
+            groups
+                .entry(owner)
+                .or_insert_with(|| (key, vec![]))
+                .1
+                .push(FileEntry {
+                    relative,
+                    absolute: path,
+                    is_symlink: meta.file_type().is_symlink(),
+                    symlink_target,
+                });
         }
     }
 
     let mut scanned = groups
         .into_iter()
-        .filter_map(|(key, mut files)| {
+        .filter_map(|(_, (key, mut files))| {
             files.sort_by(|a, b| a.relative.cmp(&b.relative));
             let scanned = build_scanned_mod(key, files, managed_root);
             (!scanned.mod_files.is_empty()).then_some(scanned)
@@ -139,11 +162,15 @@ fn scanned_mod_from_metadata(meta: ModMetadata) -> ScannedMod {
         source_url: meta.source_url,
         source_attachment: meta.source_attachment,
         source: ModSource::Managed,
+        enabled: false,
         group_path: vec![name],
     }
 }
 
 fn build_scanned_mod(key: String, files: Vec<FileEntry>, managed_root: &Path) -> ScannedMod {
+    let enabled = files
+        .iter()
+        .any(|file| is_mod_file(&file.relative) && file.absolute.is_file());
     let all_files = files.iter().map(|f| f.relative.clone()).collect::<Vec<_>>();
 
     let mod_files = files
@@ -194,6 +221,7 @@ fn build_scanned_mod(key: String, files: Vec<FileEntry>, managed_root: &Path) ->
         source_url,
         source_attachment,
         source,
+        enabled,
         group_path,
     }
 }
@@ -293,6 +321,101 @@ mod tests {
     };
 
     use super::{scan_mods, ModSource};
+
+    #[test]
+    #[cfg(unix)]
+    fn keeps_managed_mods_and_external_files_separate_in_shared_folder() {
+        use crate::managed_storage::{create_managed_mod, ImportRequest};
+        use crate::toggle::apply_toggle;
+
+        let root = TempDir::new().expect("tmp");
+        let mods = root.path().join("Mods");
+        let managed = root.path().join("managed");
+        fs::create_dir_all(&mods).expect("mods");
+        let mut ids = vec![];
+        for name in ["One", "Two"] {
+            let source = root.path().join(name);
+            fs::create_dir_all(source.join("Shared")).expect("source");
+            fs::write(source.join(format!("Shared/{name}.package")), name).expect("file");
+            let meta = create_managed_mod(
+                &managed,
+                ImportRequest {
+                    name: name.to_string(),
+                    slug: None,
+                    source_dir: source,
+                },
+            )
+            .expect("import");
+            apply_toggle(&managed, &mods, &meta.mod_id, true).expect("enable");
+            ids.push(meta.mod_id);
+        }
+        fs::write(mods.join("Shared/External.package"), b"external").expect("external");
+
+        let scanned = scan_mods(&mods, &managed);
+        assert_eq!(
+            scanned.len(),
+            3,
+            "each owner must have its own catalog entry"
+        );
+        for id in ids {
+            let entry = scanned
+                .iter()
+                .find(|entry| entry.id.as_deref() == Some(&id))
+                .expect("owner");
+            assert_eq!(
+                entry.mod_files.len(),
+                1,
+                "another mod's files must not join this owner"
+            );
+            assert_eq!(serde_json::to_value(entry).expect("json")["enabled"], true);
+        }
+        let external = scanned
+            .iter()
+            .find(|entry| entry.source == ModSource::External)
+            .expect("external");
+        assert_eq!(external.mod_files, vec!["Shared/External.package"]);
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn reports_enabled_state_and_resolves_relative_managed_links() {
+        use crate::managed_storage::{create_managed_mod, ImportRequest};
+
+        let root = TempDir::new().expect("tmp");
+        let mods = root.path().join("Mods");
+        let managed = root.path().join("managed");
+        let source = root.path().join("source");
+        fs::create_dir_all(&mods).expect("mods");
+        fs::create_dir_all(&source).expect("source");
+        fs::write(source.join("Example.package"), b"package").expect("file");
+        let meta = create_managed_mod(
+            &managed,
+            ImportRequest {
+                name: "Example".to_string(),
+                slug: None,
+                source_dir: source,
+            },
+        )
+        .expect("import");
+        let stored = scan_mods(&mods, &managed);
+        assert_eq!(
+            serde_json::to_value(&stored[0]).expect("json")["enabled"],
+            false
+        );
+
+        std::os::unix::fs::symlink(
+            format!("../managed/mods/{}/files/Example.package", meta.mod_id),
+            mods.join("Example.package"),
+        )
+        .expect("link");
+        let installed = scan_mods(&mods, &managed);
+        assert_eq!(installed.len(), 1);
+        assert_eq!(installed[0].id.as_deref(), Some(meta.mod_id.as_str()));
+        assert_eq!(
+            serde_json::to_value(&installed[0]).expect("json")["enabled"],
+            true
+        );
+    }
 
     #[test]
     fn scans_recursively_and_groups_by_folder() {
