@@ -74,6 +74,7 @@ impl Settings {
         serde_json::to_string_pretty(&copy).map_err(|_| "Cannot serialize settings".into())
     }
     pub fn save(&self, path: &Path) -> Result<(), String> {
+        let serialized = Self::parse(&self.export(true)?)?.export(true)?;
         let parent = path.parent().ok_or("Settings path has no parent")?;
         std::fs::create_dir_all(parent).map_err(|_| "Cannot create settings directory")?;
         let mut temp =
@@ -85,7 +86,7 @@ impl Settings {
                 .set_permissions(std::fs::Permissions::from_mode(0o600))
                 .map_err(|_| "Cannot restrict settings permissions")?;
         }
-        temp.write_all(self.export(true)?.as_bytes())
+        temp.write_all(serialized.as_bytes())
             .map_err(|_| "Cannot write settings")?;
         temp.as_file()
             .sync_all()

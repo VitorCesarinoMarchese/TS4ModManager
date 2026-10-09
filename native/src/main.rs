@@ -4,6 +4,8 @@ use std::time::{Duration, Instant};
 use ts4_mod_manager_native::{
     catalog::Catalog,
     cli::Options,
+    controls::Controls,
+    settings::{Settings, Theme},
     ui::{self, View},
     worker::{self, Completion, Jobs, Request},
 };
@@ -17,9 +19,13 @@ fn main() {
 
 fn run() -> Result<(), String> {
     let options = Options::parse(std::env::args().skip(1))?;
+    if options.verify_workflows {
+        println!("{}", ts4_mod_manager_native::workflows::verify()?);
+        return Ok(());
+    }
     if options.help {
         println!(
-            "TS4 Mod Manager native catalog pilot\n\nUsage: ts4-mod-manager-native [--root PATH] [--managed-root PATH]\n\n  --root PATH          Sims 4 folder containing Mods\n  --home PATH          Home to use for detection and default managed path\n  --inspect            Print catalog JSON and exit; requires --root\n  --query TEXT         Initial name/filename search\n  --dark               Start with dark theme\n  --size WIDTHxHEIGHT   Initial window size, default 1200x800\n  --screenshot PATH    Save a rendered PNG and exit; requires --root\n\nThe pilot reads local files. It does not manage, download, or update mods."
+            "TS4 Mod Manager native manager\n\nUsage: ts4-mod-manager-native [--root PATH] [--managed-root PATH]\n\n  --root PATH          Sims 4 folder containing Mods\n  --home PATH          Home to use for detection and default managed path\n  --inspect            Print catalog JSON and exit; requires --root\n  --query TEXT         Initial name/filename search\n  --dark               Start with dark theme\n  --size WIDTHxHEIGHT   Initial window size, default 1200x800\n  --screenshot PATH    Save a rendered PNG and exit; requires --root\n\nManage local mods with reviewed operations. No mod downloads or updates."
         );
         return Ok(());
     }
@@ -49,6 +55,7 @@ fn run() -> Result<(), String> {
         .filter("warn")
         .init()
         .map_err(|error| error.to_string())?;
+    let settings = Settings::load(&options.home.join(".config/ts4-mod-manager/settings.json"))?;
     let captured = Arc::new(Mutex::new(None));
     let capture_required = options.screenshot.is_some();
     let capture_result = Arc::clone(&captured);
@@ -67,10 +74,15 @@ fn run() -> Result<(), String> {
         ..Default::default()
     };
     eframe::run_native(
-        "Sims 4 Mod Manager · Native pilot",
+        "Sims 4 Mod Manager · Native",
         native_options,
         Box::new(move |cc| {
             ui::setup(&cc.egui_ctx);
+            cc.egui_ctx.set_theme(match settings.theme {
+                Theme::Light => egui::ThemePreference::Light,
+                Theme::Dark => egui::ThemePreference::Dark,
+                Theme::System => egui::ThemePreference::System,
+            });
             if options.dark {
                 cc.egui_ctx.set_theme(egui::Theme::Dark);
             } else if capture_required {
@@ -78,11 +90,19 @@ fn run() -> Result<(), String> {
             }
             let ctx = cc.egui_ctx.clone();
             let jobs = Jobs::start(move || ctx.request_repaint())?;
+            let wake_ctx = cc.egui_ctx.clone();
+            let controls = Controls::new(
+                options.managed_root.clone(),
+                options.home.clone(),
+                settings.clone(),
+                move || wake_ctx.request_repaint(),
+            )?;
             jobs.submit(Request::Detect {
                 generation: 0,
                 home: options.home,
             });
             let mut app = NativeApp {
+                controls,
                 catalog: Catalog::default(),
                 view: View::default(),
                 jobs,
@@ -95,7 +115,10 @@ fn run() -> Result<(), String> {
                 captured,
             };
             app.catalog.search(options.query);
-            if let Some(root) = options.root {
+            if let Some(root) = options
+                .root
+                .or_else(|| settings.selected_root.as_ref().map(PathBuf::from))
+            {
                 app.scan(root);
             }
             Ok(Box::new(app))
@@ -113,6 +136,7 @@ fn run() -> Result<(), String> {
 }
 
 struct NativeApp {
+    controls: Controls,
     catalog: Catalog,
     view: View,
     jobs: Jobs,
@@ -184,10 +208,24 @@ impl NativeApp {
 impl eframe::App for NativeApp {
     fn logic(&mut self, _ctx: &egui::Context, _frame: &mut eframe::Frame) {
         self.poll();
+        self.controls.poll(&self.catalog);
+        if let Some(root) = self
+            .controls
+            .refresh
+            .take()
+            .or_else(|| self.controls.roots_changed.take())
+        {
+            self.scan(root);
+        }
     }
 
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
         self.scrolling.apply(ui.ctx());
+        if self.controls.busy() && ui.input(|i| i.viewport().close_requested()) {
+            ui.ctx()
+                .send_viewport_cmd(egui::ViewportCommand::CancelClose);
+        }
+        self.controls.show(ui, &self.catalog);
         if let Some(root) = self.view.show(ui, &mut self.catalog) {
             self.scan(root);
         }

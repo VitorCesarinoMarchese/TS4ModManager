@@ -232,7 +232,7 @@ impl View {
             .show(ui, |ui| {
                 ui.horizontal_wrapped(|ui| {
                     ui.label(
-                        RichText::new("Read-only pilot")
+                        RichText::new("Local-first management")
                             .size(12.0)
                             .color(ui.visuals().weak_text_color()),
                     );

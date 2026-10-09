@@ -10,6 +10,7 @@ pub struct Options {
     pub size: [f32; 2],
     pub dark: bool,
     pub help: bool,
+    pub verify_workflows: bool,
 }
 
 impl Options {
@@ -24,8 +25,10 @@ impl Options {
         let mut size: [f32; 2] = [1200.0, 800.0];
         let mut dark = false;
         let mut help = false;
+        let mut verify_workflows = false;
         while let Some(arg) = args.next() {
             match arg.as_str() {
+                "--verify-workflows" => verify_workflows = true,
                 "--inspect" => inspect = true,
                 "--dark" => dark = true,
                 "--help" | "-h" => help = true,
@@ -76,6 +79,7 @@ impl Options {
             size,
             dark,
             help,
+            verify_workflows,
         })
     }
 }

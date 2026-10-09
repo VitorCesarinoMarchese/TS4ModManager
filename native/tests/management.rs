@@ -108,3 +108,14 @@ fn malformed_settings_remain_unchanged_and_errors_hide_secrets() {
     assert!(!error.contains("secret-fixture-key"));
     assert_eq!(std::fs::read(path).unwrap(), raw);
 }
+#[test]
+fn settings_save_rejects_invalid_in_memory_roots_before_touching_disk() {
+    let directory = tempfile::tempdir().unwrap();
+    let path = directory.path().join("new/settings.json");
+    let settings = Settings {
+        game_roots: vec!["relative".into()],
+        ..Default::default()
+    };
+    assert!(settings.save(&path).is_err());
+    assert!(!path.parent().unwrap().exists());
+}

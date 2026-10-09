@@ -4,5 +4,7 @@ pub mod preview;
 pub mod ui;
 pub mod worker;
 
-pub mod settings;
+pub mod controls;
 pub mod management;
+pub mod settings;
+pub mod workflows;

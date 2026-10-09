@@ -36,6 +36,26 @@ pub enum Action {
     Restore(String),
     Lookup(Option<String>),
 }
+impl Action {
+    pub fn label(&self) -> &str {
+        match self {
+            Self::ImportFolder { .. } => "Import folder",
+            Self::ImportZip { .. } => "Import ZIP",
+            Self::ReviewToggle { enabled: true } | Self::Toggle { enabled: true, .. } => "Enable",
+            Self::ReviewToggle { enabled: false } | Self::Toggle { enabled: false, .. } => {
+                "Disable"
+            }
+            Self::Migrate { .. } => "Manage external mod",
+            Self::Rename(_) => "Rename",
+            Self::ManualSource(_) | Self::Attach(_) => "Attach source",
+            Self::RemoveSource => "Remove source",
+            Self::Trash => "Move to trash",
+            Self::ListTrash => "Read trash",
+            Self::Restore(_) => "Restore",
+            Self::Lookup(_) => "Find source",
+        }
+    }
+}
 #[derive(Clone)]
 pub struct Job {
     pub identity: Identity,
