@@ -159,7 +159,7 @@ describe("app store bootstrap", () => {
     expect(store.getState().issues.at(-1)?.code).toBe("PATH_COLLISION");
   });
 
-  it("external toggle migrates first then toggles managed mod", async () => {
+  it("external toggle requires managing first without mutating files", async () => {
     const api = {
       detectGameInstances: vi.fn().mockResolvedValue([]),
       scanMods: vi.fn().mockResolvedValue([]),
@@ -193,10 +193,10 @@ describe("app store bootstrap", () => {
       "inst-1"
     );
 
-    expect(api.migrateExternalMod).toHaveBeenCalledWith("ext-1", "inst-1");
-    expect(api.dryRunToggle).toHaveBeenCalledWith("managed-123", true, "inst-1");
-    expect(api.applyToggle).toHaveBeenCalledWith("managed-123", true, "inst-1");
-    expect(store.getState().issues.at(-1)?.message).toBe("Migrated");
+    expect(api.migrateExternalMod).not.toHaveBeenCalled();
+    expect(api.dryRunToggle).not.toHaveBeenCalled();
+    expect(api.applyToggle).not.toHaveBeenCalled();
+    expect(store.getState().issues.at(-1)?.message).toContain("Manage this external mod");
   });
 
   it("skips manage all when no instance or no external mods", async () => {
@@ -267,7 +267,7 @@ describe("app store bootstrap", () => {
     const results = await store.getState().manageAllExternalMods();
 
     expect(results).toEqual([{ managedModId: "managed-1", issues: [] }]);
-    expect(api.scanMods).not.toHaveBeenCalled();
+    expect(api.scanMods).toHaveBeenCalledWith("inst-1");
     expect(store.getState().manageAllStatus).toBe("idle");
     expect(store.getState().issues.at(-1)?.message).toBe("copy failed");
   });

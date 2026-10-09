@@ -1,3 +1,4 @@
+import { toBackendErrorCode } from "../lib/error";
 import { createStore } from "zustand/vanilla";
 import type { DryRunResult, GameInstance, Issue, Mod, RestoreResult, RuntimeDiagnostics, SourceCandidate, SourceMetadata, TrashEntry } from "../lib/types";
 
@@ -115,6 +116,7 @@ export type AppState = {
   lastSuccess: string | null;
   lastDryRun: DryRunResult | null;
   scanStatus: "idle" | "scanning";
+  scanRevision: number;
   manageAllStatus: "idle" | "managing";
   manageAllProgress: ManageAllProgress | null;
   selectInstance: (id: string | null) => void;
@@ -123,7 +125,8 @@ export type AppState = {
   rescanSelected: () => Promise<void>;
   addIssue: (issue: Issue) => void;
   addCustomInstance: (path: string) => Promise<void>;
-  importArchive: (archivePath: string, name: string, slug?: string) => Promise<void>;
+  replaceGameRoots: (roots: string[], selectedRoot?: string) => Promise<boolean>;
+  importArchive: (archivePath: string, name: string, slug?: string) => Promise<boolean>;
   pickArchiveFile: () => Promise<string | null>;
   renameModDisplayName: (modId: string, displayName: string) => Promise<Mod | null>;
   attachSourceUrl: (modId: string, sourceUrl: string, providerId?: string, metadata?: SourceMetadata) => Promise<Mod | null>;
@@ -139,7 +142,7 @@ export type AppState = {
   openManagedModsFolder: () => Promise<void>;
   openManagerFolder: () => Promise<void>;
   getDiagnosticsReport: () => Promise<string | null>;
-  toggleMod: (mod: Mod, targetEnabled: boolean, instanceId: string) => Promise<DryRunResult>;
+  toggleMod: (mod: Mod, targetEnabled: boolean, instanceId: string, approve?: (dryRun: DryRunResult) => Promise<boolean>) => Promise<DryRunResult>;
 };
 
 const severityRank: Record<Issue["severity"], number> = {
@@ -174,17 +177,17 @@ function toIssue(error: unknown, fallbackId: string, fallbackMsg: string): Issue
     typeof error === "object" &&
     error !== null &&
     "message" in error &&
-    typeof (error as { message: unknown }).message === "string"
+    typeof error.message === "string"
   ) {
     const maybeCode =
-      "code" in error && typeof (error as { code: unknown }).code === "string"
-        ? ((error as { code: string }).code as Issue["code"])
+      "code" in error && typeof error.code === "string"
+        ? toBackendErrorCode(error.code)
         : undefined;
 
     return {
       id: `${fallbackId}-${Date.now()}`,
       severity: "error",
-      message: (error as { message: string }).message,
+      message: error.message,
       code: maybeCode
     };
   }
@@ -199,7 +202,34 @@ function toIssue(error: unknown, fallbackId: string, fallbackMsg: string): Issue
 export function createAppStore(apiOverrides: Partial<BackendApi> = {}) {
   const api: BackendApi = { ...defaultApi, ...apiOverrides };
 
-  return createStore<AppState>((set, get) => ({
+  let scanGeneration = 0;
+  let instanceGeneration = 0;
+  const metadataEdits = new Map<string, number>();
+  return createStore<AppState>((set, get) => {
+    const report = (error: unknown, id: string, message: string) => set((state) => ({ issues: mergeIssueList(state.issues, toIssue(error, id, message)) }));
+    const scan = async (id: string) => {
+      if (get().selectedInstanceId !== id) return;
+      const generation = ++scanGeneration;
+      set({ scanStatus: "scanning" });
+      const current = () => generation === scanGeneration && get().selectedInstanceId === id;
+      try {
+        const mods = await api.scanMods(id);
+        if (!current()) return;
+        set((state) => ({ mods, scanRevision: state.scanRevision + 1 }));
+        const orphans = await api.detectOrphanSymlinks(id);
+        if (!current()) return;
+        const orphanIssues: Issue[] = orphans.map((orphan, index) => ({
+          id: `orphan-${index}-${orphan.path}`, severity: "warning", message: `Orphan symlink: ${orphan.path}`,
+          code: "EXTERNAL_LINK", context: { target: orphan.target }
+        }));
+        set((state) => ({ issues: mergeIssues(state.issues.filter((issue) => !issue.id.startsWith("orphan-")), orphanIssues) }));
+      } catch (error) {
+        if (current()) report(error, "scan", "Scan failed");
+      } finally {
+        if (current()) set({ scanStatus: "idle" });
+      }
+    };
+    return ({
     instances: [],
     selectedInstanceId: null,
     mods: [],
@@ -208,62 +238,53 @@ export function createAppStore(apiOverrides: Partial<BackendApi> = {}) {
     lastSuccess: null,
     lastDryRun: null,
     scanStatus: "idle",
+    scanRevision: 0,
     manageAllStatus: "idle",
     manageAllProgress: null,
-    selectInstance: (id) => set({ selectedInstanceId: id }),
+    selectInstance: (id) => {
+      ++instanceGeneration;
+      ++scanGeneration;
+      set({ selectedInstanceId: id, mods: [], scanStatus: "idle" });
+    },
     loadInstances: async () => {
-      const instances = await api.detectGameInstances();
-      set({ instances });
+      try { set({ instances: await api.detectGameInstances() }); }
+      catch (error) { report(error, "detect-instances", "Game detection failed"); }
     },
     selectInstanceAndScan: async (id) => {
-      set({ scanStatus: "scanning" });
-      try {
-        const mods = await api.scanMods(id);
-        set({ selectedInstanceId: id, mods });
-      } catch (error) {
-        set((state) => ({
-          issues: mergeIssueList(state.issues, toIssue(error, "scan", "Scan failed"))
-        }));
-      } finally {
-        set({ scanStatus: "idle" });
-      }
+      get().selectInstance(id);
+      await scan(id);
     },
     rescanSelected: async () => {
       const id = get().selectedInstanceId;
-      if (!id) return;
-      set({ scanStatus: "scanning" });
-      try {
-        const mods = await api.scanMods(id);
-        set({ mods });
-
-        const orphans = await api.detectOrphanSymlinks(id);
-        if (orphans.length > 0) {
-          const orphanIssues = orphans.map((orphan, i) => ({
-            id: `orphan-${i}-${orphan.path}`,
-            severity: "warning" as const,
-            message: `Orphan symlink: ${orphan.path}`,
-            code: "EXTERNAL_LINK" as const,
-            context: { target: orphan.target }
-          }));
-          set((state) => ({ issues: mergeIssues(state.issues, orphanIssues) }));
-        }
-      } catch (error) {
-        set((state) => ({
-          issues: mergeIssueList(state.issues, toIssue(error, "scan", "Scan failed"))
-        }));
-      } finally {
-        set({ scanStatus: "idle" });
-      }
+      if (id) await scan(id);
     },
     addIssue: (issue) => set((state) => ({ issues: mergeIssueList(state.issues, issue) })),
     clearSuccess: () => set({ lastSuccess: null }),
     setSuccess: (message) => set({ lastSuccess: message }),
+    replaceGameRoots: async (roots, selectedRoot) => {
+      try {
+        const instances: GameInstance[] = [];
+        for (const path of roots) {
+          const validated = await api.validateCustomInstance(path);
+          const existing = get().instances.find((instance) => instance.path === path);
+          instances.push(existing ?? validated);
+        }
+        const selected = instances.find((instance) => instance.path === selectedRoot) ?? instances[0];
+        get().selectInstance(selected?.id ?? null);
+        set({ instances });
+        if (selected) await scan(selected.id);
+        return true;
+      } catch (error) {
+        report(error, "settings-roots", "Settings game roots could not be validated");
+        return false;
+      }
+    },
     addCustomInstance: async (path) => {
+      const generation = instanceGeneration;
       try {
         const instance = await api.validateCustomInstance(path);
         set((state) => ({ instances: [...state.instances, instance] }));
-        const mods = await api.scanMods(instance.id);
-        set({ selectedInstanceId: instance.id, mods });
+        if (generation === instanceGeneration) await get().selectInstanceAndScan(instance.id);
       } catch (error) {
         set((state) => ({
           issues: mergeIssueList(state.issues, toIssue(error, "custom-path", "Custom path invalid"))
@@ -317,11 +338,11 @@ export function createAppStore(apiOverrides: Partial<BackendApi> = {}) {
     },
     uninstallManagedMod: async (modId) => {
       const instanceId = get().selectedInstanceId;
-      if (!instanceId) return null;
+      if (!instanceId || get().mods.find((mod) => mod.id === modId)?.source === "external") return null;
       try {
         const result = await api.uninstallManagedMod(modId, instanceId);
         set((state) => ({
-          mods: state.mods.filter((mod) => mod.id !== modId),
+          mods: state.selectedInstanceId === instanceId ? state.mods.filter((mod) => mod.id !== modId) : state.mods,
           lastSuccess: `Moved ${modId} to trash`,
           issues: result.issues.length > 0 ? mergeIssues(state.issues, result.issues) : state.issues
         }));
@@ -348,9 +369,8 @@ export function createAppStore(apiOverrides: Partial<BackendApi> = {}) {
       if (!instanceId) return null;
       try {
         const result = await api.migrateExternalMod(modId, instanceId);
-        const mods = await api.scanMods(instanceId);
+        await scan(instanceId);
         set((state) => ({
-          mods,
           lastSuccess: `Managing ${modId}`,
           issues: result.issues.length > 0 ? mergeIssues(state.issues, result.issues) : state.issues
         }));
@@ -380,8 +400,7 @@ export function createAppStore(apiOverrides: Partial<BackendApi> = {}) {
             set((state) => ({ issues: mergeIssues(state.issues, result.issues) }));
           }
         }
-        const mods = await api.scanMods(instanceId);
-        set({ mods, lastSuccess: `Managing ${results.length} mod${results.length === 1 ? "" : "s"}` });
+        set({ lastSuccess: `Managing ${results.length} mod${results.length === 1 ? "" : "s"}` });
         return results;
       } catch (error) {
         set((state) => ({
@@ -389,6 +408,7 @@ export function createAppStore(apiOverrides: Partial<BackendApi> = {}) {
         }));
         return results;
       } finally {
+        await scan(instanceId);
         set({ manageAllStatus: "idle", manageAllProgress: null });
       }
     },
@@ -399,8 +419,7 @@ export function createAppStore(apiOverrides: Partial<BackendApi> = {}) {
         const result = await api.restoreTrashedMod(trashName, instanceId);
         const trashEntries = await api.listTrashEntries();
         set({ trashEntries, lastSuccess: `Restored ${trashName}` });
-        const mods = await api.scanMods(instanceId);
-        set({ mods });
+        await scan(instanceId);
         return result;
       } catch (error) {
         const issue = toIssue(error, "trash-restore", "Restore failed");
@@ -426,8 +445,13 @@ export function createAppStore(apiOverrides: Partial<BackendApi> = {}) {
       }
     },
     removeSourceUrl: async (modId) => {
+      const instanceId = get().selectedInstanceId;
+      const generation = instanceGeneration;
+      const edit = (metadataEdits.get(modId) ?? 0) + 1;
+      metadataEdits.set(modId, edit);
       try {
         const withoutSource = await api.removeSourceUrl(modId);
+        if (get().selectedInstanceId !== instanceId || generation !== instanceGeneration || metadataEdits.get(modId) !== edit) return null;
         let updated: Mod | null = null;
         set((state) => ({
           mods: state.mods.map((mod) => {
@@ -437,7 +461,9 @@ export function createAppStore(apiOverrides: Partial<BackendApi> = {}) {
               ...withoutSource,
               id: mod.id,
               name: withoutSource.name || mod.name,
-              files: withoutSource.files.length > 0 ? withoutSource.files : mod.files,
+              files: mod.files,
+              enabled: mod.enabled,
+              source: mod.source,
               sourceUrl: withoutSource.sourceUrl
             };
             return updated;
@@ -452,8 +478,13 @@ export function createAppStore(apiOverrides: Partial<BackendApi> = {}) {
       }
     },
     attachSourceUrl: async (modId, sourceUrl, providerId, metadata) => {
+      const instanceId = get().selectedInstanceId;
+      const generation = instanceGeneration;
+      const edit = (metadataEdits.get(modId) ?? 0) + 1;
+      metadataEdits.set(modId, edit);
       try {
         const withSource = await api.attachSourceUrl(modId, sourceUrl, providerId, metadata);
+        if (get().selectedInstanceId !== instanceId || generation !== instanceGeneration || metadataEdits.get(modId) !== edit) return null;
         let updated: Mod | null = null;
         set((state) => ({
           mods: state.mods.map((mod) => {
@@ -463,7 +494,9 @@ export function createAppStore(apiOverrides: Partial<BackendApi> = {}) {
               ...withSource,
               id: mod.id,
               name: withSource.name || mod.name,
-              files: withSource.files.length > 0 ? withSource.files : mod.files
+              files: mod.files,
+              enabled: mod.enabled,
+              source: mod.source
             };
             return updated;
           })
@@ -477,13 +510,18 @@ export function createAppStore(apiOverrides: Partial<BackendApi> = {}) {
       }
     },
     renameModDisplayName: async (modId, displayName) => {
+      const instanceId = get().selectedInstanceId;
+      const generation = instanceGeneration;
+      const edit = (metadataEdits.get(modId) ?? 0) + 1;
+      metadataEdits.set(modId, edit);
       try {
         const renamed = await api.renameModDisplayName(modId, displayName);
+        if (get().selectedInstanceId !== instanceId || generation !== instanceGeneration || metadataEdits.get(modId) !== edit) return null;
         let updated: Mod | null = null;
         set((state) => ({
           mods: state.mods.map((mod) => {
             if (mod.id !== modId) return mod;
-            updated = { ...mod, ...renamed, id: mod.id, name: renamed.name };
+            updated = { ...mod, ...renamed, id: mod.id, name: renamed.name, files: mod.files, enabled: mod.enabled, source: mod.source };
             return updated;
           })
         }));
@@ -501,10 +539,12 @@ export function createAppStore(apiOverrides: Partial<BackendApi> = {}) {
         set((state) => ({
           mods: [imported, ...state.mods.filter((mod) => mod.id !== imported.id)]
         }));
+        return true;
       } catch (error) {
         set((state) => ({
           issues: mergeIssueList(state.issues, toIssue(error, "import", "Import failed"))
         }));
+        return false;
       }
     },
     pickArchiveFile: async () => {
@@ -517,16 +557,14 @@ export function createAppStore(apiOverrides: Partial<BackendApi> = {}) {
         return null;
       }
     },
-    toggleMod: async (mod, targetEnabled, instanceId) => {
-      let effectiveModId = mod.id;
-
+    toggleMod: async (mod, targetEnabled, instanceId, approve) => {
+      try {
       if (mod.source === "external") {
-        const migration = await api.migrateExternalMod(mod.id, instanceId);
-        effectiveModId = migration.managedModId;
-        if (migration.issues.length > 0) {
-          set((state) => ({ issues: mergeIssues(state.issues, migration.issues) }));
-        }
+        const issue: Issue = { id: `external-toggle-${mod.id}`, severity: "warning", message: "Manage this external mod before toggling it.", code: "EXTERNAL_LINK" };
+        set((state) => ({ issues: mergeIssueList(state.issues, issue) }));
+        return { canApply: false, operations: [], issues: [issue] };
       }
+      const effectiveModId = mod.id;
 
       const dryRun = await api.dryRunToggle(effectiveModId, targetEnabled, instanceId);
       set({ lastDryRun: dryRun });
@@ -535,16 +573,22 @@ export function createAppStore(apiOverrides: Partial<BackendApi> = {}) {
         set((state) => ({ issues: mergeIssues(state.issues, dryRun.issues) }));
       }
 
-      if (!dryRun.canApply) {
-        return dryRun;
-      }
-
+      if (approve && !await approve(dryRun)) return dryRun;
+      if (!dryRun.canApply) return dryRun;
       const applied = await api.applyToggle(effectiveModId, targetEnabled, instanceId);
       if (applied.issues.length > 0) {
         set((state) => ({ issues: mergeIssues(state.issues, applied.issues) }));
       }
 
+      await scan(instanceId);
       return dryRun;
+      } catch (error) {
+        const issue = toIssue(error, "toggle", "Toggle failed");
+        set((state) => ({ issues: mergeIssueList(state.issues, issue) }));
+        await scan(instanceId);
+        return { canApply: false, operations: [], issues: [issue] };
+      }
     }
-  }));
+  });
+  });
 }

@@ -2,7 +2,7 @@ import { Archive, FolderOpen, UploadSimple } from "@phosphor-icons/react";
 import { useEffect, useState } from "react";
 
 type ImportPanelProps = {
-  onImport: (archivePath: string, name: string, slug?: string) => void | Promise<void>;
+  onImport: (archivePath: string, name: string, slug?: string) => void | boolean | Promise<void | boolean>;
   onChooseArchive?: () => Promise<string | null>;
 };
 
