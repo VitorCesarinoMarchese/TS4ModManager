@@ -1,5 +1,5 @@
 import { ArrowsClockwise, ClipboardText, FolderOpen, FolderPlus, Plus } from "@phosphor-icons/react";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { DARK_THEME, DEFAULT_THEME, parseThemeJson, serializeTheme, type AppTheme } from "../lib/theme";
 import { parseSettingsTransfer, type SettingsTransfer, type TransferTheme } from "../lib/settingsTransfer";
 import type { GameInstance, TrashEntry } from "../lib/types";
@@ -85,6 +85,8 @@ export function SettingsPage({
   onExportSettings,
   onImportSettings
 }: SettingsPageProps) {
+  const fileReadGeneration = useRef(0);
+  useEffect(() => () => { ++fileReadGeneration.current; }, []);
   const [includeApiKey, setIncludeApiKey] = useState(false);
   const [fallback, setFallback] = useState<TransferTheme | undefined>(undefined);
   const [settingsReview, setSettingsReview] = useState<SettingsTransfer | null>(null);
@@ -342,6 +344,8 @@ export function SettingsPage({
         }}>Export settings file</button>
         <label className="grid gap-2 text-sm">Import settings file
           <input type="file" accept=".json,application/json" disabled={settingsPending || !onImportSettings} onChange={(event) => {
+            const request = ++fileReadGeneration.current;
+            const current = () => fileReadGeneration.current === request;
             const file = event.target.files?.[0];
             event.target.value = "";
             setSettingsReview(null);
@@ -350,12 +354,13 @@ export function SettingsPage({
             if (file.size > 1024 * 1024) { setSettingsError("Choose a settings file smaller than 1 MiB."); return; }
             const reader = new FileReader();
             reader.onload = () => {
+              if (!current()) return;
               try {
                 if (typeof reader.result !== "string") throw new Error("Could not read the settings file.");
                 setSettingsReview(parseSettingsTransfer(reader.result));
               } catch (error) { setSettingsError(error instanceof Error ? error.message : "Invalid settings file."); }
             };
-            reader.onerror = () => setSettingsError("Could not read the settings file. Try again.");
+            reader.onerror = () => { if (current()) setSettingsError("Could not read the settings file. Try again."); };
             reader.readAsText(file);
           }} />
         </label>

@@ -49,3 +49,14 @@ it("writes settings to a local downloadable JSON file", async () => {
     expect(JSON.parse(await read)).toEqual({ version: 1, theme: "dark", gameRoots: ["/game"] });
   } finally { vi.useRealTimers(); vi.unstubAllGlobals(); click.mockRestore(); }
 });
+
+it.each(["relative/game", "../game", "C:relative", "\\single-root"])("rejects relative game roots without echoing them", (root) => {
+  const json = JSON.stringify({ version: 1, theme: "light", gameRoots: [root] });
+  expect(() => parseSettingsTransfer(json)).toThrow("absolute path");
+  try { parseSettingsTransfer(json); } catch (error) {
+    expect(error instanceof Error && error.message.includes(root)).toBe(false);
+  }
+});
+it.each(["/game", "C:\\Games\\Sims 4", "D:/Games/Sims 4", "\\\\server\\share\\Sims 4"])("accepts absolute game roots", (root) => {
+  expect(parseSettingsTransfer(JSON.stringify({ version: 1, theme: "light", gameRoots: [root] })).gameRoots).toEqual([root]);
+});

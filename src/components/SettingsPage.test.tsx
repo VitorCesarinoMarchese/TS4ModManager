@@ -1,5 +1,6 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
+import * as settingsTransfer from "../lib/settingsTransfer";
 import { DEFAULT_THEME } from "../lib/theme";
 import { SettingsPage } from "./SettingsPage";
 
@@ -292,4 +293,41 @@ it("reviews imported settings without applying or revealing the key until confir
   expect(screen.queryByText("local-test-secret")).not.toBeInTheDocument();
   fireEvent.click(screen.getByRole("button", { name: "Confirm settings import" }));
   await waitFor(() => expect(onImportSettings).toHaveBeenCalledWith(expect.objectContaining({ selectedRoot: "/new" })));
+});
+
+it.each(["success", "error", "unmount"])("ignores a stale settings-file %s callback", (outcome) => {
+  const readers: FileReader[] = [];
+  const OriginalReader = FileReader;
+  const parse = vi.spyOn(settingsTransfer, "parseSettingsTransfer");
+  class ControlledReader extends OriginalReader {
+    override readAsText() { readers.push(this); }
+  }
+  vi.stubGlobal("FileReader", ControlledReader);
+  const { unmount } = render(<SettingsPage instances={[]} selectedInstanceId={null} onSelectInstance={() => {}} onRescan={() => {}} onAddCustomPath={() => {}} onImportSettings={vi.fn().mockResolvedValue(true)} />);
+  try {
+    const input = screen.getByLabelText("Import settings file");
+    const choose = (name: string) => fireEvent.change(input, { target: { files: [new File(["{}"], name)] } });
+    const complete = (reader: FileReader, theme: string) => {
+      Object.defineProperty(reader, "result", { value: JSON.stringify({ version: 1, theme, gameRoots: [] }), configurable: true });
+      act(() => reader.dispatchEvent(new ProgressEvent("load")));
+    };
+    choose("old.json");
+    choose("new.json");
+    complete(readers[1], "dark");
+    expect(screen.getByText("Theme: dark")).toBeInTheDocument();
+    if (outcome === "success") {
+      complete(readers[0], "light");
+      expect(screen.getByText("Theme: dark")).toBeInTheDocument();
+    } else if (outcome === "error") {
+      act(() => readers[0].dispatchEvent(new ProgressEvent("error")));
+      expect(screen.queryByText("Could not read the settings file. Try again.")).not.toBeInTheDocument();
+    } else {
+      choose("unmounted.json");
+      unmount();
+      const callsBeforeUnmountedCompletion = parse.mock.calls.length;
+      complete(readers[2], "system");
+      act(() => readers[2].dispatchEvent(new ProgressEvent("error")));
+      expect(parse).toHaveBeenCalledTimes(callsBeforeUnmountedCompletion);
+    }
+  } finally { unmount(); parse.mockRestore(); vi.unstubAllGlobals(); }
 });

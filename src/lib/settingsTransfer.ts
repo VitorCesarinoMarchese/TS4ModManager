@@ -19,6 +19,8 @@ export function parseSettingsTransfer(json: string): SettingsTransfer {
   const gameRoots: string[] = [];
   for (const root of value.gameRoots) {
     if (typeof root !== "string" || !root.trim() || root !== root.trim() || root.includes("\0")) throw new Error("Each game root must be a nonempty path.");
+    const absolute = root.startsWith("/") || /^[A-Za-z]:[\\/]/.test(root) || /^\\\\[^\\]+\\[^\\]+/.test(root);
+    if (!absolute) throw new Error("Each game root must use an absolute path.");
     if (!gameRoots.includes(root)) gameRoots.push(root);
   }
   const result: SettingsTransfer = { version: 1, theme: value.theme, gameRoots };
