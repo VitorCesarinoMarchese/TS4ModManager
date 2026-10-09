@@ -179,6 +179,7 @@ pub fn apply_toggle(
     mod_id: &str,
     target_enabled: bool,
 ) -> Result<ApplyResult, ManagerError> {
+    let _guard = crate::operation::acquire(managed_root)?;
     let dry = dry_run_toggle(managed_root, game_mods_dir, mod_id, target_enabled)?;
 
     if !dry.can_apply {
@@ -188,7 +189,10 @@ pub fn apply_toggle(
         });
     }
 
-    let directory = fs_scope::Directory::open(game_mods_dir)?;
+    let mut transaction = crate::operation::Transaction::new(
+        managed_root,
+        if target_enabled { "enable" } else { "disable" },
+    )?;
     if target_enabled {
         let mut links: Vec<String> = vec![];
         for op in &dry.operations {
@@ -198,23 +202,21 @@ pub fn apply_toggle(
 
             let rel = PathBuf::from(&op.path);
             let src = link_ownership::target(managed_root, mod_id, &op.path)?;
-            if let Err(error) = directory.symlink(&rel, &src) {
-                for previous in &links {
-                    let target = link_ownership::target(managed_root, mod_id, previous)?;
-                    directory.unlink_owned(Path::new(previous), &target)?;
-                }
+            if let Err(error) = transaction.create_link(game_mods_dir, &rel, &src) {
+                transaction.rollback()?;
                 return Err(error);
             }
             links.push(rel.to_string_lossy().replace('\\', "/"));
         }
 
-        if let Err(error) =
-            link_ownership::write(managed_root, mod_id, game_mods_dir, links.clone())
-        {
-            for previous in &links {
-                let target = link_ownership::target(managed_root, mod_id, previous)?;
-                directory.unlink_owned(Path::new(previous), &target)?;
-            }
+        if let Err(error) = link_ownership::write_transactional(
+            managed_root,
+            mod_id,
+            game_mods_dir,
+            links.clone(),
+            &mut transaction,
+        ) {
+            transaction.rollback()?;
             return Err(error);
         }
     } else {
@@ -231,7 +233,12 @@ pub fn apply_toggle(
                     "Link target changed",
                 ));
             }
-            directory.unlink_owned(Path::new(&op.path), &raw_target)?;
+            if let Err(error) =
+                transaction.remove_link(game_mods_dir, Path::new(&op.path), &raw_target)
+            {
+                transaction.rollback()?;
+                return Err(error);
+            }
         }
 
         let record = link_ownership::read(managed_root, mod_id, game_mods_dir)?;
@@ -242,10 +249,20 @@ pub fn apply_toggle(
             .filter(|rel| fs_scope::exists(&game_mods_dir.join(rel)))
             .collect();
         if is_instance {
-            link_ownership::write(managed_root, mod_id, game_mods_dir, unresolved)?;
+            if let Err(error) = link_ownership::write_transactional(
+                managed_root,
+                mod_id,
+                game_mods_dir,
+                unresolved,
+                &mut transaction,
+            ) {
+                transaction.rollback()?;
+                return Err(error);
+            }
         }
     }
 
+    transaction.commit()?;
     Ok(ApplyResult {
         applied: true,
         issues: dry.issues,

@@ -5,9 +5,10 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use crate::error::{ErrorCode, ManagerError};
-use crate::managed_storage::{create_managed_mod, ImportRequest};
+use crate::managed_storage::{create_managed_mod_transaction, ImportRequest};
 use crate::mod_scan::{scan_mods, ModSource};
 use crate::toggle::IssueEvent;
+use crate::{fs_scope, link_ownership, operation};
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
@@ -21,6 +22,8 @@ pub fn migrate_external_mod(
     game_mods_dir: &Path,
     external_mod_key: &str,
 ) -> Result<MigrateResult, ManagerError> {
+    let _guard = operation::acquire(managed_root)?;
+    fs_scope::component(external_mod_key)?;
     let scanned = scan_mods(game_mods_dir, managed_root);
     let external = scanned
         .into_iter()
@@ -42,30 +45,38 @@ pub fn migrate_external_mod(
     let staging = managed_root
         .join("tmp")
         .join(format!("migrate-{}", Uuid::new_v4()));
-    fs::create_dir_all(&staging).map_err(|e| {
-        ManagerError::new(
-            ErrorCode::IoError,
-            format!("Create staging dir failed {}: {e}", staging.display()),
-        )
-    })?;
+    fs_scope::create_dir_all(&staging)?;
 
-    let copy_result = copy_external_contents(game_mods_dir, &staging, &external.files);
-    if let Err(err) = copy_result {
-        let _ = fs::remove_dir_all(&staging);
-        return Err(err);
-    }
+    copy_external_contents(game_mods_dir, &staging, &external.files)?;
 
-    let imported = create_managed_mod(
-        managed_root,
-        ImportRequest {
-            name: external.name,
-            slug: None,
-            source_dir: staging.clone(),
-        },
-    )?;
-
-    let _ = fs::remove_dir_all(&staging);
-    replace_live_files_with_managed_links(game_mods_dir, managed_root, &imported.mod_id, &external.files)?;
+    let mut transaction = operation::Transaction::new(managed_root, "external_migration")?;
+    let result = (|| {
+        let imported = create_managed_mod_transaction(
+            managed_root,
+            ImportRequest {
+                name: external.name,
+                slug: None,
+                source_dir: staging.clone(),
+            },
+            &mut transaction,
+        )?;
+        replace_live_files_with_managed_links(
+            game_mods_dir,
+            managed_root,
+            &imported.mod_id,
+            &external.files,
+            &mut transaction,
+        )?;
+        Ok(imported)
+    })();
+    let imported = match result {
+        Ok(imported) => imported,
+        Err(error) => {
+            transaction.rollback()?;
+            return Err(error);
+        }
+    };
+    transaction.commit()?;
 
     Ok(MigrateResult {
         managed_mod_id: imported.mod_id,
@@ -83,32 +94,44 @@ fn replace_live_files_with_managed_links(
     managed_root: &Path,
     mod_id: &str,
     files: &[String],
+    transaction: &mut operation::Transaction,
 ) -> Result<(), ManagerError> {
-    let links_path = managed_root.join("mods").join(mod_id).join("links.json");
-    let content = serde_json::json!({ "version": 1, "mod_id": mod_id, "links": files }).to_string();
-    fs::write(&links_path, content).map_err(|e| {
-        ManagerError::new(ErrorCode::IoError, format!("Write links sidecar failed {}: {e}", links_path.display()))
-    })?;
-
-    for rel in files {
-        let live = game_mods_dir.join(rel);
-        let managed_file = managed_root.join("mods").join(mod_id).join("files").join(rel);
-        if let Some(parent) = live.parent() {
-            fs::create_dir_all(parent).map_err(|e| ManagerError::new(ErrorCode::IoError, format!("Create link parent failed: {e}")))?;
+    let instance = fs::canonicalize(game_mods_dir).map_err(fs_scope::io_error)?;
+    let backup = instance
+        .parent()
+        .ok_or_else(|| ManagerError::new(ErrorCode::InvalidPath, "Mods root has no parent"))?
+        .join(format!(".ts4-originals-{}", Uuid::new_v4()));
+    // Backups on the game filesystem preserve the original symlink object through rename.
+    fs_scope::create_dir_all(&backup)?;
+    let result = (|| {
+        for rel in files {
+            fs_scope::ensure_no_symlink_parents(&instance, Path::new(rel))?;
+            let live = instance.join(rel);
+            let preserved = backup.join(rel);
+            fs_scope::create_dir_all(preserved.parent().unwrap())?;
+            transaction.move_path(&live, &preserved)?;
+            let target = link_ownership::target(managed_root, mod_id, rel)?;
+            transaction.create_link(&instance, Path::new(rel), &target)?;
         }
-        let meta = fs::symlink_metadata(&live).map_err(|e| ManagerError::new(ErrorCode::IoError, format!("Live file metadata failed {}: {e}", live.display())))?;
-        if meta.file_type().is_symlink() || meta.is_file() {
-            fs::remove_file(&live).map_err(|e| ManagerError::new(ErrorCode::IoError, format!("Remove live file failed {}: {e}", live.display())))?;
-        } else {
-            return Err(ManagerError::new(ErrorCode::InvalidPath, format!("Cannot replace non-file path: {}", live.display())));
-        }
-        #[cfg(unix)]
-        std::os::unix::fs::symlink(&managed_file, &live).map_err(|e| {
-            ManagerError::new(ErrorCode::IoError, format!("Create managed symlink failed {}: {e}", live.display()))
-        })?;
-    }
-
-    Ok(())
+        link_ownership::write_transactional(
+            managed_root,
+            mod_id,
+            &instance,
+            files.to_vec(),
+            transaction,
+        )?;
+        // An index records where originals remain, without copying or retiring them.
+        fs_scope::create_dir_all(&managed_root.join("backups"))?;
+        transaction.write_file(
+            &managed_root.join("backups").join(format!("{mod_id}.json")),
+            &serde_json::to_vec(
+                &serde_json::json!({"version":1,"modId":mod_id,"originals":backup}),
+            )
+            .map_err(|e| ManagerError::new(ErrorCode::InternalError, e.to_string()))?,
+        )?;
+        Ok(())
+    })();
+    result
 }
 
 fn copy_external_contents(
@@ -117,25 +140,19 @@ fn copy_external_contents(
     files: &[String],
 ) -> Result<(), ManagerError> {
     for rel in files {
+        fs_scope::ensure_no_symlink_parents(game_mods_dir, Path::new(rel))?;
         let in_game = game_mods_dir.join(rel);
         let target = resolve_source_file(&in_game)?;
         let out = staging.join(rel);
 
         if let Some(parent) = out.parent() {
-            fs::create_dir_all(parent).map_err(|e| {
-                ManagerError::new(
-                    ErrorCode::IoError,
-                    format!("Create staging parent failed {}: {e}", parent.display()),
-                )
-            })?;
+            fs_scope::create_dir_all(parent)?;
         }
 
-        fs::copy(&target, &out).map_err(|e| {
-            ManagerError::new(
-                ErrorCode::IoError,
-                format!("Copy failed {} -> {}: {e}", target.display(), out.display()),
-            )
-        })?;
+        let mut input = fs::File::open(&target).map_err(fs_scope::io_error)?;
+        let mut output = fs_scope::create_file(staging, Path::new(rel))?;
+        std::io::copy(&mut input, &mut output).map_err(fs_scope::io_error)?;
+        output.sync_all().map_err(fs_scope::io_error)?;
     }
 
     Ok(())
@@ -241,7 +258,12 @@ mod tests {
         let migrated = migrate_external_mod(&managed, &game_mods, "SkinPack").expect("migrate");
 
         let target = fs::read_link(&link).expect("still symlink");
-        assert!(target.starts_with(managed.join("mods").join(migrated.managed_mod_id).join("files")));
+        assert!(target.starts_with(
+            managed
+                .join("mods")
+                .join(migrated.managed_mod_id)
+                .join("files")
+        ));
     }
 
     #[test]
@@ -256,7 +278,8 @@ mod tests {
         fs::write(&managed_file, b"PKG").expect("pkg");
 
         #[cfg(unix)]
-        std::os::unix::fs::symlink(&managed_file, game_mods.join("Local_main.package")).expect("link");
+        std::os::unix::fs::symlink(&managed_file, game_mods.join("Local_main.package"))
+            .expect("link");
 
         let err = migrate_external_mod(&managed, &game_mods, "Local").expect_err("must fail");
         assert_eq!(err.code.as_str(), "EXTERNAL_LINK");

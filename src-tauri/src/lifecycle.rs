@@ -1,6 +1,5 @@
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::time::{SystemTime, UNIX_EPOCH};
 
 use serde::{Deserialize, Serialize};
 
@@ -30,96 +29,101 @@ pub struct RestoreResult {
     pub restored_path: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "camelCase")]
-struct LinkSidecar {
-    version: u32,
-    mod_id: String,
-    links: Vec<String>,
-}
-
 pub fn uninstall_managed_mod(
     managed_root: &Path,
     game_mods_dir: &Path,
     trash_files_dir: &Path,
     mod_id: &str,
 ) -> Result<UninstallResult, ManagerError> {
+    let _guard = crate::operation::acquire(managed_root)?;
+    crate::managed_storage::read_managed_mod(managed_root, mod_id)?;
     let mod_root = managed_root.join("mods").join(mod_id);
-    let has_managed_meta = mod_root.is_dir();
-    let installed_targets = installed_group_targets(game_mods_dir, mod_id)?;
-    if !has_managed_meta && installed_targets.is_empty() {
-        return Err(ManagerError::new(
-            ErrorCode::NotFound,
-            format!("Mod not found in managed storage or game Mods folder: {mod_id}"),
-        ));
+    let mut instances = vec![];
+    let records = mod_root.join("links");
+    if crate::fs_scope::exists(&records) {
+        crate::fs_scope::ensure_no_symlink_parents(
+            managed_root,
+            &PathBuf::from("mods").join(mod_id).join("links/entry"),
+        )?;
+        for entry in fs::read_dir(&records).map_err(crate::fs_scope::io_error)? {
+            let path = entry.map_err(crate::fs_scope::io_error)?.path();
+            if path.extension().and_then(|v| v.to_str()) != Some("json") {
+                continue;
+            }
+            if fs::symlink_metadata(&path)
+                .map_err(crate::fs_scope::io_error)?
+                .file_type()
+                .is_symlink()
+            {
+                return Err(ManagerError::new(
+                    ErrorCode::InvalidPath,
+                    "Ownership record is a symlink",
+                ));
+            }
+            let record: crate::link_ownership::LinkRecord =
+                serde_json::from_slice(&fs::read(&path).map_err(crate::fs_scope::io_error)?)
+                    .map_err(|e| ManagerError::new(ErrorCode::InvalidPath, e.to_string()))?;
+            if record.version != 2 || record.mod_id != mod_id {
+                return Err(ManagerError::new(
+                    ErrorCode::InvalidPath,
+                    "Ownership record mismatch",
+                ));
+            }
+            let instance = record.instance_root.ok_or_else(|| {
+                ManagerError::new(ErrorCode::InvalidPath, "Missing ownership instance")
+            })?;
+            instances.push(instance);
+        }
     }
-
-    if !game_mods_dir.is_dir() {
-        return Err(ManagerError::new(
-            ErrorCode::InvalidPath,
-            format!("Game Mods dir invalid: {}", game_mods_dir.display()),
-        ));
+    if mod_root.join("links.json").is_file() && !instances.contains(&game_mods_dir.to_path_buf()) {
+        instances.push(game_mods_dir.to_path_buf());
     }
-
-    let issues = if has_managed_meta {
-        remove_manager_links(managed_root, game_mods_dir, mod_id)?
-    } else {
-        vec![]
-    };
-    fs::create_dir_all(trash_files_dir).map_err(|e| {
-        ManagerError::new(
-            ErrorCode::IoError,
-            format!("Trash dir create failed {}: {e}", trash_files_dir.display()),
-        )
-    })?;
-
-    let trashed_name = format!("{}-{}", mod_id, unix_millis());
+    let mut issues = vec![];
+    let mut removals = vec![];
+    for instance in instances {
+        if !instance.is_dir() {
+            issues.push(issue_for_skipped_link(
+                &instance.to_string_lossy(),
+                "Instance unavailable",
+            ));
+            continue;
+        }
+        let record = crate::link_ownership::read(managed_root, mod_id, &instance)?;
+        for rel in record.links {
+            if !crate::fs_scope::exists(&instance.join(&rel)) {
+                continue;
+            }
+            if crate::link_ownership::owned(managed_root, mod_id, &instance, &rel)? {
+                let target =
+                    fs::read_link(instance.join(&rel)).map_err(crate::fs_scope::io_error)?;
+                removals.push((instance.clone(), rel, target));
+            } else {
+                issues.push(issue_for_skipped_link(&rel, "Target replaced"));
+            }
+        }
+    }
+    crate::fs_scope::create_dir_all(trash_files_dir)?;
+    crate::fs_scope::Directory::open(trash_files_dir)?;
+    let trashed_name = format!("{}-{}", mod_id, uuid::Uuid::new_v4());
     let trashed = trash_files_dir.join(&trashed_name);
-    if !installed_targets.is_empty() {
-        fs::create_dir_all(&trashed).map_err(|e| {
-            ManagerError::new(
-                ErrorCode::IoError,
-                format!("Trash item dir create failed {}: {e}", trashed.display()),
-            )
-        })?;
-        for target in &installed_targets {
-            let name = target
-                .file_name()
-                .ok_or_else(|| ManagerError::new(ErrorCode::InvalidPath, "Installed mod path has no file name"))?;
-            fs::rename(&target, trashed.join(name)).map_err(|e| {
-                ManagerError::new(
-                    ErrorCode::IoError,
-                    format!("Move installed mod to trash failed {}: {e}", target.display()),
-                )
-            })?;
+    validate_trashinfo_scope(trash_files_dir, &trashed_name)?;
+    let mut transaction = crate::operation::Transaction::new(managed_root, "trash")?;
+    let result = (|| {
+        for (instance, rel, target) in &removals {
+            transaction.remove_link(instance, Path::new(rel), target)?;
         }
-        if has_managed_meta {
-            fs::rename(&mod_root, trashed.join("metadata")).map_err(|e| {
-                ManagerError::new(
-                    ErrorCode::IoError,
-                    format!("Move metadata to trash failed {}: {e}", mod_root.display()),
-                )
-            })?;
-        }
-    } else {
-        fs::rename(&mod_root, &trashed).map_err(|e| {
-            ManagerError::new(
-                ErrorCode::IoError,
-                format!("Move to trash failed {} -> {}: {e}", mod_root.display(), trashed.display()),
-            )
-        })?;
+        transaction.move_path(&mod_root, &trashed)?;
+        write_trashinfo(trash_files_dir, &trashed_name, &mod_root, &mut transaction)?;
+        Ok(())
+    })();
+    if let Err(error) = result {
+        transaction.rollback()?;
+        return Err(error);
     }
-
-    let original_path = if !installed_targets.is_empty() {
-        game_mods_dir.join(mod_id)
-    } else {
-        mod_root.clone()
-    };
-    write_trashinfo(trash_files_dir, &trashed_name, &original_path)?;
-
+    transaction.commit()?;
     Ok(UninstallResult {
-        mod_id: mod_id.to_string(),
-        trashed_path: trashed.to_string_lossy().to_string(),
+        mod_id: mod_id.into(),
+        trashed_path: trashed.to_string_lossy().into(),
         issues,
     })
 }
@@ -130,11 +134,19 @@ pub fn list_trash_entries(trash_files_dir: &Path) -> Result<Vec<TrashEntry>, Man
     }
 
     let mut entries = fs::read_dir(trash_files_dir)
-        .map_err(|e| ManagerError::new(ErrorCode::IoError, format!("Read trash failed {}: {e}", trash_files_dir.display())))?
+        .map_err(|e| {
+            ManagerError::new(
+                ErrorCode::IoError,
+                format!("Read trash failed {}: {e}", trash_files_dir.display()),
+            )
+        })?
         .flatten()
         .filter_map(|entry| {
             let path = entry.path();
             let name = path.file_name()?.to_string_lossy().to_string();
+            if name.starts_with(".ts4-") {
+                return None;
+            }
             let info = read_trashinfo(trash_files_dir, &name);
             if !is_mod_trash_entry(trash_files_dir, &name, &path, info.as_ref()) {
                 return None;
@@ -157,81 +169,153 @@ pub fn restore_trashed_mod(
     trash_files_dir: &Path,
     trash_name: &str,
 ) -> Result<RestoreResult, ManagerError> {
-    if trash_name.contains('/') || trash_name.contains('\\') || trash_name == "." || trash_name == ".." {
-        return Err(ManagerError::new(ErrorCode::InvalidPath, "Invalid trash entry name"));
-    }
-
+    let _guard = crate::operation::acquire(managed_root)?;
+    crate::fs_scope::component(trash_name)?;
+    crate::fs_scope::Directory::open(trash_files_dir)?;
     let entry = trash_files_dir.join(trash_name);
-    if !entry.exists() {
-        return Err(ManagerError::new(ErrorCode::NotFound, format!("Trash entry not found: {}", entry.display())));
-    }
-
-    fs::create_dir_all(game_mods_dir).map_err(|e| {
-        ManagerError::new(ErrorCode::IoError, format!("Create game Mods dir failed {}: {e}", game_mods_dir.display()))
+    validate_trashinfo_scope(trash_files_dir, trash_name)?;
+    let info = read_trashinfo(trash_files_dir, trash_name);
+    let kind = fs::symlink_metadata(&entry).map_err(|e| {
+        ManagerError::new(
+            if e.kind() == std::io::ErrorKind::NotFound {
+                ErrorCode::NotFound
+            } else {
+                ErrorCode::IoError
+            },
+            e.to_string(),
+        )
     })?;
-
-    let restored_path = if entry.join("metadata").is_dir() {
-        let mut last = game_mods_dir.to_path_buf();
-        for child in fs::read_dir(&entry).map_err(|e| ManagerError::new(ErrorCode::IoError, format!("Read trash entry failed: {e}")))?.flatten() {
-            let path = child.path();
-            let Some(name) = path.file_name() else { continue; };
-            if name == "metadata" { continue; }
-            let dst = game_mods_dir.join(name);
-            if dst.exists() {
-                return Err(ManagerError::new(ErrorCode::PathCollision, format!("Restore target exists: {}", dst.display())));
-            }
-            fs::rename(&path, &dst).map_err(|e| ManagerError::new(ErrorCode::IoError, format!("Restore failed {}: {e}", dst.display())))?;
-            last = dst;
-        }
-        last
-    } else if entry.join("meta.json").is_file() {
-        let meta_raw = fs::read_to_string(entry.join("meta.json")).unwrap_or_default();
-        let mod_id = serde_json::from_str::<serde_json::Value>(&meta_raw)
-            .ok()
-            .and_then(|value| value.get("modId").and_then(|id| id.as_str()).map(ToString::to_string))
-            .unwrap_or_else(|| trash_name.rsplit_once('-').map(|(name, _)| name.to_string()).unwrap_or_else(|| trash_name.to_string()));
-        let dst = managed_root.join("mods").join(mod_id);
-        if dst.exists() {
-            return Err(ManagerError::new(ErrorCode::PathCollision, format!("Restore target exists: {}", dst.display())));
-        }
-        if let Some(parent) = dst.parent() {
-            fs::create_dir_all(parent).map_err(|e| ManagerError::new(ErrorCode::IoError, format!("Create restore parent failed: {e}")))?;
-        }
-        fs::rename(&entry, &dst).map_err(|e| ManagerError::new(ErrorCode::IoError, format!("Restore failed {}: {e}", dst.display())))?;
-        dst
-    } else {
-        let mut last = game_mods_dir.to_path_buf();
-        if entry.is_dir() {
-            for child in fs::read_dir(&entry).map_err(|e| ManagerError::new(ErrorCode::IoError, format!("Read trash entry failed: {e}")))?.flatten() {
-                let path = child.path();
-                let Some(name) = path.file_name() else { continue; };
-                let dst = game_mods_dir.join(name);
-                if dst.exists() {
-                    return Err(ManagerError::new(ErrorCode::PathCollision, format!("Restore target exists: {}", dst.display())));
-                }
-                fs::rename(&path, &dst).map_err(|e| ManagerError::new(ErrorCode::IoError, format!("Restore failed {}: {e}", dst.display())))?;
-                last = dst;
-            }
-            last
-        } else {
-            let dst = game_mods_dir.join(trash_name.rsplit_once('-').map(|(name, _)| name).unwrap_or(trash_name));
-            if dst.exists() {
-                return Err(ManagerError::new(ErrorCode::PathCollision, format!("Restore target exists: {}", dst.display())));
-            }
-            fs::rename(&entry, &dst).map_err(|e| ManagerError::new(ErrorCode::IoError, format!("Restore failed {}: {e}", dst.display())))?;
-            dst
-        }
-    };
-
-    let info = trash_files_dir
-        .parent()
-        .map(|root| root.join("info").join(format!("{trash_name}.trashinfo")));
-    if let Some(info) = info {
-        let _ = fs::remove_file(info);
+    if !is_mod_trash_entry(trash_files_dir, trash_name, &entry, info.as_ref()) {
+        return Err(ManagerError::new(
+            ErrorCode::InvalidPath,
+            "Trash entry does not contain mod data",
+        ));
     }
-    let _ = fs::remove_dir(&entry);
-
-    Ok(RestoreResult { restored_path: restored_path.to_string_lossy().to_string() })
+    let mut moves: Vec<(PathBuf, PathBuf)> = vec![];
+    let metadata_destination = |bundle: &Path| -> Result<PathBuf, ManagerError> {
+        let bundle_kind = fs::symlink_metadata(bundle).map_err(crate::fs_scope::io_error)?;
+        if !bundle_kind.is_dir() || bundle_kind.file_type().is_symlink() {
+            return Err(ManagerError::new(
+                ErrorCode::InvalidPath,
+                "Managed restore bundle must be a real directory",
+            ));
+        }
+        let path = bundle.join("meta.json");
+        if fs::symlink_metadata(&path)
+            .map_err(crate::fs_scope::io_error)?
+            .file_type()
+            .is_symlink()
+        {
+            return Err(ManagerError::new(
+                ErrorCode::InvalidPath,
+                "Symlink metadata",
+            ));
+        }
+        let metadata: crate::managed_storage::ModMetadata =
+            serde_json::from_slice(&fs::read(path).map_err(crate::fs_scope::io_error)?)
+                .map_err(|e| ManagerError::new(ErrorCode::InvalidPath, e.to_string()))?;
+        crate::fs_scope::component(&metadata.mod_id)?;
+        if metadata.version != 1 {
+            return Err(ManagerError::new(
+                ErrorCode::InvalidPath,
+                "Unsupported metadata version",
+            ));
+        }
+        for rel in &metadata.files {
+            crate::fs_scope::relative(Path::new(rel))?;
+        }
+        Ok(managed_root.join("mods").join(metadata.mod_id))
+    };
+    if kind.is_dir() && entry.join("meta.json").is_file() {
+        moves.push((entry.clone(), metadata_destination(&entry)?));
+    } else if kind.is_dir() {
+        for child in fs::read_dir(&entry).map_err(crate::fs_scope::io_error)? {
+            let child = child.map_err(crate::fs_scope::io_error)?;
+            let source = child.path();
+            let destination = if child.file_name() == "metadata" {
+                metadata_destination(&source)?
+            } else {
+                game_mods_dir.join(child.file_name())
+            };
+            moves.push((source, destination));
+        }
+    } else {
+        let name = info
+            .as_ref()
+            .and_then(|i| i.original_path.as_ref())
+            .and_then(|p| Path::new(p).file_name())
+            .map(|n| n.to_owned())
+            .unwrap_or_else(|| {
+                trash_name
+                    .rsplit_once('-')
+                    .map(|(n, _)| n)
+                    .unwrap_or(trash_name)
+                    .into()
+            });
+        moves.push((entry.clone(), game_mods_dir.join(name)));
+    }
+    if moves.is_empty() {
+        return Err(ManagerError::new(
+            ErrorCode::InvalidPath,
+            "Empty trash entry",
+        ));
+    }
+    // Validate every destination before moving any source, including dangling leaves.
+    for (_, destination) in &moves {
+        let (root, relative) = if let Ok(relative) = destination.strip_prefix(managed_root) {
+            (managed_root, relative)
+        } else {
+            (
+                game_mods_dir,
+                destination.strip_prefix(game_mods_dir).map_err(|_| {
+                    ManagerError::new(ErrorCode::InvalidPath, "Restore path escaped")
+                })?,
+            )
+        };
+        crate::fs_scope::ensure_no_symlink_parents(root, relative)?;
+        if crate::fs_scope::exists(destination) {
+            return Err(ManagerError::new(
+                ErrorCode::PathCollision,
+                format!("Restore target exists: {}", destination.display()),
+            ));
+        }
+    }
+    for (_, destination) in &moves {
+        crate::fs_scope::create_dir_all(destination.parent().unwrap())?;
+        crate::fs_scope::Directory::open(destination.parent().unwrap())?;
+    }
+    let mut transaction = crate::operation::Transaction::new(managed_root, "restore")?;
+    let result = (|| {
+        for (source, destination) in &moves {
+            transaction.move_path(source, destination)?;
+        }
+        if entry.is_dir() {
+            transaction.move_path(
+                &entry,
+                &trash_files_dir.join(format!(".ts4-restored-wrapper-{}", uuid::Uuid::new_v4())),
+            )?;
+        }
+        if let Some(root) = trash_files_dir.parent() {
+            let path = root.join("info").join(format!("{trash_name}.trashinfo"));
+            if crate::fs_scope::exists(&path) {
+                transaction.move_path(
+                    &path,
+                    &root
+                        .join("info")
+                        .join(format!(".ts4-restored-index-{}", uuid::Uuid::new_v4())),
+                )?;
+            }
+        }
+        Ok(())
+    })();
+    if let Err(error) = result {
+        transaction.rollback()?;
+        return Err(error);
+    }
+    transaction.commit()?;
+    Ok(RestoreResult {
+        restored_path: moves.last().unwrap().1.to_string_lossy().into(),
+    })
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -242,8 +326,16 @@ struct TrashInfo {
 
 fn read_trashinfo(trash_files_dir: &Path, trash_name: &str) -> Option<TrashInfo> {
     let trash_root = trash_files_dir.parent()?;
-    let raw = fs::read_to_string(trash_root.join("info").join(format!("{trash_name}.trashinfo"))).ok()?;
-    let mut info = TrashInfo { original_path: None, deletion_date: None };
+    let raw = fs::read_to_string(
+        trash_root
+            .join("info")
+            .join(format!("{trash_name}.trashinfo")),
+    )
+    .ok()?;
+    let mut info = TrashInfo {
+        original_path: None,
+        deletion_date: None,
+    };
     for line in raw.lines() {
         if let Some(path) = line.strip_prefix("Path=") {
             info.original_path = Some(path.to_string());
@@ -254,23 +346,56 @@ fn read_trashinfo(trash_files_dir: &Path, trash_name: &str) -> Option<TrashInfo>
     Some(info)
 }
 
-fn is_mod_trash_entry(_trash_files_dir: &Path, _trash_name: &str, entry_path: &Path, info: Option<&TrashInfo>) -> bool {
+fn is_mod_trash_entry(
+    _trash_files_dir: &Path,
+    _trash_name: &str,
+    entry_path: &Path,
+    info: Option<&TrashInfo>,
+) -> bool {
     if entry_contains_mod_data(entry_path) {
         return true;
     }
 
-    info.and_then(|info| info.original_path.as_deref()).is_some_and(|path| {
-        path.contains("sims4-mod-manager") || path.contains("/The Sims 4/Mods/") || path.ends_with("/The Sims 4/Mods")
-    })
+    info.and_then(|info| info.original_path.as_deref())
+        .is_some_and(|path| {
+            path.contains("sims4-mod-manager")
+                || path.contains("/The Sims 4/Mods/")
+                || path.ends_with("/The Sims 4/Mods")
+        })
 }
 
 fn entry_contains_mod_data(path: &Path) -> bool {
+    let legacy_single_name = path
+        .file_name()
+        .and_then(|n| n.to_str())
+        .and_then(|n| n.rsplit_once('-'))
+        .filter(|(_, suffix)| !suffix.is_empty() && suffix.bytes().all(|b| b.is_ascii_digit()))
+        .is_some_and(|(name, _)| {
+            Path::new(name)
+                .extension()
+                .and_then(|e| e.to_str())
+                .is_some_and(is_mod_extension)
+        });
+    let Ok(kind) = fs::symlink_metadata(path) else {
+        return false;
+    };
+    if kind.file_type().is_symlink() {
+        return legacy_single_name
+            || path
+                .extension()
+                .and_then(|e| e.to_str())
+                .is_some_and(is_mod_extension);
+    }
     if path.join("meta.json").is_file() || path.join("metadata/meta.json").is_file() {
         return true;
     }
 
     if path.is_file() {
-        return path.extension().and_then(|ext| ext.to_str()).is_some_and(is_mod_extension);
+        return legacy_single_name
+            || path
+                .extension()
+                .and_then(|ext| ext.to_str())
+                .is_some_and(is_mod_extension);
     }
 
     let Ok(entries) = fs::read_dir(path) else {
@@ -279,119 +404,19 @@ fn entry_contains_mod_data(path: &Path) -> bool {
 
     entries.flatten().any(|entry| {
         let child = entry.path();
-        if child.is_dir() {
+        if fs::symlink_metadata(&child).is_ok_and(|m| m.is_dir()) {
             entry_contains_mod_data(&child)
         } else {
-            child.extension().and_then(|ext| ext.to_str()).is_some_and(is_mod_extension)
+            child
+                .extension()
+                .and_then(|ext| ext.to_str())
+                .is_some_and(is_mod_extension)
         }
     })
 }
 
 fn is_mod_extension(ext: &str) -> bool {
     ext.eq_ignore_ascii_case("package") || ext.eq_ignore_ascii_case("ts4script")
-}
-
-fn installed_group_targets(game_mods_dir: &Path, mod_id: &str) -> Result<Vec<PathBuf>, ManagerError> {
-    let folder = game_mods_dir.join(mod_id);
-    if folder.is_dir() && !is_symlink(&folder)? {
-        return Ok(vec![folder]);
-    }
-
-    let mut targets = vec![];
-    let entries = match fs::read_dir(game_mods_dir) {
-        Ok(entries) => entries,
-        Err(_) => return Ok(targets),
-    };
-
-    for entry in entries.flatten() {
-        let path = entry.path();
-        let Ok(meta) = fs::symlink_metadata(&path) else {
-            continue;
-        };
-        if meta.is_dir() || meta.file_type().is_symlink() {
-            continue;
-        }
-        let Some(name) = path.file_name().and_then(|name| name.to_str()) else {
-            continue;
-        };
-        if filename_prefix(name) == mod_id {
-            targets.push(path);
-        }
-    }
-
-    Ok(targets)
-}
-
-fn is_symlink(path: &Path) -> Result<bool, ManagerError> {
-    fs::symlink_metadata(path)
-        .map(|meta| meta.file_type().is_symlink())
-        .map_err(|e| ManagerError::new(ErrorCode::IoError, format!("symlink metadata failed {}: {e}", path.display())))
-}
-
-fn filename_prefix(filename: &str) -> &str {
-    let stem = filename.split('.').next().unwrap_or(filename);
-    stem.split(['_', '-', ' ']).next().unwrap_or(stem)
-}
-
-fn remove_manager_links(
-    managed_root: &Path,
-    game_mods_dir: &Path,
-    mod_id: &str,
-) -> Result<Vec<IssueEvent>, ManagerError> {
-    let sidecar_path = managed_root.join("mods").join(mod_id).join("links.json");
-    let raw = match fs::read_to_string(&sidecar_path) {
-        Ok(raw) => raw,
-        Err(_) => return Ok(vec![]),
-    };
-
-    let sidecar: LinkSidecar = serde_json::from_str(&raw).map_err(|e| {
-        ManagerError::new(
-            ErrorCode::InvalidPath,
-            format!("Link sidecar malformed: {e}"),
-        )
-    })?;
-
-    let mut issues = vec![];
-    let managed_files_root = managed_root.join("mods").join(mod_id).join("files");
-    for rel in sidecar.links {
-        let dst = game_mods_dir.join(&rel);
-        if !dst.exists() {
-            continue;
-        }
-
-        let meta = fs::symlink_metadata(&dst).map_err(|e| {
-            ManagerError::new(
-                ErrorCode::IoError,
-                format!("symlink metadata failed {}: {e}", dst.display()),
-            )
-        })?;
-
-        if !meta.file_type().is_symlink() {
-            issues.push(issue_for_skipped_link(&rel, "not manager symlink"));
-            continue;
-        }
-
-        let target = fs::read_link(&dst).map_err(|e| {
-            ManagerError::new(
-                ErrorCode::IoError,
-                format!("readlink failed {}: {e}", dst.display()),
-            )
-        })?;
-
-        if !target.starts_with(&managed_files_root) {
-            issues.push(issue_for_skipped_link(&rel, "symlink target outside managed mod"));
-            continue;
-        }
-
-        fs::remove_file(&dst).map_err(|e| {
-            ManagerError::new(
-                ErrorCode::IoError,
-                format!("Remove symlink failed {}: {e}", dst.display()),
-            )
-        })?;
-    }
-
-    Ok(issues)
 }
 
 fn issue_for_skipped_link(rel: &str, _reason: &str) -> IssueEvent {
@@ -403,36 +428,27 @@ fn issue_for_skipped_link(rel: &str, _reason: &str) -> IssueEvent {
     }
 }
 
-fn write_trashinfo(trash_files_dir: &Path, trashed_name: &str, original_path: &Path) -> Result<(), ManagerError> {
+fn write_trashinfo(
+    trash_files_dir: &Path,
+    trashed_name: &str,
+    original_path: &Path,
+    transaction: &mut crate::operation::Transaction,
+) -> Result<(), ManagerError> {
     let Some(trash_root) = trash_files_dir.parent() else {
         return Ok(());
     };
     let info_dir = trash_root.join("info");
-    fs::create_dir_all(&info_dir).map_err(|e| {
-        ManagerError::new(
-            ErrorCode::IoError,
-            format!("Trash info dir create failed {}: {e}", info_dir.display()),
-        )
-    })?;
+    crate::fs_scope::create_dir_all(&info_dir)?;
     let deletion_date = chrono::Local::now().format("%Y-%m-%dT%H:%M:%S");
     let content = format!(
         "[Trash Info]\nPath={}\nDeletionDate={}\n",
         original_path.to_string_lossy(),
         deletion_date
     );
-    fs::write(info_dir.join(format!("{trashed_name}.trashinfo")), content).map_err(|e| {
-        ManagerError::new(
-            ErrorCode::IoError,
-            format!("Trash info write failed: {e}"),
-        )
-    })
-}
-
-fn unix_millis() -> u128 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|duration| duration.as_millis())
-        .unwrap_or(0)
+    transaction.write_file(
+        &info_dir.join(format!("{trashed_name}.trashinfo")),
+        content.as_bytes(),
+    )
 }
 
 #[cfg(test)]
@@ -474,12 +490,21 @@ mod tests {
         assert!(mods_dir.join("a.package").exists());
 
         let trash_files = tmp.path().join("Trash/files");
-        let result = uninstall_managed_mod(tmp.path(), &mods_dir, &trash_files, &mod_id).expect("uninstall");
+        let result =
+            uninstall_managed_mod(tmp.path(), &mods_dir, &trash_files, &mod_id).expect("uninstall");
 
         assert!(!tmp.path().join("mods").join(&mod_id).exists());
         assert!(!mods_dir.join("a.package").exists());
-        assert!(std::path::Path::new(&result.trashed_path).join("meta.json").exists());
-        assert!(tmp.path().join("Trash/info").read_dir().expect("info dir").next().is_some());
+        assert!(std::path::Path::new(&result.trashed_path)
+            .join("meta.json")
+            .exists());
+        assert!(tmp
+            .path()
+            .join("Trash/info")
+            .read_dir()
+            .expect("info dir")
+            .next()
+            .is_some());
         assert!(result.issues.is_empty());
     }
 
@@ -489,7 +514,8 @@ mod tests {
         let (mod_id, mods_dir) = setup(&tmp);
         let trash_files = tmp.path().join("Trash/files");
 
-        let result = uninstall_managed_mod(tmp.path(), &mods_dir, &trash_files, &mod_id).expect("uninstall");
+        let result =
+            uninstall_managed_mod(tmp.path(), &mods_dir, &trash_files, &mod_id).expect("uninstall");
 
         assert!(!tmp.path().join("mods").join(&mod_id).exists());
         assert!(std::path::Path::new(&result.trashed_path).exists());
@@ -504,9 +530,13 @@ mod tests {
         fs::write(mods_dir.join("a.package"), b"user file").expect("user file");
 
         let trash_files = tmp.path().join("Trash/files");
-        let result = uninstall_managed_mod(tmp.path(), &mods_dir, &trash_files, &mod_id).expect("uninstall");
+        let result =
+            uninstall_managed_mod(tmp.path(), &mods_dir, &trash_files, &mod_id).expect("uninstall");
 
-        assert_eq!(fs::read(mods_dir.join("a.package")).expect("read"), b"user file");
+        assert_eq!(
+            fs::read(mods_dir.join("a.package")).expect("read"),
+            b"user file"
+        );
         assert!(result
             .issues
             .iter()
@@ -514,39 +544,42 @@ mod tests {
     }
 
     #[test]
-    fn uninstall_existing_installed_folder_moves_real_files_not_only_metadata() {
-        let tmp = TempDir::new().expect("tmp");
-        let mods_dir = tmp.path().join("Game/Mods");
-        fs::create_dir_all(mods_dir.join("LooseMod")).expect("installed dir");
-        fs::write(mods_dir.join("LooseMod/main.package"), b"pkg").expect("pkg");
-        fs::create_dir_all(tmp.path().join("mods/LooseMod")).expect("metadata dir");
-        fs::write(tmp.path().join("mods/LooseMod/meta.json"), b"{}").expect("meta");
-        let trash_files = tmp.path().join("Trash/files");
-
-        let result = uninstall_managed_mod(tmp.path(), &mods_dir, &trash_files, "LooseMod").expect("uninstall");
-
-        assert!(!mods_dir.join("LooseMod").exists());
-        let trashed = std::path::Path::new(&result.trashed_path);
-        assert!(trashed.join("LooseMod/main.package").exists());
-        assert!(trashed.join("metadata/meta.json").exists());
+    fn uninstall_rejects_unmanaged_installed_folder_and_invalid_metadata() {
+        let tmp = TempDir::new().unwrap();
+        let game = tmp.path().join("Game/Mods");
+        fs::create_dir_all(game.join("LooseMod")).unwrap();
+        fs::write(game.join("LooseMod/main.package"), b"original").unwrap();
+        fs::create_dir_all(tmp.path().join("mods/LooseMod")).unwrap();
+        fs::write(tmp.path().join("mods/LooseMod/meta.json"), b"{}").unwrap();
+        assert!(uninstall_managed_mod(
+            tmp.path(),
+            &game,
+            &tmp.path().join("Trash/files"),
+            "LooseMod"
+        )
+        .is_err());
+        assert_eq!(
+            fs::read(game.join("LooseMod/main.package")).unwrap(),
+            b"original"
+        );
     }
-
     #[test]
-    fn uninstall_existing_root_file_group_moves_real_files() {
-        let tmp = TempDir::new().expect("tmp");
-        let mods_dir = tmp.path().join("Game/Mods");
-        fs::create_dir_all(&mods_dir).expect("mods dir");
-        fs::write(mods_dir.join("LooseMod_a.package"), b"pkg").expect("pkg");
-        fs::write(mods_dir.join("LooseMod_b.ts4script"), b"script").expect("script");
-        let trash_files = tmp.path().join("Trash/files");
-
-        let result = uninstall_managed_mod(tmp.path(), &mods_dir, &trash_files, "LooseMod").expect("uninstall");
-
-        assert!(!mods_dir.join("LooseMod_a.package").exists());
-        assert!(!mods_dir.join("LooseMod_b.ts4script").exists());
-        let trashed = std::path::Path::new(&result.trashed_path);
-        assert!(trashed.join("LooseMod_a.package").exists());
-        assert!(trashed.join("LooseMod_b.ts4script").exists());
+    fn uninstall_rejects_unmanaged_prefix_group() {
+        let tmp = TempDir::new().unwrap();
+        let game = tmp.path().join("Game/Mods");
+        fs::create_dir_all(&game).unwrap();
+        fs::write(game.join("LooseMod_a.package"), b"original").unwrap();
+        assert!(uninstall_managed_mod(
+            tmp.path(),
+            &game,
+            &tmp.path().join("Trash/files"),
+            "LooseMod"
+        )
+        .is_err());
+        assert_eq!(
+            fs::read(game.join("LooseMod_a.package")).unwrap(),
+            b"original"
+        );
     }
 
     #[test]
@@ -557,45 +590,69 @@ mod tests {
         fs::create_dir_all(&trash_files).expect("trash files");
         fs::create_dir_all(&trash_info).expect("trash info");
         fs::write(trash_files.join("notes.txt"), b"notes").expect("notes");
-        fs::write(trash_info.join("notes.txt.trashinfo"), "[Trash Info]\nPath=/home/me/notes.txt\n").expect("notes info");
+        fs::write(
+            trash_info.join("notes.txt.trashinfo"),
+            "[Trash Info]\nPath=/home/me/notes.txt\n",
+        )
+        .expect("notes info");
         fs::create_dir_all(trash_files.join("LooseMod-123")).expect("mod trash");
         fs::write(trash_files.join("LooseMod-123/LooseMod.package"), b"pkg").expect("pkg");
-        fs::write(trash_info.join("LooseMod-123.trashinfo"), "[Trash Info]\nPath=/home/me/Documents/Electronic Arts/The Sims 4/Mods/LooseMod\n").expect("mod info");
+        fs::write(
+            trash_info.join("LooseMod-123.trashinfo"),
+            "[Trash Info]\nPath=/home/me/Documents/Electronic Arts/The Sims 4/Mods/LooseMod\n",
+        )
+        .expect("mod info");
 
         let entries = list_trash_entries(&trash_files).expect("list");
 
         assert_eq!(entries.len(), 1);
         assert_eq!(entries[0].name, "LooseMod-123");
-        assert_eq!(entries[0].original_path.as_deref(), Some("/home/me/Documents/Electronic Arts/The Sims 4/Mods/LooseMod"));
+        assert_eq!(
+            entries[0].original_path.as_deref(),
+            Some("/home/me/Documents/Electronic Arts/The Sims 4/Mods/LooseMod")
+        );
     }
 
     #[test]
     fn list_trash_entries_includes_original_path_and_deletion_date() {
         let tmp = TempDir::new().expect("tmp");
-        let mods_dir = tmp.path().join("Game/Mods");
-        fs::create_dir_all(mods_dir.join("LooseMod")).expect("installed dir");
-        fs::write(mods_dir.join("LooseMod/main.package"), b"pkg").expect("pkg");
+        let (id, mods_dir) = setup(&tmp);
         let trash_files = tmp.path().join("Trash/files");
-        let trashed = uninstall_managed_mod(tmp.path(), &mods_dir, &trash_files, "LooseMod").expect("uninstall");
-        let trash_name = std::path::Path::new(&trashed.trashed_path).file_name().unwrap().to_string_lossy().to_string();
+        let trashed =
+            uninstall_managed_mod(tmp.path(), &mods_dir, &trash_files, &id).expect("uninstall");
+        let trash_name = std::path::Path::new(&trashed.trashed_path)
+            .file_name()
+            .unwrap()
+            .to_string_lossy()
+            .to_string();
 
         let entries = list_trash_entries(&trash_files).expect("list");
 
         assert_eq!(entries[0].name, trash_name);
-        assert_eq!(entries[0].original_path.as_deref(), Some(mods_dir.join("LooseMod").to_string_lossy().as_ref()));
-        assert!(entries[0].deletion_date.as_deref().unwrap_or_default().contains('T'));
+        assert_eq!(
+            entries[0].original_path.as_deref(),
+            Some(tmp.path().join("mods").join(id).to_string_lossy().as_ref())
+        );
+        assert!(entries[0]
+            .deletion_date
+            .as_deref()
+            .unwrap_or_default()
+            .contains('T'));
     }
 
     #[test]
     fn restore_trash_entry_moves_installed_files_back() {
         let tmp = TempDir::new().expect("tmp");
         let mods_dir = tmp.path().join("Game/Mods");
-        fs::create_dir_all(mods_dir.join("LooseMod")).expect("installed dir");
-        fs::write(mods_dir.join("LooseMod/main.package"), b"pkg").expect("pkg");
+        fs::create_dir_all(&mods_dir).unwrap();
         let trash_files = tmp.path().join("Trash/files");
-        let trashed = uninstall_managed_mod(tmp.path(), &mods_dir, &trash_files, "LooseMod").expect("uninstall");
-        let trash_name = std::path::Path::new(&trashed.trashed_path).file_name().unwrap().to_string_lossy().to_string();
-
+        let trash_name = "legacy-123".to_string();
+        fs::create_dir_all(trash_files.join(&trash_name).join("LooseMod")).unwrap();
+        fs::write(
+            trash_files.join(&trash_name).join("LooseMod/main.package"),
+            b"pkg",
+        )
+        .unwrap();
         let entries = list_trash_entries(&trash_files).expect("list");
         assert_eq!(entries[0].name, trash_name);
         restore_trashed_mod(tmp.path(), &mods_dir, &trash_files, &trash_name).expect("restore");
@@ -611,9 +668,31 @@ mod tests {
         fs::create_dir_all(&mods_dir).expect("mods dir");
 
         let trash_files = tmp.path().join("Trash/files");
-        let err = uninstall_managed_mod(tmp.path(), &mods_dir, &trash_files, "missing").expect_err("missing");
+        let err = uninstall_managed_mod(tmp.path(), &mods_dir, &trash_files, "missing")
+            .expect_err("missing");
 
         assert_eq!(err.code.as_str(), "NOT_FOUND");
         assert!(!trash_files.exists());
     }
+}
+
+fn validate_trashinfo_scope(trash_files_dir: &Path, name: &str) -> Result<(), ManagerError> {
+    let root = trash_files_dir
+        .parent()
+        .ok_or_else(|| ManagerError::new(ErrorCode::InvalidPath, "Trash root missing"))?;
+    crate::fs_scope::Directory::open(root)?;
+    let relative = PathBuf::from("info").join(format!("{name}.trashinfo"));
+    crate::fs_scope::ensure_no_symlink_parents(root, &relative)?;
+    let leaf = root.join(relative);
+    if crate::fs_scope::exists(&leaf)
+        && !fs::symlink_metadata(&leaf)
+            .map_err(crate::fs_scope::io_error)?
+            .is_file()
+    {
+        return Err(ManagerError::new(
+            ErrorCode::InvalidPath,
+            "Trash index must be a real file",
+        ));
+    }
+    Ok(())
 }

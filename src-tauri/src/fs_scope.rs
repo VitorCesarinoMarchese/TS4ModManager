@@ -383,3 +383,31 @@ impl Directory {
         ))
     }
 }
+
+pub fn create_directory(path: &Path) -> Result<(), ManagerError> {
+    #[cfg(unix)]
+    {
+        use std::os::fd::AsRawFd;
+        let directory = Directory::open(path.parent().ok_or_else(|| {
+            ManagerError::new(ErrorCode::InvalidPath, "Missing directory parent")
+        })?)?;
+        let (parent, name) = directory.parent(
+            Path::new(path.file_name().ok_or_else(|| {
+                ManagerError::new(ErrorCode::InvalidPath, "Missing directory name")
+            })?),
+            false,
+        )?;
+        if unsafe { libc::mkdirat(parent.file.as_raw_fd(), name.as_ptr(), 0o700) } < 0 {
+            return Err(io_error(std::io::Error::last_os_error()));
+        }
+        parent.file.sync_all().map_err(io_error)
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = path;
+        Err(ManagerError::new(
+            ErrorCode::InternalError,
+            "Descriptor-relative directory creation is unsupported on this platform",
+        ))
+    }
+}

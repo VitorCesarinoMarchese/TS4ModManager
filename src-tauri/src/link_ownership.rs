@@ -81,7 +81,7 @@ pub fn read(root: &Path, id: &str, game: &Path) -> Result<LinkRecord, ManagerErr
 }
 pub fn write(root: &Path, id: &str, game: &Path, links: Vec<String>) -> Result<(), ManagerError> {
     let path = record_path(root, id, game)?;
-    fs_scope::create_dir_all(&path.parent().unwrap())?;
+    fs_scope::create_dir_all(path.parent().unwrap())?;
     let record = LinkRecord {
         version: 2,
         mod_id: id.into(),
@@ -89,6 +89,27 @@ pub fn write(root: &Path, id: &str, game: &Path, links: Vec<String>) -> Result<(
         links,
     };
     fs_scope::atomic_write(
+        &path,
+        &serde_json::to_vec_pretty(&record)
+            .map_err(|e| ManagerError::new(ErrorCode::InternalError, e.to_string()))?,
+    )
+}
+pub fn write_transactional(
+    root: &Path,
+    id: &str,
+    game: &Path,
+    links: Vec<String>,
+    transaction: &mut crate::operation::Transaction,
+) -> Result<(), ManagerError> {
+    let path = record_path(root, id, game)?;
+    fs_scope::create_dir_all(path.parent().unwrap())?;
+    let record = LinkRecord {
+        version: 2,
+        mod_id: id.into(),
+        instance_root: Some(fs::canonicalize(game).map_err(fs_scope::io_error)?),
+        links,
+    };
+    transaction.write_file(
         &path,
         &serde_json::to_vec_pretty(&record)
             .map_err(|e| ManagerError::new(ErrorCode::InternalError, e.to_string()))?,

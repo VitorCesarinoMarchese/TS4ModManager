@@ -96,6 +96,24 @@ pub fn create_managed_mod(
     managed_root: &Path,
     req: ImportRequest,
 ) -> Result<ModMetadata, ManagerError> {
+    let _guard = crate::operation::acquire(managed_root)?;
+    let mut transaction = crate::operation::Transaction::new(managed_root, "folder_import")?;
+    let metadata = match create_managed_mod_transaction(managed_root, req, &mut transaction) {
+        Ok(metadata) => metadata,
+        Err(error) => {
+            transaction.rollback()?;
+            return Err(error);
+        }
+    };
+    transaction.commit()?;
+    Ok(metadata)
+}
+
+pub(crate) fn create_managed_mod_transaction(
+    managed_root: &Path,
+    req: ImportRequest,
+    transaction: &mut crate::operation::Transaction,
+) -> Result<ModMetadata, ManagerError> {
     if !req.source_dir.is_dir() {
         return Err(ManagerError::new(
             ErrorCode::InvalidPath,
@@ -104,13 +122,13 @@ pub fn create_managed_mod(
     }
 
     let mod_id = Uuid::new_v4().to_string();
-    fs_scope::create_dir_all(&managed_root)?;
+    fs_scope::create_dir_all(managed_root)?;
     fs_scope::ensure_no_symlink_parents(managed_root, Path::new("mods/staging"))?;
     let final_root = managed_root.join("mods").join(&mod_id);
     let mod_root = managed_root.join("tmp").join(format!("import-{mod_id}"));
     let files_root = mod_root.join("files");
 
-    fs_scope::create_dir_all(&&files_root)?;
+    fs_scope::create_dir_all(&files_root)?;
 
     fs_scope::Directory::open(&req.source_dir)?;
     let files = copy_recursive(&req.source_dir, &files_root)?;
@@ -142,12 +160,13 @@ pub fn create_managed_mod(
             .map_err(|e| ManagerError::new(ErrorCode::InternalError, e.to_string()))?,
     )?;
     fs_scope::create_dir_all(final_root.parent().unwrap())?;
-    fs_scope::rename_no_replace(&mod_root, &final_root)?;
+    transaction.move_path(&mod_root, &final_root)?;
 
     Ok(meta)
 }
 
 pub fn write_managed_mod(managed_root: &Path, meta: &ModMetadata) -> Result<(), ManagerError> {
+    let _guard = crate::operation::acquire(managed_root)?;
     validate_metadata(meta, &meta.mod_id)?;
     let rel = PathBuf::from("mods").join(&meta.mod_id).join("meta.json");
     fs_scope::ensure_no_symlink_parents(managed_root, &rel)?;
@@ -220,6 +239,7 @@ pub fn set_custom_display_name(
     mod_id: &str,
     custom_name: String,
 ) -> Result<ModMetadata, ManagerError> {
+    let _guard = crate::operation::acquire(managed_root)?;
     let mut meta = read_managed_mod_or_create_local(managed_root, mod_id)?;
     let trimmed = custom_name.trim();
     if trimmed.is_empty() {
@@ -244,6 +264,7 @@ pub fn set_source_url(
     preview_url: Option<String>,
     source_attachment: Option<SourceAttachmentMetadata>,
 ) -> Result<ModMetadata, ManagerError> {
+    let _guard = crate::operation::acquire(managed_root)?;
     let mut meta = read_managed_mod_or_create_local(managed_root, mod_id)?;
     let trimmed = source_url.trim();
     if trimmed.is_empty() {
@@ -289,6 +310,7 @@ pub fn set_source_url(
 }
 
 pub fn remove_source_url(managed_root: &Path, mod_id: &str) -> Result<ModMetadata, ManagerError> {
+    let _guard = crate::operation::acquire(managed_root)?;
     let mut meta = read_managed_mod_or_create_local(managed_root, mod_id)?;
     meta.source_url = None;
     meta.source_attachment = None;
@@ -365,7 +387,7 @@ fn copy_recursive(from: &Path, to: &Path) -> Result<Vec<String>, ManagerError> {
 
             let dst = to.join(rel);
             if let Some(parent) = dst.parent() {
-                fs_scope::create_dir_all(&parent)?;
+                fs_scope::create_dir_all(parent)?;
             }
 
             #[cfg(unix)]
