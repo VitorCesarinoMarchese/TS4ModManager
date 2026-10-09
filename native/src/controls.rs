@@ -24,10 +24,13 @@ enum Dialog {
         title: String,
         lines: Vec<String>,
     },
-    Settings,
     SettingsImport(Settings, bool),
 }
 pub struct Controls {
+    pub settings_page: bool,
+    theme_json: String,
+    theme_edit: Option<crate::settings::CustomTheme>,
+    theme_edit_original: Option<String>,
     pub confirm_rect: Option<egui::Rect>,
     pub import_rect: Option<egui::Rect>,
     previews: crate::preview::Previews,
@@ -47,6 +50,7 @@ pub struct Controls {
     trash_entries: Option<(Identity, Vec<ts4_mod_manager_core::lifecycle::TrashEntry>)>,
     transfer_path: String,
     include_key: bool,
+    notice: Option<String>,
     pub error: Option<String>,
     pub refresh: Option<PathBuf>,
     pub roots_changed: Option<PathBuf>,
@@ -58,7 +62,17 @@ impl Controls {
         settings: Settings,
         wake: impl Fn() + Send + 'static,
     ) -> std::io::Result<Self> {
+        let theme_edit = settings
+            .custom_themes
+            .iter()
+            .find(|t| settings.active_custom_theme.as_ref() == Some(&t.name))
+            .cloned();
+        let theme_edit_original = settings.active_custom_theme.clone();
         Ok(Self {
+            settings_page: false,
+            theme_json: String::new(),
+            theme_edit,
+            theme_edit_original,
             confirm_rect: None,
             import_rect: None,
             previews: Default::default(),
@@ -75,6 +89,7 @@ impl Controls {
             trash_entries: None,
             transfer_path: String::new(),
             include_key: false,
+            notice: None,
             error: None,
             refresh: None,
             roots_changed: None,
@@ -336,63 +351,84 @@ impl Controls {
         }
     }
     pub fn show(&mut self, ui: &mut egui::Ui, catalog: &Catalog) {
-        if self.candidates.as_ref().is_some_and(|(id, _)| {
-            !id.current(
-                catalog.root.as_ref(),
-                catalog.selected.as_ref(),
-                catalog.generation(),
-            )
-        }) {
-            self.candidates = None;
-        }
-        egui::Panel::bottom("management-controls")
-            .frame(egui::Frame::new().fill(ui.visuals().panel_fill).inner_margin(egui::Margin::symmetric(24, 10)))
-            .show(ui, |ui| {
-                ui.horizontal_wrapped(|ui| {
-                    let ready = catalog.root.is_some() && !catalog.loading;
-                    let import = ui.add_enabled(
-                        ready,
-                        egui::Button::new("Import folder")
-                            .fill(ui.visuals().selection.bg_fill)
-                            .stroke(ui.visuals().selection.stroke),
+        self.toolbar(ui, catalog);
+        self.selected_actions(ui, catalog);
+        self.activity(ui);
+        self.show_dialogs(ui.ctx(), catalog);
+    }
+    pub fn toolbar(&mut self, ui: &mut egui::Ui, catalog: &Catalog) {
+        ui.horizontal_wrapped(|ui| {
+            let ready = catalog.root.is_some() && !catalog.loading;
+            let import = ui.add_enabled(
+                ready,
+                egui::Button::new("Import folder")
+                    .fill(ui.visuals().selection.bg_fill)
+                    .stroke(ui.visuals().selection.stroke),
+            );
+            self.import_rect = Some(import.rect);
+            if import.clicked()
+                && let Some(identity) = self.identity(catalog)
+            {
+                self.dialog = Some(Dialog::Import {
+                    identity,
+                    zip: false,
+                    path: String::new(),
+                    name: String::new(),
+                })
+            }
+            if ui
+                .add_enabled(ready, egui::Button::new("Import ZIP"))
+                .clicked()
+                && let Some(identity) = self.identity(catalog)
+            {
+                self.dialog = Some(Dialog::Import {
+                    identity,
+                    zip: true,
+                    path: String::new(),
+                    name: String::new(),
+                })
+            }
+            if ui
+                .add_enabled(ready, egui::Button::new("Restore from trash"))
+                .clicked()
+                && let Some(id) = self.identity(catalog)
+            {
+                self.submit(id, Action::ListTrash)
+            }
+        });
+    }
+    pub fn selected_actions(&mut self, ui: &mut egui::Ui, catalog: &Catalog) {
+        if catalog.selected_mod().is_some() {
+            ui.horizontal_wrapped(|ui| {
+                if let Some(entry) = catalog.selected_mod().filter(|entry| {
+                    catalog.root.is_some() && !catalog.loading && entry.id.is_some()
+                }) && ui
+                    .button(if entry.enabled { "Disable" } else { "Enable" })
+                    .clicked()
+                    && let Some(id) = self.identity(catalog)
+                {
+                    self.submit(
+                        id,
+                        Action::ReviewToggle {
+                            enabled: !entry.enabled,
+                        },
                     );
-                    self.import_rect = Some(import.rect);
-                    if import.clicked()
-                        && let Some(identity) = self.identity(catalog)
-                    {
-                        self.dialog = Some(Dialog::Import {
-                            identity,
-                            zip: false,
-                            path: String::new(),
-                            name: String::new(),
-                        })
-                    }
-                    if ui.add_enabled(ready, egui::Button::new("Import ZIP")).clicked()
-                        && let Some(identity) = self.identity(catalog)
-                    {
-                        self.dialog = Some(Dialog::Import {
-                            identity,
-                            zip: true,
-                            path: String::new(),
-                            name: String::new(),
-                        })
-                    }
-                    if ui.add_enabled(ready, egui::Button::new("Restore from trash")).clicked()
-                        && let Some(id) = self.identity(catalog)
-                    {
-                        self.submit(id, Action::ListTrash)
-                    }
-                    if ui.button("Settings").clicked() {
-                        self.dialog = Some(Dialog::Settings)
-                    }
-                    if let Some(entry) = catalog.selected_mod().filter(|_| ready) {
-                        if let Some(managed_id) = &entry.id {
+                }
+                ui.menu_button("More actions", |ui| self.mod_menu(ui, catalog));
+            });
+        }
+    }
+    pub fn mod_menu(&mut self, ui: &mut egui::Ui, catalog: &Catalog) {
+        let ready = catalog.root.is_some() && !catalog.loading;
+        ui.add_enabled_ui(ready, |ui| {
+            if let Some(entry) = catalog.selected_mod() {
+                if let Some(managed_id) = &entry.id {
                             if ui.button(if entry.enabled { "Disable" } else { "Enable" }).clicked()
                                 && let Some(id) = self.identity(catalog)
                             {
-                                self.submit(id, Action::ReviewToggle { enabled: !entry.enabled })
+                                ui.close();
+                            self.submit(id, Action::ReviewToggle { enabled: !entry.enabled })
                             }
-                            ui.menu_button("More actions", |ui| {
                             if ui.button("Rename").clicked()
                                 && let Some(identity) = self.identity(catalog)
                             {
@@ -427,58 +463,247 @@ impl Controls {
                                     ],
                                 )
                             }
-                            });
                         } else if ui.button("Manage external mod").clicked() {
-                            self.confirm(
-                                catalog,
-                                Action::Migrate { files: entry.files.clone() },
-                                "Review external migration",
-                                entry
-                                    .files
-                                    .iter()
-                                    .map(|f| catalog.root.as_ref().unwrap().join("Mods").join(f).display().to_string())
-                                    .collect(),
-                            )
+                            ui.close();
+                            self.confirm(catalog, Action::Migrate { files: entry.files.clone() }, "Review external migration", entry.files.iter().map(|f| catalog.root.as_ref().unwrap().join("Mods").join(f).display().to_string()).collect())
+                        }
+            }
+        });
+    }
+    pub fn set_builtin_theme(&mut self, ctx: &egui::Context, theme: Theme) {
+        self.settings.theme = theme;
+        self.settings.active_custom_theme = None;
+        self.theme_edit = None;
+        self.theme_edit_original = None;
+        crate::ui::apply_settings_theme(ctx, &self.settings);
+        if let Err(error) = self.settings.save(&self.settings_path) {
+            self.error = Some(error);
+        }
+    }
+    fn save_preferences(&mut self, ctx: &egui::Context) {
+        let mut next = self.settings.clone();
+        if let Some(theme) = &self.theme_edit {
+            if let Err(error) = theme.validate() {
+                self.error = Some(error);
+                return;
+            }
+            if next
+                .custom_themes
+                .iter()
+                .any(|t| t.name == theme.name && self.theme_edit_original.as_ref() != Some(&t.name))
+            {
+                self.error =
+                    Some("That theme name already exists. Choose a different name.".into());
+                return;
+            }
+            if let Some(original) = &self.theme_edit_original {
+                next.custom_themes.retain(|t| &t.name != original);
+            }
+            next.active_custom_theme = Some(theme.name.clone());
+            next.custom_themes.push(theme.clone());
+        }
+        match next.save(&self.settings_path) {
+            Ok(()) => {
+                self.settings = next;
+                if let Some(theme) = &self.theme_edit {
+                    self.theme_edit_original = Some(theme.name.clone());
+                }
+                crate::ui::apply_settings_theme(ctx, &self.settings);
+                self.error = None;
+                self.notice = Some("Settings saved".into());
+            }
+            Err(error) => self.error = Some(error),
+        }
+    }
+    pub fn settings_content(&mut self, ui: &mut egui::Ui, catalog: &Catalog) {
+        let ctx = ui.ctx().clone();
+        ui.horizontal(|ui| {
+            ui.label(egui::RichText::new("Settings").size(27.0).strong());
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                if ui.button("Save settings").clicked() {
+                    self.save_preferences(&ctx);
+                }
+                if ui.button("Back to library").clicked() {
+                    self.settings_page = false;
+                }
+            });
+        });
+        ui.label(
+            egui::RichText::new("Make this space yours. Preferences stay on this device.")
+                .color(ui.visuals().weak_text_color()),
+        );
+        ui.add_space(24.0);
+        egui::ScrollArea::vertical().id_salt("settings-page").auto_shrink([false, false]).show(ui, |ui| {
+            ui.set_max_width(ui.available_width().min(720.0));
+            ui.heading("Appearance");
+            ui.add_space(8.0);
+            ui.horizontal_wrapped(|ui| {
+                for (theme, label) in [(Theme::Light, "Light"), (Theme::Dark, "Dark"), (Theme::System, "System")] {
+                    if ui.selectable_label(self.settings.active_custom_theme.is_none() && self.settings.theme == theme, label).clicked() {
+                        self.settings.theme = theme; self.settings.active_custom_theme = None;
+                        self.theme_edit = None; self.theme_edit_original = None;
+                        crate::ui::apply_settings_theme(&ctx, &self.settings);
+                    }
+                }
+                if ui.button("Create custom theme").clicked() {
+                    let mut theme = crate::settings::CustomTheme::base(ui.visuals().dark_mode);
+                    let mut n = 1;
+                    while self.settings.custom_themes.iter().any(|t| t.name == format!("Custom theme {n}")) { n += 1; }
+                    theme.name = format!("Custom theme {n}");
+                    self.theme_edit = Some(theme); self.theme_edit_original = None;
+                }
+            });
+            if !self.settings.custom_themes.is_empty() {
+                ui.add_space(8.0);
+                ui.horizontal_wrapped(|ui| {
+                    for theme in &self.settings.custom_themes {
+                        if ui.selectable_label(self.settings.active_custom_theme.as_ref() == Some(&theme.name), &theme.name).clicked() {
+                            self.settings.active_custom_theme = Some(theme.name.clone());
+                            self.theme_edit = Some(theme.clone()); self.theme_edit_original = Some(theme.name.clone());
+                            crate::ui::apply_settings_theme(&ctx, &self.settings);
                         }
                     }
                 });
-                if self.recovering {
-                    ui.label("Checking interrupted operations. Waiting for other app writes if needed.");
-                } else if self.busy() {
-                    ui.label("Approved operations will finish before the window closes.");
-                }
-                if let Some(error) = &self.error {
-                    ui.colored_label(ui.visuals().error_fg_color, error);
-                }
-                let mut retry = None;
-                egui::ScrollArea::vertical().max_height(90.0).show(ui, |ui| {
-                    for operation in self.operations.iter().rev() {
-                        ui.horizontal(|ui| {
-                            ui.label(format!(
-                                "#{} · {} · {} · {}",
-                                operation.job.identity.operation,
-                                operation.job.action.label(),
-                                operation.job.identity.root.display(),
-                                operation.status
-                            ));
-                            if operation.error && ui.button("Retry").clicked() {
-                                retry = Some(operation.job.clone())
-                            }
-                        });
+            }
+            if let Some(theme) = &mut self.theme_edit {
+                ui.add_space(16.0);
+                ui.label("Theme name");
+                ui.add(egui::TextEdit::singleline(&mut theme.name).desired_width(300.0).min_size(egui::vec2(200.0, 34.0)).margin(egui::vec2(10.0, 9.0)));
+                ui.add_space(8.0);
+                egui::Grid::new("theme-colors").num_columns(3).spacing([16.0, 10.0]).show(ui, |ui| {
+                    for (label, value) in theme.colors.fields() {
+                        ui.label(label);
+                        ui.add(egui::TextEdit::singleline(value).desired_width(112.0).min_size(egui::vec2(112.0, 34.0)).margin(egui::vec2(10.0, 9.0)).char_limit(7));
+                        if let Some(color) = crate::ui::hex_color(value) {
+                            let mut rgb = [color.r(), color.g(), color.b()];
+                            if ui.color_edit_button_srgb(&mut rgb).changed() { *value = format!("#{:02X}{:02X}{:02X}", rgb[0], rgb[1], rgb[2]); }
+                        } else { ui.label("#RRGGBB"); }
+                        ui.end_row();
                     }
                 });
-                if let Some(mut job) = retry {
-                    job.identity.operation = self.next;
-                    self.next += 1;
-                    match job.action {
-                        Action::Toggle { enabled, .. } => self.submit(job.identity, Action::ReviewToggle { enabled }),
-                        _ => self.submit(job.identity, job.action),
+                let valid = theme.validate().is_ok();
+                if !valid { ui.colored_label(ui.visuals().error_fg_color, "Enter a name and six colors in #RRGGBB format."); }
+                ui.horizontal_wrapped(|ui| {
+                    if ui.button("Reset colors").clicked() { theme.colors = crate::settings::CustomTheme::base(ui.visuals().dark_mode).colors; }
+                    if ui.add_enabled(valid, egui::Button::new("Copy theme JSON")).clicked() {
+                        match serde_json::to_string_pretty(theme) { Ok(json) => { ctx.copy_text(json.clone()); self.theme_json = json; }, Err(_) => self.error = Some("Cannot export theme".into()) }
+                    }
+                });
+                if ui.add_enabled(valid, egui::Button::new("Save custom theme").fill(ui.visuals().selection.bg_fill).stroke(ui.visuals().selection.stroke)).clicked() {
+                    self.save_preferences(&ctx);
+                }
+            }
+            ui.add_space(12.0);
+            ui.collapsing("Import a theme", |ui| {
+                ui.label("Paste a theme JSON exported from this app or the previous version.");
+                ui.add(egui::TextEdit::multiline(&mut self.theme_json).desired_width(ui.available_width()).desired_rows(5));
+                if ui.button("Load theme for editing").clicked() {
+                    match crate::settings::CustomTheme::parse(&self.theme_json) {
+                        Ok(theme) => { self.theme_edit_original = self.settings.custom_themes.iter().find(|t| t.name == theme.name).map(|t| t.name.clone()); self.theme_edit = Some(theme); self.error = None; }
+                        Err(error) => self.error = Some(error),
                     }
                 }
             });
-        self.dialogs(ui.ctx(), catalog);
+            ui.add_space(24.0); ui.separator(); ui.add_space(16.0);
+            ui.heading("Game folders");
+            ui.label("Remember a folder to open it automatically next time.");
+            for root in &self.settings.game_roots { ui.add(egui::Label::new(root).wrap()); }
+            if let Some(root) = &catalog.root && ui.button("Remember current folder").clicked() {
+                let path = root.to_string_lossy().into_owned();
+                if !self.settings.game_roots.contains(&path) { self.settings.game_roots.push(path.clone()); }
+                self.settings.selected_root = Some(path);
+            }
+            ui.add_space(24.0); ui.separator(); ui.add_space(16.0);
+            ui.heading("Source lookup");
+            ui.label("CurseForge API key");
+            ui.add(egui::TextEdit::singleline(self.settings.curseforge_api_key.get_or_insert_with(String::new)).password(true).desired_width(400.0).min_size(egui::vec2(200.0, 34.0)).margin(egui::vec2(10.0, 9.0)));
+            ui.label(egui::RichText::new("Stored only in local settings. Source attachment always needs your confirmation.").color(ui.visuals().weak_text_color()));
+            ui.add_space(16.0);
+            ui.add_space(24.0); ui.separator(); ui.add_space(16.0);
+            ui.collapsing("Import and export settings", |ui| {
+                ui.label("Custom colors use the separate theme JSON export above.");
+                ui.label("Transfer JSON path"); ui.text_edit_singleline(&mut self.transfer_path);
+                ui.checkbox(&mut self.include_key, "Include API key in export");
+                ui.horizontal_wrapped(|ui| {
+                    let ready = !self.transfer_path.trim().is_empty();
+                    if ui.add_enabled(ready, egui::Button::new("Export settings")).clicked() {
+                        let mut exported = self.settings.clone(); if !self.include_key { exported.curseforge_api_key = None; }
+                        match exported.save_new(&PathBuf::from(self.transfer_path.trim())) { Ok(()) => self.notice = Some("Settings exported".into()), Err(error) => self.error = Some(error) }
+                    }
+                    if ui.add_enabled(ready, egui::Button::new("Preview settings import")).clicked() {
+                        match Settings::read_transfer(&PathBuf::from(self.transfer_path.trim())) {
+                            Ok(mut settings) => { let included = settings.curseforge_api_key.is_some(); settings.preserve_omitted_key(&self.settings);
+                                if settings.custom_themes.is_empty() { settings.custom_themes = self.settings.custom_themes.clone(); }
+                                self.dialog = Some(Dialog::SettingsImport(settings, included)); }
+                            Err(error) => self.error = Some(error),
+                        }
+                    }
+                });
+            });
+        });
     }
-    fn dialogs(&mut self, ctx: &egui::Context, catalog: &Catalog) {
+    pub fn activity(&mut self, ui: &mut egui::Ui) {
+        if self.recovering {
+            ui.label("Checking interrupted operations. Waiting for other app writes if needed.");
+        } else if self.busy() {
+            ui.label("Approved operations will finish before the window closes.");
+        }
+        if let Some(notice) = &self.notice {
+            ui.label(
+                egui::RichText::new(notice)
+                    .size(12.0)
+                    .color(ui.visuals().weak_text_color()),
+            );
+        }
+        if let Some(error) = &self.error {
+            ui.colored_label(ui.visuals().error_fg_color, error);
+        }
+        let mut retry = None;
+        if !self.operations.is_empty() {
+            egui::CollapsingHeader::new("Activity")
+                .id_salt("management-activity")
+                .show(ui, |ui| {
+                    egui::ScrollArea::vertical()
+                        .max_height(90.0)
+                        .show(ui, |ui| {
+                            for operation in self.operations.iter().rev() {
+                                ui.horizontal(|ui| {
+                                    ui.label(format!(
+                                        "#{} · {} · {} · {}",
+                                        operation.job.identity.operation,
+                                        operation.job.action.label(),
+                                        operation.job.identity.root.display(),
+                                        operation.status
+                                    ));
+                                    if operation.error && ui.button("Retry").clicked() {
+                                        retry = Some(operation.job.clone())
+                                    }
+                                });
+                            }
+                        });
+                });
+        }
+        if let Some(mut job) = retry {
+            job.identity.operation = self.next;
+            self.next += 1;
+            match job.action {
+                Action::Toggle { enabled, .. } => {
+                    self.submit(job.identity, Action::ReviewToggle { enabled })
+                }
+                _ => self.submit(job.identity, job.action),
+            }
+        }
+    }
+    pub fn show_dialogs(&mut self, ctx: &egui::Context, catalog: &Catalog) {
+        if self.candidates.as_ref().is_some_and(|(id, _)| {
+            !id.current(
+                catalog.root.as_ref(),
+                catalog.selected.as_ref(),
+                catalog.generation(),
+            )
+        }) {
+            self.candidates = None;
+        }
         self.confirm_rect = None;
         self.previews.begin_frame(ctx, catalog.generation());
         if let Some((identity, candidates)) = self.candidates.take() {
@@ -583,7 +808,6 @@ impl Controls {
             Dialog::Rename(..) => "Rename mod",
             Dialog::Manual(..) => "Attach manual source URL",
             Dialog::Confirm { title, .. } => title,
-            Dialog::Settings => "Local settings",
             Dialog::SettingsImport(..) => "Review imported settings",
         }
         .to_string();
@@ -712,86 +936,6 @@ impl Controls {
                             }
                         }
                     }
-                    Dialog::Settings => {
-                        ui.label("Theme");
-                        ui.horizontal(|ui| {
-                            ui.selectable_value(&mut self.settings.theme, Theme::Light, "Light");
-                            ui.selectable_value(&mut self.settings.theme, Theme::Dark, "Dark");
-                            ui.selectable_value(&mut self.settings.theme, Theme::System, "System");
-                        });
-                        ui.label("CurseForge API key stored only in local settings");
-                        let key = self
-                            .settings
-                            .curseforge_api_key
-                            .get_or_insert_with(String::new);
-                        ui.add(egui::TextEdit::singleline(key).password(true));
-                        ui.label("Saved game folders");
-                        for root in &self.settings.game_roots {
-                            ui.label(root);
-                        }
-                        if let Some(root) = &catalog.root
-                            && ui.button("Remember current folder").clicked()
-                        {
-                            let path = root.to_string_lossy().into_owned();
-                            if !self.settings.game_roots.contains(&path) {
-                                self.settings.game_roots.push(path.clone());
-                            }
-                            self.settings.selected_root = Some(path);
-                        }
-                        if ui.button("Save local settings").clicked() {
-                            match self.settings.save(&self.settings_path) {
-                                Ok(()) => {
-                                    ctx.set_theme(match self.settings.theme {
-                                        Theme::Light => egui::ThemePreference::Light,
-                                        Theme::Dark => egui::ThemePreference::Dark,
-                                        Theme::System => egui::ThemePreference::System,
-                                    });
-                                    keep = false;
-                                }
-                                Err(e) => self.error = Some(e),
-                            }
-                        }
-                        ui.separator();
-                        ui.label("Transfer JSON path");
-                        ui.text_edit_singleline(&mut self.transfer_path);
-                        ui.checkbox(&mut self.include_key, "Include API key in export");
-                        if ui
-                            .add_enabled(
-                                !self.transfer_path.trim().is_empty(),
-                                egui::Button::new("Export settings"),
-                            )
-                            .clicked()
-                        {
-                            let mut exported = self.settings.clone();
-                            if !self.include_key {
-                                exported.curseforge_api_key = None;
-                            }
-                            match exported.save_new(&PathBuf::from(self.transfer_path.trim())) {
-                                Ok(()) => self.error = Some("Settings exported".into()),
-                                Err(e) => self.error = Some(e),
-                            }
-                        }
-                        if ui
-                            .add_enabled(
-                                !self.transfer_path.trim().is_empty(),
-                                egui::Button::new("Preview settings import"),
-                            )
-                            .clicked()
-                        {
-                            let result =
-                                Settings::read_transfer(&PathBuf::from(self.transfer_path.trim()));
-                            match result {
-                                Ok(mut settings) => {
-                                    let key_included = settings.curseforge_api_key.is_some();
-                                    settings.preserve_omitted_key(&self.settings);
-                                    self.dialog =
-                                        Some(Dialog::SettingsImport(settings, key_included));
-                                    keep = false;
-                                }
-                                Err(e) => self.error = Some(e),
-                            }
-                        }
-                    }
                     Dialog::SettingsImport(settings, key_included) => {
                         ui.label("Version 1 settings");
                         ui.label(format!(
@@ -817,11 +961,7 @@ impl Controls {
                             match settings.save(&self.settings_path) {
                                 Ok(()) => {
                                     self.settings = settings.clone();
-                                    ctx.set_theme(match settings.theme {
-                                        Theme::Light => egui::ThemePreference::Light,
-                                        Theme::Dark => egui::ThemePreference::Dark,
-                                        Theme::System => egui::ThemePreference::System,
-                                    });
+                                    crate::ui::apply_settings_theme(ctx, &self.settings);
                                     self.roots_changed =
                                         settings.selected_root.as_ref().map(PathBuf::from);
                                     keep = false;

@@ -32,6 +32,11 @@ pub fn setup(ctx: &egui::Context) {
     let rendering = fastframe_text::detect();
     rendering.apply_to(&mut fonts);
     ctx.set_fonts(fonts);
+    base_style(ctx);
+}
+
+fn base_style(ctx: &egui::Context) {
+    let rendering = fastframe_text::detect();
     ctx.all_styles_mut(|style| {
         let dark = style.visuals.dark_mode;
         style.visuals.panel_fill = if dark {
@@ -93,6 +98,91 @@ pub fn setup(ctx: &egui::Context) {
     });
 }
 
+pub fn hex_color(value: &str) -> Option<Color32> {
+    if value.len() != 7
+        || !value.starts_with('#')
+        || !value.as_bytes()[1..].iter().all(u8::is_ascii_hexdigit)
+    {
+        return None;
+    }
+    let rgb = u32::from_str_radix(&value[1..], 16).ok()?;
+    Some(Color32::from_rgb(
+        (rgb >> 16) as u8,
+        (rgb >> 8) as u8,
+        rgb as u8,
+    ))
+}
+pub fn apply_settings_theme(ctx: &egui::Context, settings: &crate::settings::Settings) {
+    use crate::settings::Theme;
+    base_style(ctx);
+    ctx.set_theme(match settings.theme {
+        Theme::Light => egui::ThemePreference::Light,
+        Theme::Dark => egui::ThemePreference::Dark,
+        Theme::System => egui::ThemePreference::System,
+    });
+    if let Some(theme) = settings
+        .custom_themes
+        .iter()
+        .find(|t| settings.active_custom_theme.as_ref() == Some(&t.name))
+    {
+        let colors = &theme.colors;
+        let Some([accent, background, surface, text, muted, border]) = [
+            &colors.accent,
+            &colors.background,
+            &colors.surface,
+            &colors.text,
+            &colors.muted_text,
+            &colors.border,
+        ]
+        .map(|s| hex_color(s))
+        .into_iter()
+        .collect::<Option<Vec<_>>>()
+        .and_then(|v| <Vec<Color32> as TryInto<[Color32; 6]>>::try_into(v).ok()) else {
+            return;
+        };
+        let dark = (background.r() as u32 + background.g() as u32 + background.b() as u32) < 384;
+        ctx.set_theme(if dark {
+            egui::Theme::Dark
+        } else {
+            egui::Theme::Light
+        });
+        let blend = |a: Color32, b: Color32, ratio: f32| {
+            Color32::from_rgb(
+                (a.r() as f32 * (1.0 - ratio) + b.r() as f32 * ratio) as u8,
+                (a.g() as f32 * (1.0 - ratio) + b.g() as f32 * ratio) as u8,
+                (a.b() as f32 * (1.0 - ratio) + b.b() as f32 * ratio) as u8,
+            )
+        };
+        ctx.all_styles_mut(|style| {
+            let v = &mut style.visuals;
+            v.panel_fill = background;
+            v.extreme_bg_color = surface;
+            v.window_fill = surface;
+            v.faint_bg_color = surface;
+            v.code_bg_color = surface;
+            v.override_text_color = Some(text);
+            v.weak_text_color = Some(muted);
+            v.selection.bg_fill = blend(surface, accent, 0.2);
+            v.selection.stroke.color = text;
+            v.hyperlink_color = accent;
+            v.window_stroke.color = border;
+            v.widgets.noninteractive.bg_stroke.color = border;
+            v.widgets.noninteractive.fg_stroke.color = muted;
+            for (widget, amount) in [
+                (&mut v.widgets.inactive, 0.06),
+                (&mut v.widgets.hovered, 0.13),
+                (&mut v.widgets.active, 0.20),
+                (&mut v.widgets.open, 0.13),
+            ] {
+                widget.bg_fill = blend(surface, accent, amount);
+                widget.weak_bg_fill = widget.bg_fill;
+                widget.bg_stroke.color = border;
+                widget.fg_stroke.color = text;
+            }
+        });
+    }
+}
+
 fn cover_uv(source: egui::Vec2, destination: egui::Vec2) -> egui::Rect {
     let source_aspect = source.x / source.y;
     let destination_aspect = destination.x / destination.y;
@@ -139,6 +229,22 @@ pub struct RenderStats {
 
 impl View {
     pub fn show(&mut self, ui: &mut egui::Ui, catalog: &mut Catalog) -> Option<PathBuf> {
+        self.show_inner(ui, catalog, None)
+    }
+    pub fn show_with_controls(
+        &mut self,
+        ui: &mut egui::Ui,
+        catalog: &mut Catalog,
+        controls: &mut crate::controls::Controls,
+    ) -> Option<PathBuf> {
+        self.show_inner(ui, catalog, Some(controls))
+    }
+    fn show_inner(
+        &mut self,
+        ui: &mut egui::Ui,
+        catalog: &mut Catalog,
+        mut controls: Option<&mut crate::controls::Controls>,
+    ) -> Option<PathBuf> {
         self.previews.begin_frame(ui.ctx(), catalog.generation());
         self.stats = RenderStats::default();
         let mut scan_root = None;
@@ -156,6 +262,11 @@ impl View {
                     ui.add(Icon::Package.image(ui.visuals().selection.stroke.color, 22.0));
                     ui.label(RichText::new("Sims 4 Mod Manager").size(20.0).strong());
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        if let Some(c) = controls.as_deref_mut()
+                            && ui.selectable_label(c.settings_page, "Settings").clicked()
+                        {
+                            c.settings_page = !c.settings_page;
+                        }
                         let dark = ui.visuals().dark_mode;
                         let icon = if dark { Icon::Sun } else { Icon::Moon };
                         let label = if dark { "Light" } else { "Dark" };
@@ -166,11 +277,22 @@ impl View {
                             ))
                             .clicked()
                         {
-                            ui.ctx().set_theme(if dark {
-                                egui::Theme::Light
+                            if let Some(c) = controls.as_deref_mut() {
+                                c.set_builtin_theme(
+                                    ui.ctx(),
+                                    if dark {
+                                        crate::settings::Theme::Light
+                                    } else {
+                                        crate::settings::Theme::Dark
+                                    },
+                                );
                             } else {
-                                egui::Theme::Dark
-                            });
+                                ui.ctx().set_theme(if dark {
+                                    egui::Theme::Light
+                                } else {
+                                    egui::Theme::Dark
+                                });
+                            }
                         }
                     });
                 });
@@ -258,12 +380,12 @@ impl View {
             .frame(
                 egui::Frame::new()
                     .fill(ui.visuals().panel_fill)
-                    .inner_margin(egui::Margin::symmetric(24, 10)),
+                    .inner_margin(egui::Margin::symmetric(24, 6)),
             )
             .show(ui, |ui| {
                 ui.horizontal_wrapped(|ui| {
                     ui.label(
-                        RichText::new("Local-first management")
+                        RichText::new("Local library")
                             .size(12.0)
                             .color(ui.visuals().weak_text_color()),
                     );
@@ -286,8 +408,12 @@ impl View {
                         );
                     }
                 });
+                if let Some(c) = controls.as_deref_mut() {
+                    c.activity(ui);
+                }
             });
 
+        let settings_page = controls.as_ref().is_some_and(|c| c.settings_page);
         if !narrow {
             egui::Panel::left("library-navigation")
                 .exact_size(176.0)
@@ -310,7 +436,7 @@ impl View {
                             ModFilter::Installed => Icon::Check,
                             ModFilter::Stored => Icon::Archive,
                         };
-                        let active = catalog.installation_filter == filter;
+                        let active = !settings_page && catalog.installation_filter == filter;
                         let button = egui::Button::image_and_text(
                             icon.image(
                                 if active {
@@ -325,6 +451,9 @@ impl View {
                         .selected(active);
                         if ui.add_sized([ui.available_width(), 40.0], button).clicked() {
                             catalog.set_filter(filter);
+                            if let Some(c) = controls.as_deref_mut() {
+                                c.settings_page = false;
+                            }
                         }
                         ui.add_space(4.0);
                     }
@@ -340,7 +469,8 @@ impl View {
                 });
         }
 
-        if !narrow {
+        let settings_page = controls.as_ref().is_some_and(|c| c.settings_page);
+        if !narrow && !settings_page {
             egui::Panel::right("mod-details")
                 .default_size(300.0)
                 .min_size(280.0)
@@ -351,12 +481,16 @@ impl View {
                         .inner_margin(24),
                 )
                 .show(ui, |ui| {
-                    self.details(ui, catalog);
+                    self.details(ui, catalog, controls.as_deref_mut());
                 });
         }
 
         egui::CentralPanel::default().frame(egui::Frame::new().fill(ui.visuals().panel_fill).inner_margin(24))
             .show(ui, |ui| {
+                if settings_page {
+                    if let Some(c) = controls.as_deref_mut() { c.settings_content(ui, catalog); }
+                    return;
+                }
                 if let Some(error) = &catalog.error {
                     ui.colored_label(ui.visuals().error_fg_color, error);
                     ui.label("Check that the game folder exists and contains a readable Mods folder, then open it again.");
@@ -369,7 +503,7 @@ impl View {
                         self.detail_only = false;
                     }
                     ui.add_space(16.0);
-                    self.details(ui, catalog);
+                    self.details(ui, catalog, controls.as_deref_mut());
                     return;
                 }
                 ui.horizontal(|ui| {
@@ -384,6 +518,7 @@ impl View {
                 });
                 ui.label(RichText::new("Manage the mods and custom content in your local collection.").size(13.0).color(ui.visuals().weak_text_color()));
                 ui.add_space(12.0);
+                if let Some(c) = controls.as_deref_mut() { c.toolbar(ui, catalog); ui.add_space(12.0); }
                 egui::Frame::new()
                     .fill(ui.visuals().extreme_bg_color)
                     .stroke(ui.visuals().widgets.noninteractive.bg_stroke)
@@ -444,15 +579,21 @@ impl View {
                     return;
                 }
                 match self.layout {
-                    LibraryLayout::Cards => self.card_grid(ui, catalog, narrow),
-                    LibraryLayout::List => self.library_list(ui, catalog),
+                    LibraryLayout::Cards => self.card_grid(ui, catalog, narrow, controls.as_deref_mut()),
+                    LibraryLayout::List => self.library_list(ui, catalog, controls),
                 }
 
             });
         scan_root
     }
 
-    fn card_grid(&mut self, ui: &mut egui::Ui, catalog: &mut Catalog, narrow: bool) {
+    fn card_grid(
+        &mut self,
+        ui: &mut egui::Ui,
+        catalog: &mut Catalog,
+        narrow: bool,
+        mut controls: Option<&mut crate::controls::Controls>,
+    ) {
         let gap = 16.0;
         let columns = ((ui.available_width() + gap) / 236.0).floor().max(1.0) as usize;
         let width = (ui.available_width() - gap * (columns - 1) as f32) / columns as f32;
@@ -606,6 +747,12 @@ impl View {
                                     response.on_hover_text(&entry.name)
                                 })
                                 .inner;
+                            if response.secondary_clicked() {
+                                catalog.select(index);
+                            }
+                            if let Some(c) = controls.as_deref_mut() {
+                                response.context_menu(|ui| c.mod_menu(ui, catalog));
+                            }
                             if self.stats.first_row.is_none() {
                                 self.stats.first_row = Some(response.rect);
                             }
@@ -620,7 +767,12 @@ impl View {
             });
     }
 
-    fn library_list(&mut self, ui: &mut egui::Ui, catalog: &mut Catalog) {
+    fn library_list(
+        &mut self,
+        ui: &mut egui::Ui,
+        catalog: &mut Catalog,
+        mut controls: Option<&mut crate::controls::Controls>,
+    ) {
         let foreground = ui.visuals().text_color();
         let root_id = catalog.root.clone();
         egui::ScrollArea::vertical()
@@ -708,6 +860,12 @@ impl View {
                             response.on_hover_text(&entry.name)
                         })
                         .inner;
+                    if response.secondary_clicked() {
+                        catalog.select(index);
+                    }
+                    if let Some(c) = controls.as_deref_mut() {
+                        response.context_menu(|ui| c.mod_menu(ui, catalog));
+                    }
                     if self.stats.first_row.is_none() {
                         self.stats.first_row = Some(response.rect);
                     }
@@ -720,13 +878,22 @@ impl View {
             });
     }
 
-    fn details(&mut self, ui: &mut egui::Ui, catalog: &Catalog) {
+    fn details(
+        &mut self,
+        ui: &mut egui::Ui,
+        catalog: &Catalog,
+        controls: Option<&mut crate::controls::Controls>,
+    ) {
         let Some(entry) = catalog.selected_mod() else {
             ui.add_space(24.0);
             ui.heading("Select a mod");
             ui.label("Its files and saved source details will appear here.");
             return;
         };
+        if let Some(c) = controls {
+            c.selected_actions(ui, catalog);
+            ui.add_space(16.0);
+        }
         egui::ScrollArea::vertical()
             .id_salt(("detail-summary", EntryId::of(entry)))
             .max_height((ui.available_height() - 150.0).max(80.0))

@@ -13,7 +13,96 @@ pub enum Theme {
 }
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ThemeColors {
+    pub accent: String,
+    pub background: String,
+    pub surface: String,
+    pub text: String,
+    pub muted_text: String,
+    pub border: String,
+}
+impl ThemeColors {
+    pub fn fields(&mut self) -> [(&'static str, &mut String); 6] {
+        [
+            ("Accent", &mut self.accent),
+            ("Background", &mut self.background),
+            ("Surface", &mut self.surface),
+            ("Text", &mut self.text),
+            ("Muted text", &mut self.muted_text),
+            ("Border", &mut self.border),
+        ]
+    }
+    pub fn valid(&self) -> bool {
+        [
+            &self.accent,
+            &self.background,
+            &self.surface,
+            &self.text,
+            &self.muted_text,
+            &self.border,
+        ]
+        .iter()
+        .all(|s| {
+            s.len() == 7
+                && s.starts_with('#')
+                && s.as_bytes()[1..].iter().all(u8::is_ascii_hexdigit)
+        })
+    }
+}
+#[derive(Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct CustomTheme {
+    pub name: String,
+    pub colors: ThemeColors,
+}
+impl CustomTheme {
+    pub fn parse(raw: &str) -> Result<Self, String> {
+        if raw.len() as u64 > MAX_TRANSFER_BYTES {
+            return Err("Theme JSON exceeds 1 MiB".into());
+        }
+        let theme: Self = serde_json::from_str(raw).map_err(|_| "Invalid theme JSON")?;
+        theme.validate()?;
+        Ok(theme)
+    }
+    pub fn validate(&self) -> Result<(), String> {
+        if self.name.trim().is_empty() || self.name.len() > 100 {
+            return Err("Theme name must contain 1–100 characters".into());
+        }
+        if !self.colors.valid() {
+            return Err("Theme colors must use #RRGGBB".into());
+        }
+        Ok(())
+    }
+    pub fn base(dark: bool) -> Self {
+        let values = if dark {
+            [
+                "#E8CF95", "#131315", "#1B1B1E", "#F5F3EE", "#B3B1AB", "#39393D",
+            ]
+        } else {
+            [
+                "#533D14", "#F6F4EF", "#FFFFFF", "#1F1E1B", "#656056", "#DAD5C9",
+            ]
+        };
+        Self {
+            name: "Custom theme".into(),
+            colors: ThemeColors {
+                accent: values[0].into(),
+                background: values[1].into(),
+                surface: values[2].into(),
+                text: values[3].into(),
+                muted_text: values[4].into(),
+                border: values[5].into(),
+            },
+        }
+    }
+}
+#[derive(Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct Settings {
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub custom_themes: Vec<CustomTheme>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub active_custom_theme: Option<String>,
     pub version: u32,
     pub theme: Theme,
     pub game_roots: Vec<String>,
@@ -25,6 +114,8 @@ pub struct Settings {
 impl Default for Settings {
     fn default() -> Self {
         Self {
+            custom_themes: vec![],
+            active_custom_theme: None,
             version: 1,
             theme: Theme::System,
             game_roots: vec![],
@@ -42,6 +133,20 @@ impl Settings {
             serde_json::from_str(raw).map_err(|_| "Invalid settings JSON or schema".to_string())?;
         if value.version != 1 {
             return Err("Settings require version 1".into());
+        }
+        let mut names = std::collections::HashSet::new();
+        for theme in &value.custom_themes {
+            theme.validate()?;
+            if !names.insert(&theme.name) {
+                return Err("Custom theme names must be unique".into());
+            }
+        }
+        if value
+            .active_custom_theme
+            .as_ref()
+            .is_some_and(|name| !names.contains(name))
+        {
+            return Err("Active custom theme must exist in customThemes".into());
         }
         let mut roots = Vec::new();
         for root in &value.game_roots {
@@ -107,7 +212,10 @@ impl Settings {
         self.write_file(path, false)
     }
     pub fn save_new(&self, path: &Path) -> Result<(), String> {
-        self.write_file(path, true)
+        let mut transfer = self.clone();
+        transfer.custom_themes.clear();
+        transfer.active_custom_theme = None;
+        transfer.write_file(path, true)
     }
     fn write_file(&self, path: &Path, require_new: bool) -> Result<(), String> {
         let serialized = Self::parse(&self.export(true)?)?.export(true)?;

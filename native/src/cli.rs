@@ -4,6 +4,7 @@ pub struct Options {
     pub home: PathBuf,
     pub root: Option<PathBuf>,
     pub managed_root: PathBuf,
+    pub settings_page: bool,
     pub inspect: bool,
     pub screenshot: Option<PathBuf>,
     pub query: String,
@@ -19,6 +20,7 @@ impl Options {
         let mut home = std::env::var_os("HOME").map(PathBuf::from);
         let mut root = None;
         let mut managed = None;
+        let mut settings_page = false;
         let mut inspect = false;
         let mut screenshot = None;
         let mut query = String::new();
@@ -29,6 +31,7 @@ impl Options {
         while let Some(arg) = args.next() {
             match arg.as_str() {
                 "--verify-workflows" => verify_workflows = true,
+                "--settings" => settings_page = true,
                 "--inspect" => inspect = true,
                 "--dark" => dark = true,
                 "--help" | "-h" => help = true,
@@ -73,6 +76,7 @@ impl Options {
             home,
             root,
             managed_root,
+            settings_page,
             inspect,
             screenshot,
             query,
@@ -89,6 +93,10 @@ mod tests {
     use super::*;
     fn parse(args: &[&str]) -> Result<Options, String> {
         Options::parse(args.iter().map(|value| value.to_string()))
+    }
+    #[test]
+    fn opens_settings_directly_for_native_capture() {
+        assert!(parse(&["--settings"]).unwrap().settings_page);
     }
     #[test]
     fn validates_cli_before_running_or_reading_catalog() {

@@ -5,7 +5,7 @@ use ts4_mod_manager_native::{
     catalog::Catalog,
     cli::Options,
     controls::Controls,
-    settings::{Settings, Theme},
+    settings::Settings,
     ui::{self, View},
     worker::{self, Completion, Jobs, Request},
 };
@@ -25,7 +25,7 @@ fn run() -> Result<(), String> {
     }
     if options.help {
         println!(
-            "TS4 Mod Manager native manager\n\nUsage: ts4-mod-manager-native [--root PATH] [--managed-root PATH]\n\n  --root PATH          Sims 4 folder containing Mods\n  --home PATH          Home to use for detection and default managed path\n  --verify-workflows   Verify management using newly created temporary fixtures\n  --inspect            Print catalog JSON and exit; requires --root\n  --query TEXT         Initial name/filename search\n  --dark               Start with dark theme\n  --size WIDTHxHEIGHT   Initial window size, default 1200x800\n  --screenshot PATH    Save a rendered PNG and exit; requires --root\n\nManage local mods with reviewed operations. No mod downloads or updates."
+            "TS4 Mod Manager native manager\n\nUsage: ts4-mod-manager-native [--root PATH] [--managed-root PATH]\n\n  --root PATH          Sims 4 folder containing Mods\n  --home PATH          Home to use for detection and default managed path\n  --verify-workflows   Verify management using newly created temporary fixtures\n  --inspect            Print catalog JSON and exit; requires --root\n  --query TEXT         Initial name/filename search\n  --settings           Open the full Settings page\n  --dark               Start with dark theme\n  --size WIDTHxHEIGHT   Initial window size, default 1200x800\n  --screenshot PATH    Save a rendered PNG and exit; requires --root\n\nManage local mods with reviewed operations. No mod downloads or updates."
         );
         return Ok(());
     }
@@ -78,25 +78,22 @@ fn run() -> Result<(), String> {
         native_options,
         Box::new(move |cc| {
             ui::setup(&cc.egui_ctx);
-            cc.egui_ctx.set_theme(match settings.theme {
-                Theme::Light => egui::ThemePreference::Light,
-                Theme::Dark => egui::ThemePreference::Dark,
-                Theme::System => egui::ThemePreference::System,
-            });
+            ui::apply_settings_theme(&cc.egui_ctx, &settings);
             if options.dark {
                 cc.egui_ctx.set_theme(egui::Theme::Dark);
-            } else if capture_required {
+            } else if capture_required && settings.active_custom_theme.is_none() {
                 cc.egui_ctx.set_theme(egui::Theme::Light);
             }
             let ctx = cc.egui_ctx.clone();
             let jobs = Jobs::start(move || ctx.request_repaint())?;
             let wake_ctx = cc.egui_ctx.clone();
-            let controls = Controls::new(
+            let mut controls = Controls::new(
                 options.managed_root.clone(),
                 options.home.clone(),
                 settings.clone(),
                 move || wake_ctx.request_repaint(),
             )?;
+            controls.settings_page = options.settings_page;
             jobs.submit(Request::Detect {
                 generation: 0,
                 home: options.home,
@@ -225,10 +222,13 @@ impl eframe::App for NativeApp {
             ui.ctx()
                 .send_viewport_cmd(egui::ViewportCommand::CancelClose);
         }
-        self.controls.show(ui, &self.catalog);
-        if let Some(root) = self.view.show(ui, &mut self.catalog) {
+        if let Some(root) = self
+            .view
+            .show_with_controls(ui, &mut self.catalog, &mut self.controls)
+        {
             self.scan(root);
         }
+        self.controls.show_dialogs(ui.ctx(), &self.catalog);
         let Some(path) = self.screenshot.as_ref() else {
             return;
         };
