@@ -79,7 +79,7 @@ This design applies to the Linux Fastframe/egui app. The Rust implementation is 
 
 ## Colors
 
-The frontmatter records the exact theme pairs from `src/ui.rs::setup`; use each pair within its theme.
+The frontmatter records the exact built-in theme pairs from `src/ui.rs::setup`; use each pair within its theme. User-created themes override six color roles through `apply_settings_theme` without changing these built-in tokens.
 
 ### Primary
 
@@ -99,7 +99,9 @@ Use Fastframe's default font definitions with detected platform rendering. There
 
 The wide library has a fixed 176-point navigation rail and a resizable inspector, initially 300 points wide with limits of 280 and 400. Central and inspector panels use 24-point inner margins; the rail uses 16. The header uses 24 horizontal and 10 vertical points.
 
-Below 1040 points of available width, state tabs replace the rail. Selecting a mod replaces the library with details; Back to mods returns to browsing. The header, local-first status and management controls remain available.
+Below 1040 points of available width, state tabs replace the rail. Selecting a mod replaces the library with details; Back to mods returns to browsing. The header and compact local-library status remain available. Imports belong to the library toolbar; selected-mod actions belong to the inspector or narrow details.
+
+Settings replaces the central library and inspector while retaining the header, status and wide navigation rail. Its title, Back to library and Save settings sit above the scroll region. Form content has a maximum width of 720 points. The bottom status uses 24 horizontal / 6 vertical points of inner margin. Operation history sits in an Activity disclosure with a maximum 90-point scroll height.
 
 Cards are 262 points high with a 16-point gap. The column count is `floor((available_width + 16) / 236)`, with at least one column; widths then divide the remaining space evenly. The 236-point column budget includes the gap, so it is not a guaranteed minimum card width. Images occupy 150 points in height with an 8-point inset. Text and footer content use a 14-point horizontal inset. Cards and list rows render only visible rows.
 
@@ -118,7 +120,10 @@ Cards use 12-point corners. Search uses 8-point corners. Buttons, list highlight
 - Photo cards show the real name, saved author when present, file count and Installed or Stored state. Without a saved author they show Managed collection or External collection. Missing and broken previews show No Preview; pending previews show a spinner. Card cover crops account for both source and destination proportions. Inspector images use contain sizing.
 - Search is a 40-point field with an 18-point icon. It filters display names and filenames as text changes. All, Installed and Stored filters intersect the current search. Rail counts describe the full catalog; the library count describes the visible collection. Filtering does not enable or disable files.
 - The card/list switch changes presentation while retaining search and selected identity. Standard native hover and focus remain visible. Selection opens the wide inspector or narrow detail view.
-- Import folder is the primary management action. Import ZIP, Restore from trash and Settings remain secondary. Enable/Disable stays direct for managed mods; More actions holds rename, source lookup/attachment/removal and trash. External mods retain reviewed migration. Menu activations explicitly close the popup before opening their next interaction.
+- Import folder is the primary library-toolbar action, beside Import ZIP and Restore from trash. Settings is a selectable header route. The bottom contains status, notices, errors and disclosed Activity history.
+- Enable/Disable stays direct for managed mods in the inspector and narrow details. More actions includes the toggle, rename, source lookup/attachment/removal and trash. Right-clicking either a card or a list row selects that mod before opening the shared menu. External mods retain reviewed migration. Menu activations explicitly close the popup before opening their next interaction.
+- Settings is a full page with a persistent Save settings action above scrolling Appearance, Game folders, Source lookup and transfer controls. Back to library returns to browsing; wide library-filter navigation also leaves Settings.
+- Custom-theme editing uses a name and six hex fields with color pickers: Accent, Background, Surface, Text, Muted text and Border. Create custom theme uses the current light or dark base; Reset colors restores that base. Copy theme JSON exports a valid draft; Import a theme loads JSON for editing. Save custom theme and Save settings validate, apply and persist the draft. Built-in and saved-theme selection in Settings applies immediately and needs Save settings for persistence; the header light/dark switch persists immediately and clears the active custom theme.
 - The inspector retains complete file and saved-source inspection, full-path tooltips and Copy feedback. Source changes and destructive management reviews require explicit confirmation. Low-confidence candidate warnings remain visible.
 - Preview requests send no Referer header. Relative local paths resolve under the selected Mods folder. Preview caching resets on scans and retains at most 32 URIs. Candidate review is currently text-only; any future candidate images must hide on failure.
 

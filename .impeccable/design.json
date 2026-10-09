@@ -8,7 +8,10 @@
     "implementationSources": [
       "native/src/ui.rs",
       "native/src/catalog.rs",
-      "native/src/controls.rs"
+      "native/src/controls.rs",
+      "native/src/settings.rs",
+      "native/src/main.rs",
+      "native/src/cli.rs"
     ],
     "units": "egui logical points",
     "colorMeta": {
@@ -80,7 +83,7 @@
     "typographyMeta": {
       "headline": {
         "displayName": "Library heading",
-        "purpose": "Main library title."
+        "purpose": "Main library and Settings title."
       },
       "title": {
         "displayName": "Selected mod title",
@@ -120,14 +123,21 @@
       "listPreviewSize": 44,
       "detailPreviewHeight": 180,
       "searchHeight": 40,
-      "fileRowHeight": 48
+      "fileRowHeight": 48,
+      "settingsContentMaxWidth": 720,
+      "settingsSavePlacement": "Above the Settings scroll region.",
+      "statusMarginHorizontal": 24,
+      "statusMarginVertical": 6,
+      "activityMaxHeight": 90
     },
     "nativeStates": {
       "cardSelection": "Immediate 1.5-point selection-stroke outline.",
       "cardFocus": "Same outline when response.has_focus().",
       "cardHover": "egui hovered widget weak_bg_fill.",
       "list": "egui interact_selectable visuals.",
-      "customSelectionAnimation": false
+      "customSelectionAnimation": false,
+      "contextMenuSelection": "Right-click selects the clicked card or list identity before opening the shared mod menu.",
+      "settingsSelection": "Header Settings toggles the full-page route; Back to library and wide library filters return to browsing."
     },
     "nativeComponents": [
       {
@@ -156,11 +166,32 @@
       },
       {
         "name": "Management actions",
-        "source": "native/src/controls.rs",
+        "source": "native/src/controls.rs::Controls::toolbar",
         "refersTo": [
           "button-primary-light",
           "button-primary-dark"
-        ]
+        ],
+        "description": "Library imports and restore; selected-mod controls live in the inspector or narrow details."
+      },
+      {
+        "name": "More actions and context menu",
+        "source": "native/src/controls.rs::Controls::mod_menu",
+        "description": "Shared reviewed actions for the selected mod; right-click selects the clicked identity in cards and lists."
+      },
+      {
+        "name": "Settings page",
+        "source": "native/src/controls.rs::Controls::settings_content",
+        "description": "Full-page preferences with persistent Save settings and Back to library above scrollable form content."
+      },
+      {
+        "name": "Custom-theme editor",
+        "source": "native/src/controls.rs::Controls::settings_content",
+        "description": "Name and six hex/color-picker controls, reset, JSON copy/import for editing and validated save."
+      },
+      {
+        "name": "Status and activity",
+        "source": "native/src/controls.rs::Controls::activity",
+        "description": "Bottom status, notices and errors with disclosed operation history."
       }
     ],
     "previewPolicy": {
@@ -170,7 +201,30 @@
       "httpReferer": false,
       "uriCacheLimit": 32
     },
-    "documentationNote": "Native egui components have no HTML/CSS runtime. Native component records replace web snippets; no HTML/CSS design detector applies. No invented tonal ramps or motion values are added."
+    "documentationNote": "Native egui components have no HTML/CSS runtime. Native component records replace web snippets; no HTML/CSS design detector applies. No invented tonal ramps or motion values are added.",
+    "nativeSettings": {
+      "customColorRoles": [
+        "accent",
+        "background",
+        "surface",
+        "text",
+        "mutedText",
+        "border"
+      ],
+      "save": "Save settings and Save custom theme validate, apply and persist the custom draft.",
+      "settingsThemeSelection": "Built-in and saved-theme choices apply immediately; Save settings persists them.",
+      "headerThemeToggle": "Applies and persists a built-in light/dark theme and clears the active custom theme.",
+      "localStorage": "~/.config/ts4-mod-manager/settings.json",
+      "transfer": "Settings export omits customThemes and activeCustomTheme for React compatibility; separate theme JSON transfers custom colors.",
+      "importPreservation": "An empty or absent custom-theme collection preserves the local collection; an omitted API key preserves the local key.",
+      "cliRoute": "--settings"
+    },
+    "navigationVerification": {
+      "source": "native/verify_navigation.py",
+      "captureCount": 9,
+      "fixtureInputsUnchanged": true,
+      "independentDisposition": "ship"
+    }
   },
   "components": [],
   "narrative": {
