@@ -1,6 +1,6 @@
 # Native management design
 
-The existing Rust core remains the authority for filesystem and provider operations. Both React/Tauri and the Fastframe UI use its existing public functions and serialized results. Managed metadata stays version 1, with its existing fields and storage location.
+The existing Rust core remains the authority for filesystem and provider operations. The Fastframe UI uses the `core/` library through its public functions and serialized results. Managed metadata stays version 1, with its existing fields and storage location.
 
 ## Chosen structure
 
@@ -32,7 +32,7 @@ New trash accepts valid managed bundles only. It does not infer ownership from a
 
 ## Recovery and writes
 
-Both apps serialize writes through one core lock. Nested operation helpers share that authority rather than acquiring conflicting locks. Multi-step operations record their intended paths and phases before side effects. Recovery verifies ownership and current disk state before continuing or rolling back. Changed or ambiguous user paths remain intact with an actionable issue.
+App processes serialize writes through one core lock. Nested operation helpers share that authority rather than acquiring conflicting locks. Multi-step operations record their intended paths and phases before side effects. Recovery verifies ownership and current disk state before continuing or rolling back. Changed or ambiguous user paths remain intact with an actionable issue.
 
 Folder imports publish a complete staged bundle. ZIP preflight rejects duplicate normalized paths, links, special files, escaping paths and occupied files. Contents stream with limits of 100,000 entries, 2 GiB per entry and 8 GiB expanded total. RAR/7z remains unsupported until extraction can enforce equivalent checks.
 
@@ -40,13 +40,13 @@ Migration preserves each original file or symlink object before installing a man
 
 Metadata, ownership and recovery records use atomic replacement. Failed unlink cannot report success or discard ownership bookkeeping. Core recovery must run before further mutations; native startup also reports outstanding recovery issues.
 
-## Native and retained React behavior
+## Native behavior
 
 The scan mailbox can coalesce reads. Approved mutations use a separate FIFO and carry operation ID, game root and entry identity. Window close cannot silently drop approved jobs. Progress and final issues remain associated with the operation even after navigation. Stale scans, lookups and metadata results cannot replace another instance's catalog or selected mod.
 
 Enable/disable shows its paths and warnings before approval. Migration reviews the exact external file set. Trash and source attachment require explicit confirmation. Candidates contain real provider data; weak confidence remains visible. The existing photos, `No Preview` fallback and requests without a Referer remain part of the UI contract.
 
-After writes, refreshed scan data supplies enabled state and file membership. Metadata edits cannot overwrite these facts. The retained React app also needs scan generation guards, partial-batch reconciliation, handled errors, recoverable import forms, orphan issue reconciliation, system-theme updates and timed success feedback.
+After writes, refreshed scan data supplies enabled state and file membership. Metadata edits cannot overwrite these facts.
 
 ## Settings and release
 
@@ -57,7 +57,7 @@ Native settings persist locally with restricted permissions and atomic writes. C
  selectedRoot?: string, curseforgeApiKey?: string}
 ```
 
-Normal export omits the key. Including it requires an explicit choice. Import validates and previews settings before confirmation. Custom browser themes retain their separate export format; this transfer format does not claim to reproduce them. Keys never enter mod metadata, operation records, logs or diagnostics.
+Normal export omits the key. Including it requires an explicit choice. Import validates and previews settings before confirmation. Custom native themes use a separate JSON export; version-1 settings transfer does not include their colors. Keys never enter mod metadata, operation records, logs or diagnostics.
 
 The Linux archive includes the executable, desktop entry, icon and dependency license inventory. Its verifier extracts and runs the packaged executable against temporary fixtures. CI covers native tests, clippy, release fixture checks and packaging alongside existing validation.
 

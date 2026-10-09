@@ -1,507 +1,86 @@
-# TS4 Mod Manager
+# Sims 4 Mod Manager
 
-Linux-first desktop mod manager for **The Sims 4**. The React/Tauri interface and the Fastframe/egui native interface share the Rust core.
+A local-first Linux desktop mod manager built with Fastframe and egui. The native app uses a Rust library for filesystem safety, metadata and source lookup. The React/Tauri app has been retired.
 
-The app focuses on local, inspectable, safe filesystem management: scan your Sims 4 `Mods` folder, identify installed mods, attach metadata, manage display names/source URLs, move mods to trash, restore trashed mods, and optionally migrate existing installed mods into manager-owned storage.
+Browse your collection as photo cards or a compact list. Search names and filenames, filter installed and stored mods, and inspect complete file lists and saved sources. Missing or broken photos show No Preview.
 
-## Native UI
+Management includes folder and ZIP import, reviewed enable/disable, external-mod migration, rename, source attachment/removal, recoverable trash and reviewed restore. Right-click a mod for its actions. Settings is a full page with custom themes, remembered game folders and explicit settings transfer. The app does not download or update mods.
 
-A Fastframe/egui interface is available alongside the existing app. Run `cargo run --manifest-path native/Cargo.toml --locked`. It supports local folder and ZIP imports, reviewed toggles, external migration, metadata edits, trash and restore, photo previews, and local settings transfer. See [native/README.md](native/README.md) for custom game paths, verification, and current limits.
+## Run the app
 
-## Current State
+Requirements: Rust 1.98 or newer, Cargo, and a graphical Linux session. Python 3.11 or newer is needed for verification and packaging.
 
-Both interfaces use the same managed metadata and filesystem operations. The [completion report](docs/native-migration-report.md) records the seven delivered workstreams, test results, release measurements and remaining limits. The [decision trail](docs/native-migration-decisions.tsv) records the changes.
-
-## Core Principles
-
-- **Linux-first**: native Linux paths, Steam/Proton paths, Flatpak Steam paths, Wayland workarounds.
-- **Local-first**: no cloud account, no remote database, no direct web downloads.
-- **Safe by default**: no permanent deletion; uninstall moves files to trash.
-- **Inspectable filesystem behavior**: manager-owned content lives under `~/.local/share/sims4-mod-manager`.
-- **TDD-first development**: frontend and Rust behavior covered by tests.
-
-## Features
-
-### Game instance detection
-
-The backend detects common Sims 4 locations:
-
-- Native Linux-style path:
-  - `~/Documents/Electronic Arts/The Sims 4`
-- Steam/Proton compatdata paths, including Steam library folders.
-- Flatpak Steam paths.
-- Custom Sims 4 root paths from Settings.
-
-A custom path must point to the **Sims 4 root folder that contains `Mods/`**, not the `Mods` folder itself.
-
-### Mod scanning
-
-The scanner recursively reads the selected game instance `Mods` folder and returns groups that contain Sims 4 mod files:
-
-- `.package`
-- `.ts4script`
-
-Grouping rules:
-
-- Files inside a folder are grouped by that folder.
-- Root-level loose files are grouped by filename prefix.
-- Preview assets can be shown when present.
-- Non-mod folders/files are filtered out.
-
-Existing local files in `Mods/` scan as **external** until migrated into manager storage.
-
-### Managed storage
-
-Manager-owned mods live in:
-
-```text
-~/.local/share/sims4-mod-manager/mods
-```
-
-Each managed mod stores metadata in its own `meta.json`.
-
-Stored metadata includes:
-
-- detected display name
-- custom display name
-- source URL
-- provider/source type
-- preview metadata fields
-- file manifest
-
-### Metadata and source URLs
-
-Implemented metadata support:
-
-- Local filename/folder name detection.
-- Known aliases, e.g. MCCC/WickedWhims-style names.
-- Editable display names persisted to `meta.json`.
-- Source URL attach/remove flow.
-- Provider detection for CurseForge and ModTheSims URLs.
-- Browser/external open for source URLs.
-
-Provider architecture exists for:
-
-- Local name provider
-- CurseForge provider abstraction
-- ModTheSims URL-based provider abstraction
-
-No direct web downloads are implemented.
-
-### Enable/disable and migration
-
-Manager-owned mods use symlinks into the game `Mods` folder.
-
-Safety behavior:
-
-- Dry run before toggle apply.
-- Path collisions block enable.
-- Disabling removes only manager-created symlinks.
-- Unmanaged files are never overwritten or deleted silently.
-- Orphan symlinks are reported, not auto-deleted.
-
-External installed mods can be migrated with **Manage this mod**:
-
-1. Copy current installed files into manager storage.
-2. Write metadata/manifest.
-3. Preserve the original files or symlink objects in a backup on the game filesystem.
-4. Replace live installed files with manager-owned symlinks.
-
-### Import
-
-Local ZIP imports are copied into manager storage and can then be enabled via symlinks. RAR and 7z imports are unsupported. The native interface also imports local folders. Imports preserve their source files.
-
-### Safe uninstall and trash
-
-Uninstall behavior:
-
-- Requires confirmation.
-- Removes manager-created symlinks when present.
-- Moves the managed bundle to trash after checking installed links.
-- Requires external mods to be managed before uninstall.
-- Does **not** permanently delete user files.
-- Does **not** delete unmanaged files.
-
-Trash behavior:
-
-- Files move to Freedesktop trash layout:
-  - `$XDG_DATA_HOME/Trash/files`
-  - fallback: `~/.local/share/Trash/files`
-- `.trashinfo` files are written under `Trash/info`.
-- Settings includes a trash manager:
-  - refresh trash list
-  - restore trash entry
-
-### Settings and folders
-
-Settings includes buttons to open:
-
-- managed mod folder: `~/.local/share/sims4-mod-manager/mods`
-- manager folder: `~/.local/share/sims4-mod-manager`
-
-Settings can export and import a local version 1 JSON file shared with the native interface. The export omits the CurseForge API key by default. Import requires a preview and confirmation. Custom theme colors use the separate theme export, with an explicit built-in theme choice for native settings.
-
-Folder opening uses `xdg-open` with detached stdio and Linux desktop env workarounds.
-
-### Themes
-
-Theme system supports:
-
-- Light
-- Dark
-- System
-- multiple custom themes
-- editable colors
-- theme rename
-- JSON import/export
-- reset current custom theme
-- CSS variables applied broadly across app surfaces, controls, cards, borders, and modals
-
-Custom theme fields:
-
-```ts
-type AppTheme = {
-  name: string;
-  colors: {
-    accent: string;
-    background: string;
-    surface: string;
-    text: string;
-    mutedText: string;
-    border: string;
-  };
-};
-```
-
-Default accent: `#10b981`.
-
-### UI
-
-Implemented UI includes:
-
-- top bar
-- settings modal
-- game instance sidebar, hidden by default, user-expandable
-- search bar
-- mod grid
-- pagination: 12 / 24 / 48
-- mod details modal
-- issues panel
-- popup error warning dialog
-- success toast
-- scan loading overlay
-- custom themed dropdowns
-
-## Linux Desktop Notes
-
-Some Wayland/WebKitGTK systems can crash with:
-
-```text
-Error 71 (Protocol error) dispatching to Wayland display
-```
-
-The app applies this runtime workaround by default:
-
-```text
-WEBKIT_DISABLE_DMABUF_RENDERER=1
-```
-
-To opt out:
-
-```bash
-TS4MM_DISABLE_WAYLAND_WORKAROUNDS=1 ./ts4-mod-manager
-```
-
-Folder/source opening also runs `xdg-open` with:
-
-```text
-NO_AT_BRIDGE=1
-WEBKIT_DISABLE_DMABUF_RENDERER=1
-```
-
-## Running From Source
-
-### Prerequisites
-
-- Node.js 22+
-- npm
-- Rust stable
-- Cargo
-- Tauri Linux dependencies
-
-Ubuntu/Debian example:
+Install native graphics build dependencies on Ubuntu or Debian:
 
 ```bash
 sudo apt-get update
-sudo apt-get install -y \
-  build-essential \
-  curl \
-  file \
-  libayatana-appindicator3-dev \
-  libglib2.0-dev \
-  librsvg2-dev \
-  libssl-dev \
-  libwebkit2gtk-4.1-dev \
-  libxdo-dev \
-  patchelf \
-  pkg-config \
-  wget
+sudo apt-get install -y build-essential pkg-config libxkbcommon-dev libwayland-dev libgl1-mesa-dev
 ```
 
-Install dependencies:
+Run from the repository root:
 
 ```bash
-npm ci
+cargo run --manifest-path native/Cargo.toml --locked
 ```
 
-Frontend dev server:
+Open a specific Sims 4 folder containing `Mods`:
 
 ```bash
-npm run dev
+cargo run --manifest-path native/Cargo.toml --locked -- --root '/path/to/The Sims 4'
 ```
 
-Run frontend tests:
+Use `--settings` to open Settings directly. The [native app guide](native/README.md) describes all controls and CLI options. The app supports Linux; other desktop platforms have not been verified.
+
+## Local storage and safety
+
+Managed files live in `~/.local/share/sims4-mod-manager`. Scanning does not create managed storage. Each managed mod keeps its metadata in `meta.json`.
+
+Settings live in `~/.config/ts4-mod-manager/settings.json`. Saves use atomic replacement and restricted permissions. Custom theme colors persist locally and have a separate JSON export. Settings transfers omit the API key unless explicitly included.
+
+Source lookup uses real CurseForge provider results and requires a locally configured API key. Attachment always requires confirmation. Weak candidates retain their confidence warnings. Keep API keys outside Git, chat and per-mod metadata.
+
+Enable/disable reviews exact paths before applying changes. Ownership checks protect replacement files and foreign symlinks. Trash keeps managed files recoverable; unmanaged files are not removed. Startup recovery preserves ambiguous or changed paths and reports issues. Approved operations finish before normal window shutdown.
+
+## Validate changes
 
 ```bash
-npm run test:run
+cargo test --manifest-path core/Cargo.toml --locked
+cargo test --manifest-path native/Cargo.toml --locked
+cargo clippy --manifest-path native/Cargo.toml --locked --all-targets -- -D warnings
+cargo build --manifest-path native/Cargo.toml --release --locked
+python3 -m unittest discover -s native/tests -p 'test_*.py'
+python3 native/verify.py --binary native/target/release/ts4-mod-manager-native
+native/target/release/ts4-mod-manager-native --verify-workflows
+python3 native/verify_package.py --binary native/target/release/ts4-mod-manager-native
 ```
 
-Run coverage:
+The catalog verifier checks 100, 1,000 and 10,000 synthetic mod groups and preserves their input files. The workflow verifier creates isolated fixtures and exercises reviewed management operations. The repository regression checks that the resolved build graph contains no Tauri or WebKit app dependencies.
+
+Capture the actual native library and Settings from a graphical desktop:
 
 ```bash
-npm run test:coverage
+python3 native/verify_navigation.py --capture-dir native/target/navigation-captures
 ```
 
-Run Rust tests:
+## Package a Linux release
+
+After building the release executable:
 
 ```bash
-cargo test --manifest-path src-tauri/Cargo.toml
+python3 native/package.py --binary native/target/release/ts4-mod-manager-native
 ```
 
-Check Tauri-enabled Rust build:
+The archive appears under `native/target/packages/`. It contains the executable, desktop entry, icon and dependency licenses. The package verifier runs the extracted binary against isolated catalog and management fixtures.
 
-```bash
-cargo check --manifest-path src-tauri/Cargo.toml --features tauri-app
-```
-
-Build frontend:
-
-```bash
-npm run build
-```
-
-Build release binary:
-
-```bash
-cargo build --manifest-path src-tauri/Cargo.toml --features tauri-app --release
-```
-
-Release binary:
+## Repository layout
 
 ```text
-src-tauri/target/release/ts4-mod-manager
+core/                 Rust domain library and filesystem regression tests
+native/               Fastframe desktop app, UI tests and verification tools
+native/assets/        Desktop application icon
+.github/workflows/    Core and native validation plus Linux release packaging
+docs/                 Safety design and historical migration evidence
+docs/archive/         Retired app specifications and setup documents
 ```
 
-## Packaging
-
-Tauri bundling is enabled for Linux AppImage and deb targets.
-
-Build local release bundles:
-
-```bash
-npm ci
-npm run tauri:build
-```
-
-Build only the deb package:
-
-```bash
-npm run tauri:build:deb
-```
-
-Expected bundle outputs:
-
-```text
-src-tauri/target/release/bundle/appimage/
-src-tauri/target/release/bundle/deb/
-```
-
-The package metadata lives in:
-
-```text
-src-tauri/tauri.conf.json
-```
-
-Current Linux bundle settings:
-
-- targets: `appimage`, `deb`
-- icon: `src-tauri/icons/icon.png`
-- category: `Utility`
-
-If WebKitGTK/Wayland crashes on a target machine, run the binary with the default workaround enabled, or explicitly set:
-
-```bash
-WEBKIT_DISABLE_DMABUF_RENDERER=1 ./ts4-mod-manager
-```
-
-### Local packaging smoke test
-
-After building a deb package, install and launch it on a Linux desktop:
-
-```bash
-sudo apt install ./src-tauri/target/release/bundle/deb/TS4\ Mod\ Manager_0.1.0_amd64.deb
-ts4-mod-manager
-```
-
-For AppImage builds, launch the generated file directly:
-
-```bash
-chmod +x "src-tauri/target/release/bundle/appimage/TS4 Mod Manager_0.1.0_amd64.AppImage"
-"src-tauri/target/release/bundle/appimage/TS4 Mod Manager_0.1.0_amd64.AppImage"
-```
-
-Some CI/container environments cannot run `linuxdeploy` correctly for AppImage bundling. If AppImage bundling fails there, retry on a normal Linux desktop with FUSE/AppImage support, or build only the deb package with `npm run tauri:build:deb`.
-
-Local smoke-test notes are tracked in:
-
-```text
-docs/local-smoke-report.md
-```
-
-## Troubleshooting / Known Linux Issues
-
-### Wrong Sims 4 custom path
-
-Custom path must be the folder that contains `Mods/`:
-
-```text
-.../Documents/Electronic Arts/The Sims 4
-```
-
-Do not select:
-
-```text
-.../Documents/Electronic Arts/The Sims 4/Mods
-```
-
-If `Mods` is entered, the UI suggests/uses the parent folder.
-
-### Steam Flatpak path
-
-Flatpak Steam commonly stores Proton data under:
-
-```text
-~/.var/app/com.valvesoftware.Steam/.local/share/Steam/steamapps/compatdata/1222670/pfx/drive_c/users/steamuser/Documents/Electronic Arts/The Sims 4
-```
-
-### Wayland/WebKitGTK crash
-
-If you see:
-
-```text
-Error 71 (Protocol error) dispatching to Wayland display
-```
-
-Use the default workaround or set explicitly:
-
-```bash
-WEBKIT_DISABLE_DMABUF_RENDERER=1 ts4-mod-manager
-```
-
-### Missing Tauri/Linux dependencies
-
-If build fails with missing GTK/WebKit packages, reinstall the Linux prerequisites listed above. On Ubuntu/Debian, the most important package is:
-
-```text
-libwebkit2gtk-4.1-dev
-```
-
-### Restore target collision
-
-If restore fails because a file already exists in `Mods/`, open the Mods folder and rename/move the existing file, then restore again. The app does not overwrite existing files.
-
-## Project Structure
-
-```text
-.github/workflows/ci.yml       CI workflow
-plan.md                        phase plan and current notes
-src/                           React/TypeScript frontend
-src/components/                UI components and tests
-src/lib/                       frontend APIs, types, metadata/theme utilities
-src/store/                     Zustand app store and tests
-src-tauri/                     Rust backend and Tauri config
-src-tauri/src/archive_import.rs
-src-tauri/src/commands.rs
-src-tauri/src/external_migration.rs
-src-tauri/src/lifecycle.rs
-src-tauri/src/managed_storage.rs
-src-tauri/src/metadata_names.rs
-src-tauri/src/mod_scan.rs
-src-tauri/src/path_detection.rs
-src-tauri/src/runtime_env.rs
-src-tauri/src/runtime_paths.rs
-src-tauri/src/tauri_commands.rs
-src-tauri/src/toggle.rs
-```
-
-## Safety Guarantees
-
-The intended safety rules are:
-
-- No permanent deletion from app uninstall flow.
-- Do not remove unmanaged files.
-- Disable removes only manager-owned symlinks.
-- Path collision blocks enable.
-- External metadata/provider failures do not block local mod management.
-- Restore checks for collisions before moving files back.
-
-## Not Implemented Yet
-
-- Direct CurseForge/ModTheSims downloads.
-- Broad web crawling.
-- Mod dependency resolution.
-- Conflict scanner beyond duplicate/path collision basics.
-- Profiles/loadout switching.
-- Full trash empty/prune workflow.
-
-## Which Custom Sims 4 Path Should I Add?
-
-Add the folder that contains `Mods/`.
-
-Examples:
-
-Native-style install:
-
-```text
-/home/YOUR_USER/Documents/Electronic Arts/The Sims 4
-```
-
-Steam/Proton install usually looks like:
-
-```text
-/home/YOUR_USER/.steam/steam/steamapps/compatdata/1222670/pfx/drive_c/users/steamuser/Documents/Electronic Arts/The Sims 4
-```
-
-or:
-
-```text
-/home/YOUR_USER/.local/share/Steam/steamapps/compatdata/1222670/pfx/drive_c/users/steamuser/Documents/Electronic Arts/The Sims 4
-```
-
-Flatpak Steam often looks like:
-
-```text
-/home/YOUR_USER/.var/app/com.valvesoftware.Steam/.local/share/Steam/steamapps/compatdata/1222670/pfx/drive_c/users/steamuser/Documents/Electronic Arts/The Sims 4
-```
-
-Do **not** add:
-
-```text
-.../The Sims 4/Mods
-```
-
-Add its parent instead:
-
-```text
-.../The Sims 4
-```
+Read the [management safety design](docs/native-management-design.md) for ownership and recovery contracts, or the [native design system](native/DESIGN.md) for UI behavior and tokens. The [original investigation](docs/fastframe-investigation.md) and [migration report](docs/native-migration-report.md) describe historical revisions. Historical web source remains available in Git history, not in the active checkout.

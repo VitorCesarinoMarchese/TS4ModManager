@@ -17,9 +17,11 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y libxkbcommon-dev libwayland-dev libgl1-mesa-dev
+      - name: Core regression tests
+        run: cargo test --manifest-path core/Cargo.toml --locked
       - name: Native regression tests
         run: cargo test --manifest-path native/Cargo.toml --locked
-      - name: Benchmark sampler regression
+      - name: Repository and benchmark regression
         run: python3 -m unittest discover -s native/tests -p 'test_*.py'
       - name: Native clippy
         run: cargo clippy --manifest-path native/Cargo.toml --locked --all-targets -- -D warnings
@@ -37,48 +39,3 @@ jobs:
         with:
           name: native-linux
           path: native/target/packages/*.tar.gz
-
-  frontend:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: npm
-      - run: npm ci
-      - run: npm run test:coverage
-
-  backend:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: npm
-      - run: npm ci
-      - name: Install Tauri Linux dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y \
-            build-essential \
-            curl \
-            file \
-            libayatana-appindicator3-dev \
-            libglib2.0-dev \
-            librsvg2-dev \
-            libssl-dev \
-            libwebkit2gtk-4.1-dev \
-            libxdo-dev \
-            patchelf \
-            pkg-config \
-            wget
-      - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
-      - name: Rust tests
-        run: cargo test --manifest-path src-tauri/Cargo.toml
-      - name: Build frontend for Tauri context
-        run: npm run build
-      - name: Tauri feature check
-        run: cargo check --manifest-path src-tauri/Cargo.toml --features tauri-app

@@ -8,7 +8,7 @@ coverage/
 .env.*
 !.env.example
 *.tsbuildinfo
-src-tauri/target/
+core/target/
 native/target/
 .impeccable/review/
 __pycache__/

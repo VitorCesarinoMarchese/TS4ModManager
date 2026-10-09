@@ -51,8 +51,7 @@ def sample(binary, kind, home, game, settle_seconds):
     environment.update({"HOME": str(home), "XDG_DATA_HOME": str(home / ".local/share"),
                         "XDG_CONFIG_HOME": str(home / ".config"), "XDG_CACHE_HOME": str(home / ".cache")})
     command = [str(binary)]
-    if kind == "native":
-        command += ["--home", str(home), "--root", str(game), "--managed-root", str(home / "managed")]
+    command += ["--home", str(home), "--root", str(game), "--managed-root", str(home / "managed")]
     started = time.perf_counter()
     with tempfile.TemporaryFile() as errors:
         process = subprocess.Popen(command, env=environment, stdout=errors, stderr=errors, start_new_session=True)
@@ -90,7 +89,6 @@ def sample(binary, kind, home, game, settle_seconds):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--native", type=Path, required=True)
-    parser.add_argument("--tauri", type=Path, help="Optional release executable to compare")
     parser.add_argument("--mods", type=int, default=1000)
     parser.add_argument("--runs", type=int, default=3)
     parser.add_argument("--settle-seconds", type=float, default=2)
@@ -101,8 +99,6 @@ def main():
     if not 2 <= args.mods <= 100000 or not 1 <= args.runs <= 20 or not 0.5 <= args.settle_seconds <= 30:
         parser.error("Use 2–100000 mods, 1–20 runs and 0.5–30 settling seconds")
     binaries = {"native": args.native.resolve()}
-    if args.tauri:
-        binaries["tauri"] = args.tauri.resolve()
     for binary in binaries.values():
         if not binary.is_file() or not os.access(binary, os.X_OK):
             parser.error(f"Executable unavailable: {binary}")

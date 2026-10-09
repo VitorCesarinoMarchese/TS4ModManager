@@ -5,7 +5,7 @@ Project-specific rules for future coding agents working on TS4 Mod Manager.
 ## Source lookup and CurseForge safety
 
 - Do not paste, request, or store CurseForge API keys in chat.
-- Store local API keys only in untracked `.env` or app settings/localStorage.
+- Store local API keys only in untracked `.env` or local app settings.
 - `.env` / `.env.*` must stay ignored by git.
 - Never store CurseForge API keys in per-mod `meta.json`.
 - Do not download mods.
@@ -41,7 +41,7 @@ Project-specific rules for future coding agents working on TS4 Mod Manager.
 
 - Broken candidate images should hide.
 - Broken mod card images should fall back to `No Preview`.
-- Preview images should use `referrerPolicy="no-referrer"`.
+- Preview requests must omit the Referer header.
 - Low-confidence warnings must remain visible for weak candidates.
 
 ## Filesystem safety
@@ -57,8 +57,13 @@ Project-specific rules for future coding agents working on TS4 Mod Manager.
 - Keep commits small and atomic.
 - Commit after each logical change.
 - Run relevant targeted tests after each change.
+- The repository contains only the Fastframe desktop app in `native/` and Rust domain code in `core/`.
 - Run full validation before final report:
-  - `npm run test:coverage`
-  - `cargo test --manifest-path src-tauri/Cargo.toml`
-  - `npm run build`
-  - `cargo check --manifest-path src-tauri/Cargo.toml --features tauri-app`
+  - `cargo test --manifest-path core/Cargo.toml --locked`
+  - `cargo test --manifest-path native/Cargo.toml --locked`
+  - `cargo clippy --manifest-path native/Cargo.toml --locked --all-targets -- -D warnings`
+  - `cargo build --manifest-path native/Cargo.toml --release --locked`
+  - `python3 -m unittest discover -s native/tests -p 'test_*.py'`
+  - `python3 native/verify.py --binary native/target/release/ts4-mod-manager-native`
+  - `native/target/release/ts4-mod-manager-native --verify-workflows`
+  - `python3 native/verify_package.py --binary native/target/release/ts4-mod-manager-native`

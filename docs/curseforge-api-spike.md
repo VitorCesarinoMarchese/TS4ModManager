@@ -12,7 +12,7 @@ See also: [Source Lookup Live Smoke Checklist](source-lookup-live-smoke.md).
 - API key is required and must be passed as `x-api-key` by the future live client.
 - Tests parse mocked fixtures matching the expected CurseForge response shape.
 - Tests do not call the live CurseForge API.
-- CurseForge-specific parsing/request construction is isolated in `src-tauri/src/curseforge_client.rs`.
+- CurseForge-specific parsing/request construction is isolated in `core/src/curseforge_client.rs`.
 
 ## Fields usable for matching
 

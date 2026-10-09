@@ -5,7 +5,7 @@ edition = "2024"
 rust-version = "1.98"
 
 [dependencies]
-ts4-mod-manager-core = { path = "../src-tauri" }
+ts4-mod-manager-core = { path = "../core" }
 eframe = { version = "0.36.1", default-features = false, features = ["glow", "wayland", "x11", "accesskit"] }
 egui = "0.36.1"
 egui_extras = { version = "0.36.1", features = ["svg", "image", "file", "http"] }

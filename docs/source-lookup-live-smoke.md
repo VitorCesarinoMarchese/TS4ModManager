@@ -33,7 +33,7 @@ CURSEFORGE_API_KEY=your-key-here
 set -a
 source .env
 set +a
-cargo test --manifest-path src-tauri/Cargo.toml live_search_mccc_returns_results -- --ignored --nocapture
+cargo test --manifest-path core/Cargo.toml live_search_mccc_returns_results -- --ignored --nocapture
 ```
 
 Expected storage behavior:

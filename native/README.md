@@ -2,7 +2,7 @@
 
 The Fastframe/egui UI uses the existing Rust core to detect game folders, scan mods, search names and filenames, and manage local mods. Photo cards are the default library view; the card/list switch offers compact rows. Cards, catalog rows and file lists render only visible rows. A replaceable reader handles scans. A separate FIFO worker retains approved management operations and reports their queued, running, and finished states.
 
-Import folder is the primary action in the library toolbar, beside Import ZIP and Restore from trash. Settings in the header opens a full page. Select a managed mod for direct Enable/Disable controls in the inspector or narrow detail view. More actions contains Enable/Disable, rename, source lookup/attachment/removal and trash. Right-click a photo card or list row to select that mod and open the same menu. External mods offer Manage external mod with a file review before migration. The compact bottom status shows local-library information, notices and errors; Activity expands operation history when present. The existing React/Tauri app remains available.
+Import folder is the primary action in the library toolbar, beside Import ZIP and Restore from trash. Settings in the header opens a full page. Select a managed mod for direct Enable/Disable controls in the inspector or narrow detail view. More actions contains Enable/Disable, rename, source lookup/attachment/removal and trash. Right-click a photo card or list row to select that mod and open the same menu. External mods offer Manage external mod with a file review before migration. The compact bottom status shows local-library information, notices and errors; Activity expands operation history when present.
 
 Requires Rust 1.98 or later and native Linux graphics support. Fastframe is pinned to `bb79dbddef01e660f9cfc37ccd9dff1c299a8d47`. `Cargo.lock` pins the resolved dependencies, including egui/eframe 0.36.2. The native app uses published egui/winit rather than the optional Fastframe forks.
 
@@ -40,7 +40,7 @@ Settings replaces the central library and inspector. Back to library returns to 
 
 Create custom theme starts a named draft with the current light or dark base colors. Edit its name and six #RRGGBB fields, each with a color picker when the hex is valid: Accent, Background, Surface, Text, Muted text and Border. Reset colors restores the current light or dark base. Copy theme JSON copies a valid draft. Import a theme accepts JSON from this app or the previous version and loads it for editing. Save custom theme or the top Save settings validates, applies and persists the draft. Invalid colors, an empty name or a conflicting saved-theme name produce an error.
 
-Settings save locally in `~/.config/ts4-mod-manager/settings.json` using atomic replacement and mode 0600 on Unix. Save settings persists the theme, local custom-theme collection and active custom-theme name, remembered game folders, selected folder, and optional API key. CLI overrides apply to that launch. Settings export requires an unused file path and omits the API key unless Include API key in export is checked. It also omits custom themes and their active name for compatibility with the retained React app; use the separate theme JSON copy/import controls to transfer custom colors. Settings import reads at most 1 MiB, validates and previews version 1 JSON before confirmation. It preserves the existing API key when omitted and the local custom-theme collection when the imported collection is empty or absent. Keys stay outside mod metadata and operation history.
+Settings save locally in `~/.config/ts4-mod-manager/settings.json` using atomic replacement and mode 0600 on Unix. Save settings persists the theme, local custom-theme collection and active custom-theme name, remembered game folders, selected folder, and optional API key. CLI overrides apply to that launch. Settings export requires an unused file path and omits the API key unless Include API key in export is checked. It also omits custom themes and their active name for compatibility with version-1 transfers from older releases; use the separate theme JSON copy/import controls to transfer custom colors. Settings import reads at most 1 MiB, validates and previews version 1 JSON before confirmation. It preserves the existing API key when omitted and the local custom-theme collection when the imported collection is empty or absent. Keys stay outside mod metadata and operation history.
 
 Run tests and repeatable verification:
 
@@ -69,11 +69,11 @@ python3 native/verify_navigation.py --capture-dir native/target/navigation-captu
 
 The pre-redesign migration build scanned 10,000 synthetic groups in 53 ms. On 1,000-group fixtures, three launches used median process-tree PSS of 60 MiB for native and 208 MiB for the compared Tauri release. Median window mapping was 153 ms and 173 ms. These historical fixture measurements exclude input-to-paint latency and GPU frame times; they were not repeated for the library redesign. See the [completion report](../docs/native-migration-report.md) for raw evidence, method and remaining desktop checks.
 
-Compare release executables on a running Hyprland desktop without opening real game data:
+Measure native window mapping and process memory on a running Hyprland desktop without opening real game data:
 
 ```bash
 python3 native/benchmark.py --native native/target/release/ts4-mod-manager-native \
-  --tauri src-tauri/target/release/ts4-mod-manager --mods 1000 --runs 3 \
+  --mods 1000 --runs 3 \
   --output native/target/benchmark.json
 ```
 
@@ -96,4 +96,4 @@ Preview caching retains at most 32 image URIs and resets on Rescan or a game-fol
 
 The reviewed library design and tokens are recorded in [DESIGN.md](DESIGN.md) and [the native design manifest](../.impeccable/design.json). The [surface brief](../.impeccable/surfaces/native-library.md) records the approved direction. This is a Linux egui UI; the HTML/CSS design detector does not apply.
 
-Navigation and Settings validation passed 46 native tests, native clippy and the release build. Project validation passed 213 frontend coverage tests, the full Rust core suite, the frontend build and the Tauri app feature check. Nine native navigation captures passed independent design review with a ship disposition. The 100, 1,000 and 10,000-group catalog checks preserved their input files; the packaged executable passed its 18-operation workflow check. These checks do not certify untested hardware or screen-reader behavior.
+Navigation and Settings validation passed 46 native tests, native clippy and the release build. The earlier migration also validated the React/Tauri app before its retirement. Current validation uses the core and native commands in the root README. Nine native navigation captures passed independent design review with a ship disposition. The 100, 1,000 and 10,000-group catalog checks preserved their input files; the packaged executable passed its 18-operation workflow check. These checks do not certify untested hardware or screen-reader behavior.

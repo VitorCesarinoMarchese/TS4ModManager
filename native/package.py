@@ -47,7 +47,7 @@ def main():
                            "Terminal=false\nCategories=Game;Utility;\nStartupNotify=true\n")
         icon = bundle / "share/icons/hicolor/256x256/apps/ts4-mod-manager-native.png"
         icon.parent.mkdir(parents=True)
-        shutil.copy2(native.parent / "src-tauri/icons/icon.png", icon)
+        shutil.copy2(native / "assets/icon.png", icon)
         licenses = bundle / "share/licenses/ts4-mod-manager-native"
         shutil.copytree(native / "licenses", licenses)
         inventory = []

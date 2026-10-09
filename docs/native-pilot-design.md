@@ -1,5 +1,8 @@
 # Native catalog pilot
 
+Historical record from before the React/Tauri app was retired. Source paths and validation commands describe that revision. The current app lives in `native/`, with its Rust library in `core/`. See the [current setup instructions](../README.md).
+
+
 The pilot keeps the existing Rust core and adds a separate `native/` executable. It reads game instances, scans catalogs, searches names and filenames, and shows mod details. File-management actions remain in the existing app during this evaluation.
 
 The scanner first needs to group managed files by their owning mod ID, rather than the containing folder, and expose enabled state. External files keep their folder/filename grouping. Two managed mods or a managed mod and external files can share a game folder without sharing identity.

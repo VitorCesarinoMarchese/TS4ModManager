@@ -215,7 +215,7 @@
       "settingsThemeSelection": "Built-in and saved-theme choices apply immediately; Save settings persists them.",
       "headerThemeToggle": "Applies and persists a built-in light/dark theme and clears the active custom theme.",
       "localStorage": "~/.config/ts4-mod-manager/settings.json",
-      "transfer": "Settings export omits customThemes and activeCustomTheme for React compatibility; separate theme JSON transfers custom colors.",
+      "transfer": "Settings export omits customThemes and activeCustomTheme for compatibility with older version-1 transfers; separate theme JSON transfers custom colors.",
       "importPreservation": "An empty or absent custom-theme collection preserves the local collection; an omitted API key preserves the local key.",
       "cliRoute": "--settings"
     },

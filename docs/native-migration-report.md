@@ -1,5 +1,8 @@
 # Native migration completion report
 
+Historical record from before the React/Tauri app was retired. Source paths and validation commands describe that revision. The current app lives in `native/`, with its Rust library in `core/`. See the [current setup instructions](../README.md).
+
+
 Validated on 2026-10-09. The Fastframe/egui executable now manages local mods through the shared Rust core. The React/Tauri interface remains available and received the state and error fixes. Photo thumbnails and larger detail previews remain in the native interface.
 
 ## Delivered work
@@ -7,11 +10,11 @@ Validated on 2026-10-09. The Fastframe/egui executable now manages local mods th
 | Workstream | Result and evidence |
 | --- | --- |
 | Shared core design | Per-instance ownership records, contained filesystem writes and a process-wide writer lock. [Safety contracts](native-management-design.md). |
-| Filesystem safety and recovery | Journaled import publication, migration, toggle, trash and restore. Collision preflight, dangling-link handling and preserved cross-device originals. [Ownership tests](../src-tauri/tests/ownership.rs), [lifecycle tests](../src-tauri/tests/lifecycle_safety.rs), [recovery tests](../src-tauri/tests/recovery_safety.rs). |
-| Source isolation and retained frontend | Fabricated fallback candidates removed. Scan generations, metadata reconciliation, partial batch refresh, handled failures, reviewed toggles, recoverable forms, theme updates and timed feedback. [Store regressions](../src/store/appStore.regression.test.ts), [UI regressions](../src/App.regression.test.tsx). |
+| Filesystem safety and recovery | Journaled import publication, migration, toggle, trash and restore. Collision preflight, dangling-link handling and preserved cross-device originals. Ownership tests (`src-tauri/tests/ownership.rs` at the recorded revision), lifecycle tests (`src-tauri/tests/lifecycle_safety.rs` at the recorded revision), recovery tests (`src-tauri/tests/recovery_safety.rs` at the recorded revision). |
+| Source isolation and retained frontend | Fabricated fallback candidates removed. Scan generations, metadata reconciliation, partial batch refresh, handled failures, reviewed toggles, recoverable forms, theme updates and timed feedback. Store regressions (`src/store/appStore.regression.test.ts` at the recorded revision), UI regressions (`src/App.regression.test.tsx` at the recorded revision). |
 | Native controller | Approved jobs run through a FIFO worker. Results keep their original operation identity; shared writes refresh the current catalog. Startup recovery has visible waiting status and prevents blocking window shutdown. [Controller](../native/src/controls.rs), [worker](../native/src/management.rs). |
 | Native management UI | Folder/ZIP import, reviewed enable/disable and external migration, rename, explicitly confirmed source changes, managed-only trash and reviewed restore. [Executable workflow verifier](../native/src/workflows.rs). |
-| Settings transfer | Local persisted settings, versioned transfer, preview before import, bounded reads and existing-file export protection. Keys omitted by default; omitted imports preserve the local key. [Native settings](../native/src/settings.rs), [frontend transfer](../src/lib/settingsTransfer.ts). |
+| Settings transfer | Local persisted settings, versioned transfer, preview before import, bounded reads and existing-file export protection. Keys omitted by default; omitted imports preserve the local key. [Native settings](../native/src/settings.rs), frontend transfer (`src/lib/settingsTransfer.ts` at the recorded revision). |
 | Packaging and release verification | Linux archive with executable, desktop entry, icon and license inventory. CI includes release catalog and management checks. The extracted packaged executable passed locally. [Package verifier](../native/verify_package.py), [CI](../.github/workflows/ci.yml). |
 
 All implementation units have signed commits. The final functional revisions are `48de19c`, `fb7f75a` and `02a478a`; package verification is `2341ca6`. Their signatures were verified locally. CI configuration is committed; a remote CI run was not performed in this session.

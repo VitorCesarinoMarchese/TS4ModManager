@@ -4,7 +4,7 @@
 
 ## Platform
 
-Linux native desktop, built with Fastframe and egui. This is not an iOS or Android interface. A retained React/Tauri app shares the Rust core.
+Linux native desktop, built with Fastframe and egui. This is not an iOS or Android interface. The desktop UI in `native/` uses the Rust domain library in `core/`.
 
 ## Users
 
