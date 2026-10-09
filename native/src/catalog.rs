@@ -16,6 +16,31 @@ impl EntryId {
     }
 }
 
+#[derive(Default, Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ModFilter {
+    #[default]
+    All,
+    Installed,
+    Stored,
+}
+
+impl ModFilter {
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::All => "All mods",
+            Self::Installed => "Installed",
+            Self::Stored => "Stored",
+        }
+    }
+    pub fn matches(self, entry: &ScannedMod) -> bool {
+        match self {
+            Self::All => true,
+            Self::Installed => entry.enabled,
+            Self::Stored => !entry.enabled,
+        }
+    }
+}
+
 #[derive(Default)]
 pub struct Catalog {
     pub mods: Vec<ScannedMod>,
@@ -25,6 +50,7 @@ pub struct Catalog {
     pub error: Option<String>,
     pub root: Option<PathBuf>,
     pub query: String,
+    pub installation_filter: ModFilter,
     generation: u64,
     search_keys: Vec<String>,
 }
@@ -89,13 +115,23 @@ impl Catalog {
         }
     }
 
+    pub fn set_filter(&mut self, filter: ModFilter) {
+        if self.installation_filter != filter {
+            self.installation_filter = filter;
+            self.filter();
+        }
+    }
+
     fn filter(&mut self) {
         let query = self.query.trim().to_lowercase();
         self.visible = self
             .search_keys
             .iter()
             .enumerate()
-            .filter_map(|(index, text)| text.contains(&query).then_some(index))
+            .filter_map(|(index, text)| {
+                (text.contains(&query) && self.installation_filter.matches(&self.mods[index]))
+                    .then_some(index)
+            })
             .collect();
     }
 
@@ -188,5 +224,29 @@ mod tests {
             catalog.selected_mod().expect("selection").source,
             ModSource::External
         );
+    }
+
+    #[test]
+    fn installation_filter_intersects_search_and_preserves_selection() {
+        let mut catalog = Catalog::default();
+        let generation = catalog.begin_scan("A".into());
+        let installed = entry("Café outfit", Some("a"));
+        let mut stored = entry("Café furniture", Some("b"));
+        stored.enabled = false;
+        catalog.accept_scan(generation, Ok(vec![installed, stored]));
+        catalog.select(0);
+        let selected = catalog.selected.clone();
+        catalog.set_filter(ModFilter::Stored);
+        catalog.search("CAFÉ".into());
+        assert_eq!(catalog.visible.len(), 1);
+        assert!(!catalog.mods[catalog.visible[0]].enabled);
+        catalog.set_filter(ModFilter::Installed);
+        assert_eq!(catalog.visible.len(), 1);
+        assert!(catalog.mods[catalog.visible[0]].enabled);
+        assert_eq!(catalog.selected, selected);
+        catalog.search("furniture".into());
+        assert!(catalog.visible.is_empty());
+        catalog.set_filter(ModFilter::All);
+        assert_eq!(catalog.visible.len(), 1);
     }
 }

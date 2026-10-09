@@ -392,25 +392,31 @@ impl Controls {
                             {
                                 self.submit(id, Action::ReviewToggle { enabled: !entry.enabled })
                             }
+                            ui.menu_button("More actions", |ui| {
                             if ui.button("Rename").clicked()
                                 && let Some(identity) = self.identity(catalog)
                             {
+                                ui.close();
                                 self.dialog = Some(Dialog::Rename(identity, entry.name.clone()))
                             }
                             if ui.button("Find source").clicked()
                                 && let Some(id) = self.identity(catalog)
                             {
+                                ui.close();
                                 self.submit(id, Action::Lookup(self.settings.curseforge_api_key.clone()))
                             }
                             if ui.button("Attach URL").clicked()
                                 && let Some(identity) = self.identity(catalog)
                             {
+                                ui.close();
                                 self.dialog = Some(Dialog::Manual(identity, String::new()))
                             }
                             if entry.source_url.is_some() && ui.button("Remove source").clicked() {
+                                ui.close();
                                 self.confirm(catalog, Action::RemoveSource, "Remove source", vec![entry.source_url.clone().unwrap()])
                             }
                             if ui.button("Move to trash").clicked() {
+                                ui.close();
                                 self.confirm(
                                     catalog,
                                     Action::Trash,
@@ -421,6 +427,7 @@ impl Controls {
                                     ],
                                 )
                             }
+                            });
                         } else if ui.button("Manage external mod").clicked() {
                             self.confirm(
                                 catalog,
@@ -862,7 +869,7 @@ mod tests {
         controls: &mut Controls,
         catalog: &Catalog,
         events: Vec<egui::Event>,
-    ) {
+    ) -> egui::FullOutput {
         let mut output = ctx.run_ui(
             egui::RawInput {
                 screen_rect: Some(egui::Rect::from_min_size(
@@ -877,6 +884,79 @@ mod tests {
             },
         );
         output.textures_delta.clear();
+        output
+    }
+    #[test]
+    fn more_actions_closes_popup_before_opening_rename_dialog() {
+        let fixture = tempfile::tempdir().unwrap();
+        let mut catalog = Catalog::default();
+        let generation = catalog.begin_scan(fixture.path().join("game"));
+        catalog.accept_scan(
+            generation,
+            Ok(vec![serde_json::from_value(serde_json::json!({
+            "key": "fixture", "id": "fixture", "name": "Fixture mod", "files": ["mod.package"],
+            "mod_files": ["mod.package"], "source": "managed", "enabled": false, "group_path": []
+        })).unwrap()]),
+        );
+        catalog.select(0);
+        let mut controls = Controls::new(
+            fixture.path().join("managed"),
+            fixture.path().to_path_buf(),
+            Settings::default(),
+            || {},
+        )
+        .unwrap();
+        let ctx = egui::Context::default();
+        crate::ui::setup(&ctx);
+        let text_position = |output: &egui::FullOutput, label: &str| {
+            output
+                .shapes
+                .iter()
+                .find_map(|shape| match &shape.shape {
+                    egui::epaint::Shape::Text(text) if text.galley.text() == label => {
+                        Some(text.pos + text.galley.rect.center().to_vec2())
+                    }
+                    _ => None,
+                })
+                .unwrap_or_else(|| panic!("missing control {label}"))
+        };
+        let click = |pos| {
+            vec![
+                egui::Event::PointerMoved(pos),
+                egui::Event::PointerButton {
+                    pos,
+                    button: egui::PointerButton::Primary,
+                    pressed: true,
+                    modifiers: Default::default(),
+                },
+                egui::Event::PointerButton {
+                    pos,
+                    button: egui::PointerButton::Primary,
+                    pressed: false,
+                    modifiers: Default::default(),
+                },
+            ]
+        };
+        frame(&ctx, &mut controls, &catalog, vec![]);
+        let output = frame(&ctx, &mut controls, &catalog, vec![]);
+        frame(
+            &ctx,
+            &mut controls,
+            &catalog,
+            click(text_position(&output, "More actions")),
+        );
+        let output = frame(&ctx, &mut controls, &catalog, vec![]);
+        frame(
+            &ctx,
+            &mut controls,
+            &catalog,
+            click(text_position(&output, "Rename")),
+        );
+        assert!(matches!(controls.dialog, Some(Dialog::Rename(_, _))));
+        assert!(
+            !egui::Popup::is_any_open(&ctx),
+            "action popup must close when its dialog opens"
+        );
     }
     #[test]
     fn dialog_confirm_click_enqueues_and_stale_selection_cannot_confirm() {

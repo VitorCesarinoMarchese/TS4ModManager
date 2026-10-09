@@ -1,5 +1,5 @@
-use crate::catalog::Catalog;
 use crate::catalog::EntryId;
+use crate::catalog::{Catalog, ModFilter};
 use egui::{Color32, RichText};
 use std::path::PathBuf;
 use ts4_mod_manager_core::path_detection::GameInstance;
@@ -17,6 +17,11 @@ fastframe_icons::icons! {
         Folder => "folder",
         File => "file",
         Check => lucide "check",
+        Grid => "layout-grid",
+        List => "list",
+        Library => "library",
+        Package => "package",
+        Archive => "archive",
     }
 }
 
@@ -30,42 +35,47 @@ pub fn setup(ctx: &egui::Context) {
     ctx.all_styles_mut(|style| {
         let dark = style.visuals.dark_mode;
         style.visuals.panel_fill = if dark {
-            Color32::from_rgb(21, 23, 28)
+            Color32::from_rgb(19, 19, 21)
         } else {
-            Color32::from_rgb(248, 250, 252)
+            Color32::from_rgb(246, 244, 239)
         };
         style.visuals.extreme_bg_color = if dark {
-            Color32::from_rgb(28, 31, 36)
+            Color32::from_rgb(27, 27, 30)
         } else {
             Color32::WHITE
         };
         style.visuals.override_text_color = Some(if dark {
-            Color32::from_rgb(248, 250, 252)
+            Color32::from_rgb(245, 243, 238)
         } else {
-            Color32::from_rgb(2, 6, 23)
+            Color32::from_rgb(31, 30, 27)
+        });
+        style.visuals.weak_text_color = Some(if dark {
+            Color32::from_rgb(179, 177, 171)
+        } else {
+            Color32::from_rgb(101, 96, 86)
         });
         style.visuals.selection.bg_fill = if dark {
-            Color32::from_rgb(10, 70, 54)
+            Color32::from_rgb(61, 52, 35)
         } else {
-            Color32::from_rgb(209, 250, 229)
+            Color32::from_rgb(235, 221, 185)
         };
         style.visuals.selection.stroke.color = if dark {
-            Color32::from_rgb(110, 231, 183)
+            Color32::from_rgb(232, 207, 149)
         } else {
-            Color32::from_rgb(6, 95, 70)
+            Color32::from_rgb(83, 61, 20)
         };
         style.spacing.item_spacing = egui::vec2(10.0, 8.0);
         style.spacing.button_padding = egui::vec2(12.0, 8.0);
         style.spacing.interact_size.y = 34.0;
         style.visuals.widgets.noninteractive.bg_stroke.color = if dark {
-            Color32::from_rgb(53, 58, 66)
+            Color32::from_rgb(57, 57, 61)
         } else {
-            Color32::from_rgb(220, 225, 231)
+            Color32::from_rgb(218, 213, 201)
         };
         style.visuals.widgets.noninteractive.fg_stroke.color = if dark {
-            Color32::from_rgb(170, 179, 190)
+            Color32::from_rgb(179, 177, 171)
         } else {
-            Color32::from_rgb(85, 97, 112)
+            Color32::from_rgb(101, 96, 86)
         };
         for widget in [
             &mut style.visuals.widgets.inactive,
@@ -75,12 +85,30 @@ pub fn setup(ctx: &egui::Context) {
             widget.corner_radius = egui::CornerRadius::same(6);
         }
         style.visuals.widgets.inactive.weak_bg_fill = if dark {
-            Color32::from_rgb(39, 43, 50)
+            Color32::from_rgb(37, 37, 40)
         } else {
-            Color32::from_rgb(237, 241, 245)
+            Color32::from_rgb(233, 229, 220)
         };
         rendering.apply_to_visuals(&mut style.visuals);
     });
+}
+
+fn cover_uv(source: egui::Vec2, destination: egui::Vec2) -> egui::Rect {
+    let source_aspect = source.x / source.y;
+    let destination_aspect = destination.x / destination.y;
+    let crop = if source_aspect > destination_aspect {
+        egui::vec2(destination_aspect / source_aspect, 1.0)
+    } else {
+        egui::vec2(1.0, source_aspect / destination_aspect)
+    };
+    egui::Rect::from_center_size(egui::pos2(0.5, 0.5), crop)
+}
+
+#[derive(Default, Clone, Copy, PartialEq, Eq)]
+enum LibraryLayout {
+    #[default]
+    Cards,
+    List,
 }
 
 #[derive(Default)]
@@ -93,6 +121,7 @@ pub struct View {
     editing_root: bool,
     copied: Option<(EntryId, f64)>,
     previews: crate::preview::Previews,
+    layout: LibraryLayout,
 }
 
 #[derive(Default)]
@@ -105,6 +134,7 @@ pub struct RenderStats {
     pub copy: Option<egui::Rect>,
     pub photos: usize,
     pub missing_photos: usize,
+    pub list_switch: Option<egui::Rect>,
 }
 
 impl View {
@@ -112,18 +142,19 @@ impl View {
         self.previews.begin_frame(ui.ctx(), catalog.generation());
         self.stats = RenderStats::default();
         let mut scan_root = None;
-        let narrow = ui.available_width() < 900.0;
+        let narrow = ui.available_width() < 1040.0;
         let foreground = ui.visuals().text_color();
         egui::Panel::top("catalog-header")
             .resizable(false)
             .frame(
                 egui::Frame::new()
                     .fill(ui.visuals().panel_fill)
-                    .inner_margin(egui::Margin::symmetric(24, 16)),
+                    .inner_margin(egui::Margin::symmetric(24, 10)),
             )
             .show(ui, |ui| {
                 ui.horizontal(|ui| {
-                    ui.label(RichText::new("Sims 4 Mod Manager").size(22.0).strong());
+                    ui.add(Icon::Package.image(ui.visuals().selection.stroke.color, 22.0));
+                    ui.label(RichText::new("Sims 4 Mod Manager").size(20.0).strong());
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                         let dark = ui.visuals().dark_mode;
                         let icon = if dark { Icon::Sun } else { Icon::Moon };
@@ -143,7 +174,7 @@ impl View {
                         }
                     });
                 });
-                ui.add_space(14.0);
+                ui.add_space(6.0);
                 ui.horizontal(|ui| {
                     ui.add(Icon::Folder.image(ui.visuals().weak_text_color(), 18.0));
                     match catalog.root.as_ref().filter(|_| !self.editing_root) {
@@ -258,10 +289,62 @@ impl View {
             });
 
         if !narrow {
+            egui::Panel::left("library-navigation")
+                .exact_size(176.0)
+                .resizable(false)
+                .frame(
+                    egui::Frame::new()
+                        .fill(ui.visuals().extreme_bg_color)
+                        .inner_margin(16),
+                )
+                .show(ui, |ui| {
+                    ui.horizontal(|ui| {
+                        ui.add(Icon::Library.image(ui.visuals().selection.stroke.color, 20.0));
+                        ui.label(RichText::new("My library").size(16.0).strong());
+                    });
+                    ui.add_space(24.0);
+                    for filter in [ModFilter::All, ModFilter::Installed, ModFilter::Stored] {
+                        let count = catalog.mods.iter().filter(|m| filter.matches(m)).count();
+                        let icon = match filter {
+                            ModFilter::All => Icon::Grid,
+                            ModFilter::Installed => Icon::Check,
+                            ModFilter::Stored => Icon::Archive,
+                        };
+                        let active = catalog.installation_filter == filter;
+                        let button = egui::Button::image_and_text(
+                            icon.image(
+                                if active {
+                                    ui.visuals().selection.stroke.color
+                                } else {
+                                    ui.visuals().weak_text_color()
+                                },
+                                16.0,
+                            ),
+                            format!("{}  {count}", filter.label()),
+                        )
+                        .selected(active);
+                        if ui.add_sized([ui.available_width(), 40.0], button).clicked() {
+                            catalog.set_filter(filter);
+                        }
+                        ui.add_space(4.0);
+                    }
+                    ui.add_space(24.0);
+                    ui.separator();
+                    ui.add_space(16.0);
+                    ui.label(RichText::new("The Sims 4").size(13.0).strong());
+                    ui.label(
+                        RichText::new("Your mods and custom content, together.")
+                            .size(12.0)
+                            .color(ui.visuals().weak_text_color()),
+                    );
+                });
+        }
+
+        if !narrow {
             egui::Panel::right("mod-details")
-                .default_size(350.0)
+                .default_size(300.0)
                 .min_size(280.0)
-                .max_size(480.0)
+                .max_size(400.0)
                 .frame(
                     egui::Frame::new()
                         .fill(ui.visuals().extreme_bg_color)
@@ -290,7 +373,7 @@ impl View {
                     return;
                 }
                 ui.horizontal(|ui| {
-                    ui.label(RichText::new("Your mods").size(24.0).strong());
+                    ui.label(RichText::new("Mod library").size(27.0).strong());
                     ui.label(RichText::new(format!("{}", catalog.mods.len())).size(14.0).color(ui.visuals().weak_text_color()));
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                         if ui.add_enabled(catalog.root.is_some() && !catalog.loading,
@@ -299,6 +382,7 @@ impl View {
                         }
                     });
                 });
+                ui.label(RichText::new("Manage the mods and custom content in your local collection.").size(13.0).color(ui.visuals().weak_text_color()));
                 ui.add_space(12.0);
                 egui::Frame::new()
                     .fill(ui.visuals().extreme_bg_color)
@@ -320,6 +404,26 @@ impl View {
                         });
                     });
                 ui.add_space(16.0);
+                ui.horizontal_wrapped(|ui| {
+                    if narrow {
+                        for filter in [ModFilter::All, ModFilter::Installed, ModFilter::Stored] {
+                            if ui.selectable_label(catalog.installation_filter == filter, filter.label()).clicked() {
+                                catalog.set_filter(filter);
+                            }
+                        }
+                    } else {
+                        ui.label(RichText::new(format!("{} · {} mods", catalog.installation_filter.label(), catalog.visible.len())).size(13.0).color(ui.visuals().weak_text_color()));
+                    }
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        let list = ui.add(egui::Button::image(Icon::List.image(foreground, 16.0)).selected(self.layout == LibraryLayout::List)).on_hover_text("List view");
+                        self.stats.list_switch = Some(list.rect);
+                        if list.clicked() { self.layout = LibraryLayout::List; }
+                        if ui.add(egui::Button::image(Icon::Grid.image(foreground, 16.0)).selected(self.layout == LibraryLayout::Cards)).on_hover_text("Card view").clicked() {
+                            self.layout = LibraryLayout::Cards;
+                        }
+                    });
+                });
+                ui.add_space(12.0);
                 if !catalog.query.is_empty() {
                     ui.label(RichText::new(format!("{} matching mods", catalog.visible.len())).size(12.0).color(ui.visuals().weak_text_color()));
                 }
@@ -331,51 +435,180 @@ impl View {
                         ("Start with your game folder", "Open the Sims 4 folder containing Mods, or choose a detected game folder above.")
                     } else if !catalog.query.is_empty() {
                         ("No matching mods", "Try another name or filename, or clear your search.")
+                    } else if catalog.installation_filter != ModFilter::All {
+                        ("No mods in this view", "Switch to All mods to see the rest of your collection.")
                     } else {
                         ("No mods found", "This folder has no package or script mods. Managed mods also appear here when stored locally.")
                     };
                     ui.heading(title); ui.label(message);
                     return;
                 }
-                let root_id = catalog.root.clone();
-                egui::ScrollArea::vertical().id_salt(("catalog", root_id)).auto_shrink([false, false])
-                    .show_rows(ui, 64.0, catalog.visible.len(), |ui, range| {
-                        for visible_index in range {
-                            let index = catalog.visible[visible_index];
+                match self.layout {
+                    LibraryLayout::Cards => self.card_grid(ui, catalog, narrow),
+                    LibraryLayout::List => self.library_list(ui, catalog),
+                }
+
+            });
+        scan_root
+    }
+
+    fn card_grid(&mut self, ui: &mut egui::Ui, catalog: &mut Catalog, narrow: bool) {
+        let gap = 16.0;
+        let columns = ((ui.available_width() + gap) / 236.0).floor().max(1.0) as usize;
+        let width = (ui.available_width() - gap * (columns - 1) as f32) / columns as f32;
+        let height = 262.0;
+        let rows = catalog.visible.len().div_ceil(columns);
+        ui.spacing_mut().item_spacing.y = gap;
+        egui::ScrollArea::vertical()
+            .id_salt((
+                "photo-library",
+                catalog.root.clone(),
+                catalog.installation_filter as u8,
+            ))
+            .auto_shrink([false, false])
+            .show_rows(ui, height, rows, |ui, range| {
+                for row in range {
+                    ui.horizontal(|ui| {
+                        ui.spacing_mut().item_spacing.x = gap;
+                        for column in 0..columns {
+                            let Some(&index) = catalog.visible.get(row * columns + column) else {
+                                break;
+                            };
                             let entry = &catalog.mods[index];
                             let identity = EntryId::of(entry);
-                            let origin = match entry.source {
-                                ts4_mod_manager_core::mod_scan::ModSource::Managed => "Managed",
-                                ts4_mod_manager_core::mod_scan::ModSource::External => "External",
-                            };
-                            let state = if entry.enabled { "Installed" } else { "Stored" };
-                            let count = entry.mod_files.len();
-                            let subtitle = format!("{origin} · {count} {}", if count == 1 { "mod file" } else { "mod files" });
                             let selected = catalog.selected.as_ref() == Some(&identity);
-                            let response = ui.push_id(identity, |ui| {
-                                let (rect, response) = ui.allocate_exact_size(egui::vec2(ui.available_width(), 64.0), egui::Sense::click());
-                                let visuals = ui.style().interact_selectable(&response, selected);
-                                if selected || response.hovered() || response.has_focus() {
-                                    ui.painter().rect_filled(rect, 6.0, visuals.bg_fill);
-                                }
-                                let inner = rect.shrink2(egui::vec2(12.0, 10.0));
-                                let thumbnail = egui::Rect::from_min_size(inner.min, egui::Vec2::splat(44.0));
-                                self.paint_preview(ui, entry.preview.as_deref(), catalog.root.as_deref(), thumbnail, true);
-                                let mut row = ui.new_child(egui::UiBuilder::new()
-                                    .max_rect(egui::Rect::from_min_max(egui::pos2(inner.left() + 56.0, inner.top()), egui::pos2(inner.right() - 92.0, inner.bottom())))
-                                    .layout(egui::Layout::top_down(egui::Align::Min)));
-                                row.spacing_mut().item_spacing.y = 5.0;
-                                row.add(egui::Label::new(RichText::new(&entry.name).size(15.0).color(foreground)).truncate());
-                                let secondary = if selected { ui.visuals().selection.stroke.color } else { ui.visuals().weak_text_color() };
-                                row.add(egui::Label::new(RichText::new(subtitle).size(12.0).color(secondary)).truncate());
-                                let mut status = ui.new_child(egui::UiBuilder::new()
-                                    .max_rect(egui::Rect::from_min_max(egui::pos2(inner.right() - 84.0, inner.top()), inner.max))
-                                    .layout(egui::Layout::right_to_left(egui::Align::Center)));
-                                status.label(RichText::new(state).size(12.0).color(secondary));
-                                response.widget_info(|| egui::WidgetInfo::selected(egui::WidgetType::SelectableLabel, ui.is_enabled(), selected, &entry.name));
-                                response.on_hover_text(&entry.name)
-                            }).inner;
-                            if self.stats.first_row.is_none() { self.stats.first_row = Some(response.rect); }
+                            let response = ui
+                                .push_id(&identity, |ui| {
+                                    let (rect, response) = ui.allocate_exact_size(
+                                        egui::vec2(width, height),
+                                        egui::Sense::click(),
+                                    );
+                                    let color = if response.hovered() {
+                                        ui.visuals().widgets.hovered.weak_bg_fill
+                                    } else {
+                                        ui.visuals().extreme_bg_color
+                                    };
+                                    let stroke = if selected || response.has_focus() {
+                                        egui::Stroke::new(1.5, ui.visuals().selection.stroke.color)
+                                    } else {
+                                        ui.visuals().widgets.noninteractive.bg_stroke
+                                    };
+                                    ui.painter().rect(
+                                        rect,
+                                        12,
+                                        color,
+                                        stroke,
+                                        egui::StrokeKind::Inside,
+                                    );
+                                    let image_rect = egui::Rect::from_min_max(
+                                        rect.min + egui::vec2(8.0, 8.0),
+                                        egui::pos2(rect.right() - 8.0, rect.top() + 158.0),
+                                    );
+                                    self.paint_preview(
+                                        ui,
+                                        entry.preview.as_deref(),
+                                        catalog.root.as_deref(),
+                                        image_rect,
+                                        true,
+                                    );
+                                    let title_rect = egui::Rect::from_min_max(
+                                        rect.min + egui::vec2(14.0, 172.0),
+                                        rect.max - egui::vec2(14.0, 46.0),
+                                    );
+                                    let mut text = ui.new_child(
+                                        egui::UiBuilder::new()
+                                            .max_rect(title_rect)
+                                            .layout(egui::Layout::top_down(egui::Align::Min)),
+                                    );
+                                    text.add(
+                                        egui::Label::new(
+                                            RichText::new(&entry.name).size(15.0).strong(),
+                                        )
+                                        .truncate(),
+                                    );
+                                    let author = entry
+                                        .source_attachment
+                                        .as_ref()
+                                        .and_then(|source| source.author.as_deref());
+                                    text.add(
+                                        egui::Label::new(
+                                            RichText::new(
+                                                author
+                                                    .map(|author| format!("By {author}"))
+                                                    .unwrap_or_else(|| {
+                                                        if entry.id.is_some() {
+                                                            "Managed collection".into()
+                                                        } else {
+                                                            "External collection".into()
+                                                        }
+                                                    }),
+                                            )
+                                            .size(12.0)
+                                            .color(ui.visuals().weak_text_color()),
+                                        )
+                                        .truncate(),
+                                    );
+                                    let footer_rect = egui::Rect::from_min_max(
+                                        egui::pos2(rect.left() + 14.0, rect.bottom() - 35.0),
+                                        rect.max - egui::vec2(14.0, 9.0),
+                                    );
+                                    let mut footer = ui.new_child(
+                                        egui::UiBuilder::new().max_rect(footer_rect).layout(
+                                            egui::Layout::left_to_right(egui::Align::Center),
+                                        ),
+                                    );
+                                    footer.add(
+                                        Icon::File.image(ui.visuals().weak_text_color(), 13.0),
+                                    );
+                                    footer.label(
+                                        RichText::new(format!(
+                                            "{} {}",
+                                            entry.mod_files.len(),
+                                            if entry.mod_files.len() == 1 {
+                                                "file"
+                                            } else {
+                                                "files"
+                                            }
+                                        ))
+                                        .size(12.0)
+                                        .color(ui.visuals().weak_text_color()),
+                                    );
+                                    footer.with_layout(
+                                        egui::Layout::right_to_left(egui::Align::Center),
+                                        |ui| {
+                                            let accent = if entry.enabled {
+                                                ui.visuals().selection.stroke.color
+                                            } else {
+                                                ui.visuals().weak_text_color()
+                                            };
+                                            ui.label(
+                                                RichText::new(if entry.enabled {
+                                                    "Installed"
+                                                } else {
+                                                    "Stored"
+                                                })
+                                                .size(12.0)
+                                                .color(accent),
+                                            );
+                                            if entry.enabled {
+                                                ui.add(Icon::Check.image(accent, 13.0));
+                                            }
+                                        },
+                                    );
+                                    response.widget_info(|| {
+                                        egui::WidgetInfo::selected(
+                                            egui::WidgetType::SelectableLabel,
+                                            ui.is_enabled(),
+                                            selected,
+                                            &entry.name,
+                                        )
+                                    });
+                                    response.on_hover_text(&entry.name)
+                                })
+                                .inner;
+                            if self.stats.first_row.is_none() {
+                                self.stats.first_row = Some(response.rect);
+                            }
                             self.stats.rows += 1;
                             if response.clicked() {
                                 catalog.select(index);
@@ -383,8 +616,108 @@ impl View {
                             }
                         }
                     });
+                }
             });
-        scan_root
+    }
+
+    fn library_list(&mut self, ui: &mut egui::Ui, catalog: &mut Catalog) {
+        let foreground = ui.visuals().text_color();
+        let root_id = catalog.root.clone();
+        egui::ScrollArea::vertical()
+            .id_salt(("catalog", root_id))
+            .auto_shrink([false, false])
+            .show_rows(ui, 64.0, catalog.visible.len(), |ui, range| {
+                for visible_index in range {
+                    let index = catalog.visible[visible_index];
+                    let entry = &catalog.mods[index];
+                    let identity = EntryId::of(entry);
+                    let origin = match entry.source {
+                        ts4_mod_manager_core::mod_scan::ModSource::Managed => "Managed",
+                        ts4_mod_manager_core::mod_scan::ModSource::External => "External",
+                    };
+                    let state = if entry.enabled { "Installed" } else { "Stored" };
+                    let count = entry.mod_files.len();
+                    let subtitle = format!(
+                        "{origin} · {count} {}",
+                        if count == 1 { "mod file" } else { "mod files" }
+                    );
+                    let selected = catalog.selected.as_ref() == Some(&identity);
+                    let response = ui
+                        .push_id(identity, |ui| {
+                            let (rect, response) = ui.allocate_exact_size(
+                                egui::vec2(ui.available_width(), 64.0),
+                                egui::Sense::click(),
+                            );
+                            let visuals = ui.style().interact_selectable(&response, selected);
+                            if selected || response.hovered() || response.has_focus() {
+                                ui.painter().rect_filled(rect, 6.0, visuals.bg_fill);
+                            }
+                            let inner = rect.shrink2(egui::vec2(12.0, 10.0));
+                            let thumbnail =
+                                egui::Rect::from_min_size(inner.min, egui::Vec2::splat(44.0));
+                            self.paint_preview(
+                                ui,
+                                entry.preview.as_deref(),
+                                catalog.root.as_deref(),
+                                thumbnail,
+                                true,
+                            );
+                            let mut row = ui.new_child(
+                                egui::UiBuilder::new()
+                                    .max_rect(egui::Rect::from_min_max(
+                                        egui::pos2(inner.left() + 56.0, inner.top()),
+                                        egui::pos2(inner.right() - 92.0, inner.bottom()),
+                                    ))
+                                    .layout(egui::Layout::top_down(egui::Align::Min)),
+                            );
+                            row.spacing_mut().item_spacing.y = 5.0;
+                            row.add(
+                                egui::Label::new(
+                                    RichText::new(&entry.name).size(15.0).color(foreground),
+                                )
+                                .truncate(),
+                            );
+                            let secondary = if selected {
+                                ui.visuals().selection.stroke.color
+                            } else {
+                                ui.visuals().weak_text_color()
+                            };
+                            row.add(
+                                egui::Label::new(
+                                    RichText::new(subtitle).size(12.0).color(secondary),
+                                )
+                                .truncate(),
+                            );
+                            let mut status = ui.new_child(
+                                egui::UiBuilder::new()
+                                    .max_rect(egui::Rect::from_min_max(
+                                        egui::pos2(inner.right() - 84.0, inner.top()),
+                                        inner.max,
+                                    ))
+                                    .layout(egui::Layout::right_to_left(egui::Align::Center)),
+                            );
+                            status.label(RichText::new(state).size(12.0).color(secondary));
+                            response.widget_info(|| {
+                                egui::WidgetInfo::selected(
+                                    egui::WidgetType::SelectableLabel,
+                                    ui.is_enabled(),
+                                    selected,
+                                    &entry.name,
+                                )
+                            });
+                            response.on_hover_text(&entry.name)
+                        })
+                        .inner;
+                    if self.stats.first_row.is_none() {
+                        self.stats.first_row = Some(response.rect);
+                    }
+                    self.stats.rows += 1;
+                    if response.clicked() {
+                        catalog.select(index);
+                        self.detail_only = ui.ctx().content_rect().width() < 1040.0;
+                    }
+                }
+            });
     }
 
     fn details(&mut self, ui: &mut egui::Ui, catalog: &Catalog) {
@@ -554,13 +887,7 @@ impl View {
             crate::preview::State::Ready(texture) => {
                 let image = egui::Image::new(texture).corner_radius(6);
                 if thumbnail {
-                    let aspect = texture.size.x / texture.size.y;
-                    let crop = if aspect > 1.0 {
-                        egui::vec2(1.0 / aspect, 1.0)
-                    } else {
-                        egui::vec2(1.0, aspect)
-                    };
-                    let uv = egui::Rect::from_center_size(egui::pos2(0.5, 0.5), crop);
+                    let uv = cover_uv(texture.size, rect.size());
                     image.uv(uv).paint_at(ui, rect);
                 } else {
                     let scale = (rect.width() / texture.size.x).min(rect.height() / texture.size.y);
@@ -581,12 +908,16 @@ impl View {
                 ui.painter().text(
                     rect.center(),
                     egui::Align2::CENTER_CENTER,
-                    if thumbnail {
+                    if thumbnail && rect.width() < 80.0 {
                         "No\nPreview"
                     } else {
                         "No Preview"
                     },
-                    egui::FontId::proportional(if thumbnail { 9.0 } else { 14.0 }),
+                    egui::FontId::proportional(if thumbnail && rect.width() < 80.0 {
+                        9.0
+                    } else {
+                        13.0
+                    }),
                     ui.visuals().weak_text_color(),
                 );
                 self.stats.missing_photos += 1;
@@ -598,6 +929,96 @@ impl View {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn secondary_text_meets_contrast_on_all_library_surfaces() {
+        fn luminance(color: [f32; 3]) -> f32 {
+            let linear = color.map(|channel| {
+                if channel <= 0.04045 {
+                    channel / 12.92
+                } else {
+                    ((channel + 0.055) / 1.055).powf(2.4)
+                }
+            });
+            linear[0] * 0.2126 + linear[1] * 0.7152 + linear[2] * 0.0722
+        }
+        let ctx = egui::Context::default();
+        setup(&ctx);
+        for theme in [egui::Theme::Light, egui::Theme::Dark] {
+            let visuals = &ctx.style_of(theme).visuals;
+            let foreground = visuals.weak_text_color().to_array();
+            for background in [
+                visuals.panel_fill,
+                visuals.extreme_bg_color,
+                visuals.widgets.inactive.weak_bg_fill,
+            ] {
+                let background = background.to_array();
+                let base = std::array::from_fn(|i| background[i] as f32 / 255.0);
+                let painted = std::array::from_fn(|i| {
+                    foreground[i] as f32 / 255.0 + base[i] * (1.0 - foreground[3] as f32 / 255.0)
+                });
+                let a = luminance(base);
+                let b = luminance(painted);
+                let contrast = (a.max(b) + 0.05) / (a.min(b) + 0.05);
+                assert!(
+                    contrast >= 4.5,
+                    "secondary contrast {contrast:.2} in {theme:?}"
+                );
+            }
+        }
+    }
+    #[test]
+    fn photo_cover_crop_preserves_proportions_in_wide_portrait_and_square_cards() {
+        for (source, destination) in [
+            (egui::vec2(320.0, 180.0), egui::vec2(300.0, 150.0)),
+            (egui::vec2(180.0, 320.0), egui::vec2(300.0, 150.0)),
+            (egui::vec2(320.0, 180.0), egui::Vec2::splat(44.0)),
+        ] {
+            let uv = cover_uv(source, destination);
+            let sampled_aspect = source.x * uv.width() / (source.y * uv.height());
+            assert!((sampled_aspect - destination.x / destination.y).abs() < 0.001);
+            assert!(uv.min.x >= 0.0 && uv.min.y >= 0.0 && uv.max.x <= 1.0 && uv.max.y <= 1.0);
+        }
+    }
+
+    #[test]
+    fn library_defaults_to_photo_cards_and_switches_to_list_without_losing_selection() {
+        let mut catalog = populated_catalog();
+        let selected = catalog.selected.clone();
+        let mut view = View::default();
+        let ctx = egui::Context::default();
+        setup(&ctx);
+        render(&ctx, &mut view, &mut catalog, vec![], 1200.0);
+        render(&ctx, &mut view, &mut catalog, vec![], 1200.0);
+        let card = view.stats.first_row.expect("card");
+        assert!(card.height() >= 220.0, "default should be photo cards");
+        assert!(view.stats.rows < 30);
+        let pos = view.stats.list_switch.expect("list switch").center();
+        render(
+            &ctx,
+            &mut view,
+            &mut catalog,
+            vec![
+                egui::Event::PointerMoved(pos),
+                egui::Event::PointerButton {
+                    pos,
+                    button: egui::PointerButton::Primary,
+                    pressed: true,
+                    modifiers: Default::default(),
+                },
+                egui::Event::PointerButton {
+                    pos,
+                    button: egui::PointerButton::Primary,
+                    pressed: false,
+                    modifiers: Default::default(),
+                },
+            ],
+            1200.0,
+        );
+        render(&ctx, &mut view, &mut catalog, vec![], 1200.0);
+        assert!(view.stats.first_row.unwrap().height() <= 80.0);
+        assert_eq!(catalog.selected, selected);
+        assert!(view.stats.search.unwrap().right() <= 1200.0);
+    }
     fn populated_catalog() -> Catalog {
         let entries = (0..10_000).map(|index| serde_json::from_value(serde_json::json!({
             "key": format!("Mod{index:05}"), "name": format!("Mod{index:05}"),
