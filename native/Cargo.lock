@@ -4486,6 +4486,7 @@ dependencies = [
 name = "ts4-mod-manager-native"
 version = "0.1.0"
 dependencies = [
+ "chrono",
  "eframe",
  "egui",
  "egui_extras",
@@ -4495,6 +4496,7 @@ dependencies = [
  "fastframe-scroll",
  "fastframe-text",
  "image",
+ "serde",
  "serde_json",
  "tempfile",
  "ts4-mod-manager-core",

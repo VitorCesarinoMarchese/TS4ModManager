@@ -14,9 +14,11 @@ fastframe-text = { git = "https://github.com/crmne/fastframe", rev = "bb79dbddef
 fastframe-icons = { git = "https://github.com/crmne/fastframe", rev = "bb79dbddef01e660f9cfc37ccd9dff1c299a8d47" }
 fastframe-scroll = { git = "https://github.com/crmne/fastframe", rev = "bb79dbddef01e660f9cfc37ccd9dff1c299a8d47" }
 fastframe-log = { git = "https://github.com/crmne/fastframe", rev = "bb79dbddef01e660f9cfc37ccd9dff1c299a8d47" }
+chrono = { version = "0.4", default-features = false, features = ["clock"] }
 serde_json = "1"
+serde = { version = "1", features = ["derive"] }
+tempfile = "3"
 image = { version = "0.25", default-features = false, features = ["png", "jpeg", "webp", "gif"] }
 url = "2"
 
 [dev-dependencies]
-tempfile = "3"

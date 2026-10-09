@@ -3,3 +3,6 @@ pub mod cli;
 pub mod preview;
 pub mod ui;
 pub mod worker;
+
+pub mod settings;
+pub mod management;
