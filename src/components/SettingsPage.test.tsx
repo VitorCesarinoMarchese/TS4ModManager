@@ -281,3 +281,15 @@ describe("SettingsPage", () => {
     expect(onAddCustomPath).toHaveBeenCalledWith("/games/sims4");
   });
 });
+
+it("reviews imported settings without applying or revealing the key until confirmation", async () => {
+  const onImportSettings = vi.fn().mockResolvedValue(true);
+  render(<SettingsPage instances={[]} selectedInstanceId={null} onSelectInstance={() => {}} onRescan={() => {}} onAddCustomPath={() => {}} onImportSettings={onImportSettings} />);
+  const file = new File(['{"version":1,"theme":"dark","gameRoots":["/new"],"selectedRoot":"/new","curseforgeApiKey":"local-test-secret"}'], "settings.json", { type: "application/json" });
+  fireEvent.change(screen.getByLabelText("Import settings file"), { target: { files: [file] } });
+  await waitFor(() => expect(screen.getByRole("region", { name: "Review settings import" })).toBeInTheDocument());
+  expect(onImportSettings).not.toHaveBeenCalled();
+  expect(screen.queryByText("local-test-secret")).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "Confirm settings import" }));
+  await waitFor(() => expect(onImportSettings).toHaveBeenCalledWith(expect.objectContaining({ selectedRoot: "/new" })));
+});

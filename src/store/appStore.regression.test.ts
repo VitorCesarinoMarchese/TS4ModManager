@@ -93,3 +93,23 @@ it("keeps the latest metadata edit when an older response completes last", async
   expect(await rename).toBeNull();
   expect(store.getState().mods[0].name).toBe("Latest");
 });
+
+it("keeps stale metadata failures out of another instance's feedback", async () => {
+  let reject!: (reason: Error) => void;
+  const response = new Promise<Mod>((_resolve, rej) => { reject = rej; });
+  const store = createAppStore({ renameModDisplayName: () => response });
+  store.setState({ selectedInstanceId: "a", mods: [mod] });
+  const rename = store.getState().renameModDisplayName("m", "Edited");
+  store.getState().selectInstance("b");
+  reject(new Error("Old rename failed"));
+  expect(await rename).toBeNull();
+  expect(store.getState().issues).toEqual([]);
+});
+it("refreshes current scan facts after importing a bundle", async () => {
+  const scanMods = vi.fn().mockResolvedValue([{ ...mod, enabled: true, files: ["actual.package"] }]);
+  const store = createAppStore({ scanMods, importArchive: async () => ({ ...mod, enabled: false, files: ["metadata.package"] }) });
+  store.setState({ selectedInstanceId: "a", mods: [] });
+  expect(await store.getState().importArchive("/archive.zip", "M")).toBe(true);
+  expect(scanMods).toHaveBeenCalledWith("a");
+  expect(store.getState().mods[0]).toMatchObject({ enabled: true, files: ["actual.package"] });
+});

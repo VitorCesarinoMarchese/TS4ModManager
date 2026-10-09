@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { ModDetailsPanel } from "./ModDetailsPanel";
 
@@ -250,11 +250,11 @@ describe("ModDetailsPanel", () => {
     expect(onUninstall).toHaveBeenCalledWith("m1");
   });
 
-  it("shows manage and uninstall for external installed mods", () => {
+  it("shows manage and disables uninstall for external installed mods", () => {
     const onManageExternal = vi.fn();
     render(<ModDetailsPanel mod={{ ...mod, source: "external" }} onClose={() => {}} onUninstall={() => {}} onManageExternal={onManageExternal} />);
 
-    expect(screen.getByRole("button", { name: "uninstall-mod" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "uninstall-mod" })).toBeDisabled();
     fireEvent.click(screen.getByRole("button", { name: "manage-external-mod" }));
     expect(onManageExternal).toHaveBeenCalledWith("m1");
   });
@@ -273,4 +273,15 @@ describe("ModDetailsPanel", () => {
     fireEvent.click(screen.getByRole("button", { name: "close-mod-details" }));
     expect(onClose).toHaveBeenCalledTimes(1);
   });
+});
+
+it("ignores an old candidate lookup after selecting another mod", async () => {
+  let resolve!: (candidates: import("../lib/types").SourceCandidate[]) => void;
+  const lookup = vi.fn(() => new Promise<import("../lib/types").SourceCandidate[]>((r) => { resolve = r; }));
+  const { rerender } = render(<ModDetailsPanel mod={mod} onClose={() => {}} onFindSourceCandidates={lookup} />);
+  fireEvent.click(screen.getByRole("button", { name: "find-source-candidates" }));
+  rerender(<ModDetailsPanel mod={{ ...mod, id: "other" }} onClose={() => {}} onFindSourceCandidates={lookup} />);
+  await act(async () => resolve([{ providerId: "curseforge", title: "Stale source", sourceUrl: "https://www.curseforge.com/sims4/mods/actual-data", confidence: 55, confidenceLevel: "low", reasons: [], evidence: [] }]));
+  await waitFor(() => expect(screen.queryByText("Searching CurseForge...")).not.toBeInTheDocument());
+  expect(screen.queryByText("Stale source")).not.toBeInTheDocument();
 });

@@ -1,10 +1,12 @@
 import { ArrowsClockwise, SidebarSimple, X } from "@phosphor-icons/react";
 import { AnimatePresence, motion } from "framer-motion";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useStore } from "zustand";
 import type { StoreApi } from "zustand/vanilla";
 import "./App.css";
 import { HomePage } from "./components/HomePage";
+import { DryRunPreview } from "./components/DryRunPreview";
+import type { DryRunResult } from "./lib/types";
 import { ImportPanel } from "./components/ImportPanel";
 import { IssuesPanel } from "./components/IssuesPanel";
 import { ModDetailsPanel } from "./components/ModDetailsPanel";
@@ -32,6 +34,7 @@ import {
   upsertTheme,
   type AppTheme
 } from "./lib/theme";
+import { buildSettingsTransfer, downloadSettingsFile, parseSettingsTransfer } from "./lib/settingsTransfer";
 import { invokeTauri } from "./lib/tauriInvoke";
 import { createAppStore, type AppState } from "./store/appStore";
 
@@ -82,6 +85,7 @@ export function App({ store = defaultStore }: AppProps) {
   const issues = useStore(store, (s) => s.issues);
   const trashEntries = useStore(store, (s) => s.trashEntries);
   const lastSuccess = useStore(store, (s) => s.lastSuccess);
+  const scanRevision = useStore(store, (s) => s.scanRevision);
   const scanStatus = useStore(store, (s) => s.scanStatus);
   const manageAllStatus = useStore(store, (s) => s.manageAllStatus);
   const manageAllProgress = useStore(store, (s) => s.manageAllProgress);
@@ -89,6 +93,7 @@ export function App({ store = defaultStore }: AppProps) {
   const selectInstanceAndScan = useStore(store, (s) => s.selectInstanceAndScan);
   const rescanSelected = useStore(store, (s) => s.rescanSelected);
   const toggleMod = useStore(store, (s) => s.toggleMod);
+  const replaceGameRoots = useStore(store, (s) => s.replaceGameRoots);
   const addCustomInstance = useStore(store, (s) => s.addCustomInstance);
   const importArchive = useStore(store, (s) => s.importArchive);
   const pickArchiveFile = useStore(store, (s) => s.pickArchiveFile);
@@ -107,6 +112,11 @@ export function App({ store = defaultStore }: AppProps) {
   const getDiagnosticsReport = useStore(store, (s) => s.getDiagnosticsReport);
   const findSourceCandidates = useStore(store, (s) => s.findSourceCandidates);
 
+  const [prefersDark, setPrefersDark] = useState(systemPrefersDark);
+  const [toggleReview, setToggleReview] = useState<{ dryRun: DryRunResult; resolve: (approved: boolean) => void } | null>(null);
+  const togglePending = useRef(false);
+  const reviewApproval = useRef<((approved: boolean) => void) | null>(null);
+  const selectedModId = useRef<string | null>(null);
   const [search, setSearch] = useState("");
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [customThemes, setCustomThemes] = useState<AppTheme[]>(getInitialCustomThemes);
@@ -117,12 +127,41 @@ export function App({ store = defaultStore }: AppProps) {
   const [dismissedIssueIds, setDismissedIssueIds] = useState<Set<string>>(() => new Set());
   const [toggleDisabledById, setToggleDisabledById] = useState<Record<string, boolean>>({});
 
-  const activeTheme = resolveTheme(activeThemeName, customThemes, typeof window !== "undefined" ? systemPrefersDark() : false);
-  const darkMode = shouldUseDarkClass(activeThemeName, customThemes, typeof window !== "undefined" ? systemPrefersDark() : false);
+  const activeTheme = resolveTheme(activeThemeName, customThemes, prefersDark);
+  const darkMode = shouldUseDarkClass(activeThemeName, customThemes, prefersDark);
 
   useEffect(() => {
-    void loadInstances();
-  }, [loadInstances]);
+    const media = window.matchMedia?.("(prefers-color-scheme: dark)");
+    if (!media) return;
+    const update = () => setPrefersDark(media.matches);
+    media.addEventListener?.("change", update);
+    return () => media.removeEventListener?.("change", update);
+  }, []);
+
+  useEffect(() => { setToggleDisabledById({}); }, [scanRevision, selectedInstanceId]);
+  useEffect(() => {
+    setSelectedMod(null);
+    reviewApproval.current?.(false);
+    reviewApproval.current = null;
+    setToggleReview(null);
+    return () => { reviewApproval.current?.(false); };
+  }, [selectedInstanceId]);
+  useEffect(() => {
+    if (!lastSuccess) return;
+    const timer = window.setTimeout(clearSuccess, 5000);
+    return () => window.clearTimeout(timer);
+  }, [lastSuccess, clearSuccess]);
+
+  useEffect(() => {
+    void loadInstances().then(async () => {
+      const saved = window.localStorage.getItem("ts4mm-game-roots");
+      if (!saved) return;
+      try {
+        const settings = parseSettingsTransfer(saved);
+        await replaceGameRoots(settings.gameRoots, settings.selectedRoot);
+      } catch { /* Invalid local preferences leave detected instances available. */ }
+    });
+  }, [loadInstances, replaceGameRoots]);
 
   useEffect(() => {
     if (settingsOpen) void loadTrashEntries();
@@ -147,8 +186,9 @@ export function App({ store = defaultStore }: AppProps) {
     window.localStorage.setItem(CUSTOM_THEMES_STORAGE_KEY, JSON.stringify(customThemes));
   }, [activeTheme, activeThemeName, customThemes]);
 
+  selectedModId.current = selectedMod?.id ?? null;
   const effectiveSelectedMod = selectedMod
-    ? (mods.find((mod) => mod.id === selectedMod.id) ?? selectedMod)
+    ? (mods.find((mod) => mod.id === selectedMod.id) ?? null)
     : null;
 
   const isScanning = scanStatus === "scanning";
@@ -162,9 +202,23 @@ export function App({ store = defaultStore }: AppProps) {
     .find((issue) => issue.severity === "error" && !dismissedIssueIds.has(issue.id));
 
   const onToggle = async (mod: AppState["mods"][number]) => {
-    if (!selectedInstanceId) return;
-    const dryRun = await toggleMod(mod, !mod.enabled, selectedInstanceId);
-    setToggleDisabledById((prev) => ({ ...prev, [mod.id]: !dryRun.canApply }));
+    if (!selectedInstanceId || togglePending.current) return;
+    if (mod.source === "external") { setSelectedMod(mod); return; }
+    const instanceId = selectedInstanceId;
+    togglePending.current = true;
+    try {
+      const dryRun = await toggleMod(mod, !mod.enabled, instanceId, (preview) => new Promise<boolean>((resolve) => {
+        if (store.getState().selectedInstanceId !== instanceId) { resolve(false); return; }
+        reviewApproval.current = resolve;
+        setToggleReview({ dryRun: preview, resolve });
+      }));
+      if (store.getState().selectedInstanceId === instanceId) setToggleDisabledById((prev) => ({ ...prev, [mod.id]: !dryRun.canApply }));
+    } finally { togglePending.current = false; }
+  };
+  const finishToggleReview = (approved: boolean) => {
+    toggleReview?.resolve(approved);
+    reviewApproval.current = null;
+    setToggleReview(null);
   };
 
   const onCreateTheme = () => {
@@ -329,6 +383,22 @@ export function App({ store = defaultStore }: AppProps) {
               activeTheme={activeTheme}
               customThemes={customThemes}
               trashEntries={trashEntries}
+              onExportSettings={(includeApiKey, customThemeFallback) => {
+                downloadSettingsFile(buildSettingsTransfer({ activeThemeName, instances, selectedInstanceId, curseforgeApiKey: curseForgeApiKey, includeApiKey, customThemeFallback }));
+                setSuccess("Exported local settings");
+              }}
+              onImportSettings={async (settings) => {
+                if (!await replaceGameRoots(settings.gameRoots, settings.selectedRoot)) return false;
+                setActiveThemeName(settings.theme === "light" ? "Light" : settings.theme === "dark" ? "Dark" : "System");
+                if (settings.curseforgeApiKey !== undefined) {
+                  setCurseForgeApiKey(settings.curseforgeApiKey);
+                  window.localStorage.setItem(CURSEFORGE_API_KEY_STORAGE_KEY, settings.curseforgeApiKey);
+                }
+                const roots = { version: 1, theme: settings.theme, gameRoots: settings.gameRoots, selectedRoot: settings.selectedRoot };
+                window.localStorage.setItem("ts4mm-game-roots", JSON.stringify(roots));
+                setSuccess("Imported local settings");
+                return true;
+              }}
               onSelectTheme={setActiveThemeName}
               onCreateTheme={onCreateTheme}
               onThemeChange={onThemeChange}
@@ -370,7 +440,19 @@ export function App({ store = defaultStore }: AppProps) {
         ) : null}
       </AnimatePresence>
 
-      <div className="fixed bottom-4 right-4 z-40" onAnimationEnd={clearSuccess}>
+      {toggleReview ? (
+        <div className="modal-backdrop fixed inset-0 z-30 grid place-items-center bg-black/35 p-4">
+          <section role="dialog" aria-modal="true" aria-label="Review mod toggle" className="modal grid max-h-[90vh] w-[min(760px,100%)] gap-4 overflow-auto rounded-[14px] border !border-[var(--color-border)] bg-white p-6 dark:bg-slate-900">
+            <DryRunPreview dryRun={toggleReview.dryRun} />
+            <IssuesPanel issues={toggleReview.dryRun.issues} />
+            <div className="flex gap-3">
+              <button type="button" className={dangerButtonClass} disabled={!toggleReview.dryRun.canApply} onClick={() => finishToggleReview(true)}>Apply toggle</button>
+              <button type="button" className={dangerButtonClass} onClick={() => finishToggleReview(false)}>Cancel toggle</button>
+            </div>
+          </section>
+        </div>
+      ) : null}
+      <div className="fixed bottom-4 right-4 z-40">
         <Toast issue={lastSuccess ? { id: "success", severity: "info", message: lastSuccess } : null} />
       </div>
 
@@ -417,30 +499,32 @@ export function App({ store = defaultStore }: AppProps) {
 
       {effectiveSelectedMod ? (
         <ModDetailsPanel
+          key={`${selectedInstanceId}-${effectiveSelectedMod.id}`}
           mod={effectiveSelectedMod}
           onClose={() => setSelectedMod(null)}
           onRename={async (modId, newName) => {
             const renamed = await renameModDisplayName(modId, newName);
-            if (renamed) setSelectedMod(renamed);
+            if (renamed && selectedModId.current === modId) setSelectedMod(renamed);
           }}
           onAttachSourceUrl={async (modId, sourceUrl, providerId, metadata) => {
             const updated = await attachSourceUrl(modId, sourceUrl, providerId, metadata);
-            if (updated) setSelectedMod(updated);
+            if (updated && selectedModId.current === modId) setSelectedMod(updated);
           }}
           onRemoveSourceUrl={async (modId) => {
             const updated = await removeSourceUrl(modId);
-            if (updated) setSelectedMod(updated);
+            if (updated && selectedModId.current === modId) setSelectedMod(updated);
           }}
           onOpenSourceUrl={(sourceUrl) => void openExternalUrl(sourceUrl)}
           onFindSourceCandidates={(modId) => findSourceCandidates(modId, curseForgeApiKey)}
           sourceLookupHasApiKey={Boolean(curseForgeApiKey.trim())}
           onManageExternal={async (modId) => {
+            if (!window.confirm(`Manage this external mod? These files will be copied and their originals preserved:\n${effectiveSelectedMod.files.join("\n")}`)) return;
             const result = await manageExternalMod(modId);
-            if (result) setSelectedMod(null);
+            if (result && selectedModId.current === modId) setSelectedMod(null);
           }}
           onUninstall={async (modId) => {
             const result = await uninstallManagedMod(modId);
-            if (result) setSelectedMod(null);
+            if (result && selectedModId.current === modId) setSelectedMod(null);
           }}
         />
       ) : null}

@@ -1,6 +1,6 @@
 import { FloppyDisk, X } from "@phosphor-icons/react";
 import { motion } from "framer-motion";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { getMetadataProviderForUrl } from "../lib/metadataProviders";
 import { resolvePreviewSrc } from "../lib/previewImage";
 import type { Mod, SourceCandidate, SourceMetadata } from "../lib/types";
@@ -19,6 +19,9 @@ type ModDetailsPanelProps = {
 };
 
 export function ModDetailsPanel({ mod, onClose, onRename, onAttachSourceUrl, onRemoveSourceUrl, onOpenSourceUrl, onFindSourceCandidates, sourceLookupHasApiKey = false, onUninstall, onManageExternal }: ModDetailsPanelProps) {
+  const lookupGeneration = useRef(0);
+  const selectedModId = useRef(mod.id);
+  selectedModId.current = mod.id;
   const [name, setName] = useState(mod.name);
   const [sourceUrl, setSourceUrl] = useState(mod.sourceUrl ?? "");
   const [confirmRemoveSource, setConfirmRemoveSource] = useState(false);
@@ -35,6 +38,9 @@ export function ModDetailsPanel({ mod, onClose, onRename, onAttachSourceUrl, onR
     "inline-flex items-center gap-2 rounded-md border !border-[var(--color-border)] bg-white px-3 py-1.5 text-sm hover:!border-red-500 hover:bg-red-50 hover:text-red-600 focus:outline-none focus:ring-2 focus:ring-red-500/40 dark:bg-slate-800 dark:hover:!border-red-500 dark:hover:bg-red-950/30 dark:hover:text-red-300";
 
   useEffect(() => {
+    ++lookupGeneration.current;
+    setConfirmUninstall(false);
+    setConfirmRemoveSource(false);
     setName(mod.name);
     setSourceUrl(mod.sourceUrl ?? "");
     setSourceCandidates([]);
@@ -43,6 +49,7 @@ export function ModDetailsPanel({ mod, onClose, onRename, onAttachSourceUrl, onR
     setFailedCandidateImageUrls(new Set());
     setSourceLookupError(null);
     setSourceLookupStatus("idle");
+    return () => { ++lookupGeneration.current; };
   }, [mod.id, mod.name, mod.sourceUrl]);
 
   const selectedProvider = getMetadataProviderForUrl(sourceUrl);
@@ -169,20 +176,25 @@ export function ModDetailsPanel({ mod, onClose, onRename, onAttachSourceUrl, onR
                 className={buttonClass}
                 disabled={sourceLookupStatus === "loading"}
                 onClick={async () => {
+                  const request = ++lookupGeneration.current;
+                  const modId = mod.id;
+                  const current = () => lookupGeneration.current === request && selectedModId.current === modId;
                   setSourceLookupStatus("loading");
                   setSourceLookupError(null);
                   try {
-                    const candidates = await onFindSourceCandidates(mod.id);
+                    const candidates = await onFindSourceCandidates(modId);
+                    if (!current()) return;
                     setSourceCandidates(candidates);
                     setSourceLookupSearched(true);
                     setIgnoredCandidateUrls(new Set());
                     setFailedCandidateImageUrls(new Set());
                   } catch (error) {
+                    if (!current()) return;
                     setSourceCandidates([]);
                     setSourceLookupSearched(true);
                     setSourceLookupError(error instanceof Error ? error.message : "Source lookup failed.");
                   } finally {
-                    setSourceLookupStatus("idle");
+                    if (current()) setSourceLookupStatus("idle");
                   }
                 }}
               >
@@ -285,6 +297,8 @@ export function ModDetailsPanel({ mod, onClose, onRename, onAttachSourceUrl, onR
           <button
             type="button"
             aria-label="uninstall-mod"
+            disabled={mod.source === "external"}
+            title={mod.source === "external" ? "Manage this mod before moving it to trash" : undefined}
             className={dangerButtonClass}
             onClick={() => setConfirmUninstall(true)}
           >

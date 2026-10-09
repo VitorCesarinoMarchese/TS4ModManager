@@ -639,6 +639,7 @@ describe("App redesign", () => {
 
   it("imports archive from settings modal", async () => {
     const api = makeApi();
+    api.scanMods.mockResolvedValueOnce([{ id: "mod-1", name: "BuildPack", files: ["a.package"], enabled: false, source: "managed" }]).mockResolvedValue([{ id: "m1", name: "Imported", files: ["imported.package"], enabled: false, source: "managed" }]);
     const store = createAppStore(api);
     render(<App store={store} />);
 

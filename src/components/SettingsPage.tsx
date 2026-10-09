@@ -1,6 +1,7 @@
 import { ArrowsClockwise, ClipboardText, FolderOpen, FolderPlus, Plus } from "@phosphor-icons/react";
 import { useState } from "react";
 import { DARK_THEME, DEFAULT_THEME, parseThemeJson, serializeTheme, type AppTheme } from "../lib/theme";
+import { parseSettingsTransfer, type SettingsTransfer, type TransferTheme } from "../lib/settingsTransfer";
 import type { GameInstance, TrashEntry } from "../lib/types";
 import { ThemedSelect } from "./ThemedSelect";
 
@@ -15,6 +16,8 @@ type SettingsPageProps = {
   activeTheme?: AppTheme;
   customThemes?: AppTheme[];
   trashEntries?: TrashEntry[];
+  onExportSettings?: (includeApiKey: boolean, fallback?: TransferTheme) => void | Promise<void>;
+  onImportSettings?: (settings: SettingsTransfer) => Promise<boolean>;
   onSelectTheme?: (themeName: string) => void;
   onCreateTheme?: () => void;
   onThemeChange?: (theme: AppTheme) => void;
@@ -78,8 +81,15 @@ export function SettingsPage({
   manageAllDisabled = false,
   manageAllLoading = false,
   onRefreshTrash,
-  onRestoreTrash
+  onRestoreTrash,
+  onExportSettings,
+  onImportSettings
 }: SettingsPageProps) {
+  const [includeApiKey, setIncludeApiKey] = useState(false);
+  const [fallback, setFallback] = useState<TransferTheme | undefined>(undefined);
+  const [settingsReview, setSettingsReview] = useState<SettingsTransfer | null>(null);
+  const [settingsError, setSettingsError] = useState<string | null>(null);
+  const [settingsPending, setSettingsPending] = useState(false);
   const [customPath, setCustomPath] = useState("");
   const [importJson, setImportJson] = useState("");
   const [importError, setImportError] = useState<string | null>(null);
@@ -311,6 +321,66 @@ export function SettingsPage({
           </button>
         </div>
       </fieldset>
+      <section aria-label="Local settings transfer" className="grid gap-3 border-t !border-[var(--color-border)] pt-4">
+        <h2 className="text-xl font-semibold">Transfer local settings</h2>
+        <p className="text-sm">Export a local JSON file for the browser or native app. Custom theme colors use the separate theme export above.</p>
+        {canEditTheme ? (
+          <ThemedSelect label="Built-in theme for settings export" value={fallback ?? ""} options={[
+            { value: "", label: "Choose a built-in theme" }, { value: "light", label: "Light" },
+            { value: "dark", label: "Dark" }, { value: "system", label: "System" }
+          ]} onChange={(value) => { if (value === "light" || value === "dark" || value === "system") setFallback(value); else setFallback(undefined); }} />
+        ) : null}
+        <label className="flex items-center gap-2 text-sm">
+          <input type="checkbox" checked={includeApiKey} onChange={(event) => setIncludeApiKey(event.target.checked)} />
+          Include CurseForge API key in the local settings file
+        </label>
+        {includeApiKey ? <p className="text-sm">This file will contain your key. Keep it private on this device.</p> : null}
+        <button type="button" className={buttonClass} disabled={!onExportSettings || settingsPending || (canEditTheme && !fallback)} onClick={async () => {
+          setSettingsError(null);
+          try { await onExportSettings?.(includeApiKey, fallback); }
+          catch { setSettingsError("Settings export failed. Try again."); }
+        }}>Export settings file</button>
+        <label className="grid gap-2 text-sm">Import settings file
+          <input type="file" accept=".json,application/json" disabled={settingsPending || !onImportSettings} onChange={(event) => {
+            const file = event.target.files?.[0];
+            event.target.value = "";
+            setSettingsReview(null);
+            setSettingsError(null);
+            if (!file) return;
+            if (file.size > 1024 * 1024) { setSettingsError("Choose a settings file smaller than 1 MiB."); return; }
+            const reader = new FileReader();
+            reader.onload = () => {
+              try {
+                if (typeof reader.result !== "string") throw new Error("Could not read the settings file.");
+                setSettingsReview(parseSettingsTransfer(reader.result));
+              } catch (error) { setSettingsError(error instanceof Error ? error.message : "Invalid settings file."); }
+            };
+            reader.onerror = () => setSettingsError("Could not read the settings file. Try again.");
+            reader.readAsText(file);
+          }} />
+        </label>
+        {settingsError ? <p role="alert">{settingsError}</p> : null}
+        {settingsReview ? <section aria-label="Review settings import" className="grid gap-2">
+          <h3 className="font-semibold">Review settings import</h3>
+          <p>Theme: {settingsReview.theme}</p>
+          <p>These game roots replace the current instance list:</p>
+          {settingsReview.gameRoots.length ? <ul>{settingsReview.gameRoots.map((root) => <li key={root} className="break-all">{root}</li>)}</ul> : <p>No game roots.</p>}
+          <p className="break-all">Selected root: {settingsReview.selectedRoot ?? "First available root"}</p>
+          <p>{settingsReview.curseforgeApiKey === undefined ? "API key omitted. Your existing key stays saved." : "API key included. Confirmation replaces your locally saved key."}</p>
+          <div className="flex flex-wrap gap-2">
+            <button type="button" className={buttonClass} disabled={settingsPending} onClick={async () => {
+              if (!onImportSettings || settingsPending) return;
+              setSettingsPending(true);
+              try {
+                if (await onImportSettings(settingsReview)) { setSettingsReview(null); setSettingsError(null); }
+                else setSettingsError("Settings import failed. Check the game roots and try again.");
+              } catch { setSettingsError("Settings import failed. Your review is saved for retry."); }
+              finally { setSettingsPending(false); }
+            }}>{settingsPending ? "Importing settings..." : "Confirm settings import"}</button>
+            <button type="button" className={buttonClass} disabled={settingsPending} onClick={() => setSettingsReview(null)}>Cancel settings import</button>
+          </div>
+        </section> : null}
+      </section>
     </section>
   );
 }

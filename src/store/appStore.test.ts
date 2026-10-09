@@ -578,10 +578,10 @@ describe("app store bootstrap", () => {
     expect(store.getState().mods[0].name).toBe("Custom");
   });
 
-  it("imports archive and shows disabled managed mod immediately", async () => {
+  it("imports archive and refreshes selected catalog", async () => {
     const api = {
       detectGameInstances: vi.fn().mockResolvedValue([]),
-      scanMods: vi.fn().mockResolvedValue([]),
+      scanMods: vi.fn().mockResolvedValueOnce([]).mockResolvedValue([{ id: "m2", name: "Imported", files: ["actual.package"], enabled: false, source: "managed" }]),
       detectOrphanSymlinks: vi.fn().mockResolvedValue([]),
       dryRunToggle: vi.fn().mockResolvedValue({ canApply: true, operations: [], issues: [] }),
       applyToggle: vi.fn().mockResolvedValue({ applied: true, issues: [] }),
@@ -595,8 +595,9 @@ describe("app store bootstrap", () => {
     await store.getState().importArchive("/tmp/mod.zip", "ZipMod");
 
     expect(api.importArchive).toHaveBeenCalledWith("/tmp/mod.zip", "ZipMod", undefined);
-    expect(api.scanMods).toHaveBeenCalledTimes(1);
+    expect(api.scanMods).toHaveBeenCalledTimes(2);
     expect(store.getState().mods.at(-1)?.name).toBe("Imported");
+    expect(store.getState().mods.at(-1)?.files).toEqual(["actual.package"]);
   });
 
   it("stores open folder failures as issues", async () => {

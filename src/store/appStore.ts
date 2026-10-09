@@ -269,7 +269,7 @@ export function createAppStore(apiOverrides: Partial<BackendApi> = {}) {
           const existing = get().instances.find((instance) => instance.path === path);
           instances.push(existing ?? validated);
         }
-        const selected = instances.find((instance) => instance.path === selectedRoot) ?? instances[0];
+        const selected = instances[roots.findIndex((root) => root === selectedRoot)] ?? instances[0];
         get().selectInstance(selected?.id ?? null);
         set({ instances });
         if (selected) await scan(selected.id);
@@ -471,6 +471,7 @@ export function createAppStore(apiOverrides: Partial<BackendApi> = {}) {
         }));
         return updated;
       } catch (error) {
+        if (get().selectedInstanceId !== instanceId || generation !== instanceGeneration || metadataEdits.get(modId) !== edit) return null;
         set((state) => ({
           issues: mergeIssueList(state.issues, toIssue(error, "source-url", "Source URL remove failed"))
         }));
@@ -503,6 +504,7 @@ export function createAppStore(apiOverrides: Partial<BackendApi> = {}) {
         }));
         return updated;
       } catch (error) {
+        if (get().selectedInstanceId !== instanceId || generation !== instanceGeneration || metadataEdits.get(modId) !== edit) return null;
         set((state) => ({
           issues: mergeIssueList(state.issues, toIssue(error, "source-url", "Source URL attach failed"))
         }));
@@ -527,6 +529,7 @@ export function createAppStore(apiOverrides: Partial<BackendApi> = {}) {
         }));
         return updated;
       } catch (error) {
+        if (get().selectedInstanceId !== instanceId || generation !== instanceGeneration || metadataEdits.get(modId) !== edit) return null;
         set((state) => ({
           issues: mergeIssueList(state.issues, toIssue(error, "rename", "Rename failed"))
         }));
@@ -536,9 +539,9 @@ export function createAppStore(apiOverrides: Partial<BackendApi> = {}) {
     importArchive: async (archivePath, name, slug) => {
       try {
         const imported = await api.importArchive(archivePath, name, slug);
-        set((state) => ({
-          mods: [imported, ...state.mods.filter((mod) => mod.id !== imported.id)]
-        }));
+        const instanceId = get().selectedInstanceId;
+        if (instanceId) await scan(instanceId);
+        else set((state) => ({ mods: [imported, ...state.mods.filter((mod) => mod.id !== imported.id)] }));
         return true;
       } catch (error) {
         set((state) => ({

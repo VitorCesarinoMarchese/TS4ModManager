@@ -108,3 +108,22 @@ describe("ImportPanel", () => {
     expect(onImport).toHaveBeenCalledWith("/tmp/native-drop.zip", "native-drop", undefined);
   });
 });
+
+it("waits for import and preserves fields on failure without a duplicate submission", async () => {
+  let resolve!: (success: boolean) => void;
+  const onImport = vi.fn(() => new Promise<boolean>((r) => { resolve = r; }));
+  render(<ImportPanel onImport={onImport} />);
+  fireEvent.change(screen.getByLabelText("Archive path"), { target: { value: "/mods/a.zip" } });
+  fireEvent.change(screen.getByLabelText("Mod name"), { target: { value: "My name" } });
+  fireEvent.change(screen.getByLabelText("Slug (optional)"), { target: { value: "my-slug" } });
+  const button = screen.getByRole("button", { name: "Import Archive" });
+  fireEvent.click(button);
+  fireEvent.click(button);
+  expect(onImport).toHaveBeenCalledTimes(1);
+  expect(button).toBeDisabled();
+  resolve(false);
+  await waitFor(() => expect(button).not.toBeDisabled());
+  expect(screen.getByLabelText("Archive path")).toHaveValue("/mods/a.zip");
+  expect(screen.getByLabelText("Mod name")).toHaveValue("My name");
+  expect(screen.getByLabelText("Slug (optional)")).toHaveValue("my-slug");
+});

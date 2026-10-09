@@ -1,5 +1,5 @@
 import { Archive, FolderOpen, UploadSimple } from "@phosphor-icons/react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 type ImportPanelProps = {
   onImport: (archivePath: string, name: string, slug?: string) => void | boolean | Promise<void | boolean>;
@@ -27,6 +27,9 @@ export function ImportPanel({ onImport, onChooseArchive }: ImportPanelProps) {
   const [archivePath, setArchivePath] = useState("");
   const [name, setName] = useState("");
   const [slug, setSlug] = useState("");
+  const pending = useRef(false);
+  const [importing, setImporting] = useState(false);
+  const [importError, setImportError] = useState<string | null>(null);
   const [choosingArchive, setChoosingArchive] = useState(false);
   const inputClass = "h-9 rounded-md border !border-[var(--color-border)] bg-white px-3 py-1.5 text-slate-950 dark:bg-slate-800 dark:text-slate-100";
   const buttonClass = "inline-flex w-fit items-center gap-2 rounded-md border !border-[var(--color-border)] bg-white px-3 py-1.5 text-sm hover:border-accent hover:bg-accent/10 focus:outline-none focus:ring-2 focus:ring-accent/40 disabled:cursor-not-allowed disabled:opacity-60 dark:bg-slate-800 dark:hover:border-accent dark:hover:bg-accent/10";
@@ -40,7 +43,7 @@ export function ImportPanel({ onImport, onChooseArchive }: ImportPanelProps) {
     void import("@tauri-apps/api/window")
       .then(({ getCurrentWindow }) => getCurrentWindow().onDragDropEvent((event) => {
         const path = archivePathFromTauriDrop(event.payload);
-        if (path) setArchivePath(path);
+        if (path && !pending.current) setArchivePath(path);
       }))
       .then((cleanup) => {
         if (disposed) cleanup();
@@ -66,6 +69,7 @@ export function ImportPanel({ onImport, onChooseArchive }: ImportPanelProps) {
           <input
             id="archive-path"
             className={`${inputClass} min-w-0 flex-1`}
+            disabled={importing}
             value={archivePath}
             onChange={(e) => setArchivePath(e.target.value)}
             placeholder="/path/mod.zip"
@@ -73,7 +77,7 @@ export function ImportPanel({ onImport, onChooseArchive }: ImportPanelProps) {
           <button
             type="button"
             className={buttonClass}
-            disabled={!onChooseArchive || choosingArchive}
+            disabled={!onChooseArchive || choosingArchive || importing}
             onClick={async () => {
               if (!onChooseArchive) return;
               setChoosingArchive(true);
@@ -96,6 +100,7 @@ export function ImportPanel({ onImport, onChooseArchive }: ImportPanelProps) {
         <input
           id="mod-name"
           className={inputClass}
+          disabled={importing}
           value={name}
           onChange={(e) => setName(e.target.value)}
           placeholder="Name"
@@ -107,6 +112,7 @@ export function ImportPanel({ onImport, onChooseArchive }: ImportPanelProps) {
         <input
           id="mod-slug"
           className={inputClass}
+          disabled={importing}
           value={slug}
           onChange={(e) => setSlug(e.target.value)}
           placeholder="slug"
@@ -120,28 +126,40 @@ export function ImportPanel({ onImport, onChooseArchive }: ImportPanelProps) {
         onDrop={(e) => {
           e.preventDefault();
           const path = archivePathFromBrowserDrop(e.dataTransfer.files);
-          if (path) setArchivePath(path);
+          if (path && !pending.current) setArchivePath(path);
         }}
       >
         <Archive size={18} weight="regular" aria-hidden="true" />
         Drop archive here
       </div>
 
+      <p className="text-sm">ZIP archives only. RAR and 7z are unsupported.</p>
+      {importError ? <p role="alert">{importError}</p> : null}
       <button
         type="button"
         className={buttonClass}
-        onClick={() => {
+        disabled={importing}
+        onClick={async () => {
           const p = archivePath.trim();
           const n = name.trim() || archiveNameFromPath(p);
-          if (!p || !n) return;
-          void onImport(p, n, slug.trim() || undefined);
-          setArchivePath("");
-          setName("");
-          setSlug("");
+          if (!p || !n || pending.current) return;
+          pending.current = true;
+          setImporting(true);
+          setImportError(null);
+          try {
+            const success = await onImport(p, n, slug.trim() || undefined);
+            if (success === false) { setImportError("Import failed. Your entries are saved for retry."); return; }
+            setArchivePath(""); setName(""); setSlug("");
+          } catch {
+            setImportError("Import failed. Your entries are saved for retry.");
+          } finally {
+            pending.current = false;
+            setImporting(false);
+          }
         }}
       >
         <UploadSimple size={16} weight="regular" aria-hidden="true" />
-        Import Archive
+        {importing ? "Importing..." : "Import Archive"}
       </button>
     </section>
   );

@@ -61,7 +61,7 @@ export function ModCard({ mod, disabled, onToggle, onDetails }: ModCardProps) {
           onClick={() => void onToggle?.(mod)}
         >
           <Power size={16} weight="regular" aria-hidden="true" />
-          {mod.enabled ? "Disable" : "Enable"}
+          {mod.source === "external" ? "Manage first" : mod.enabled ? "Disable" : "Enable"}
         </button>
         <button
           type="button"
