@@ -105,7 +105,7 @@ fn find_with_curseforge(
     fingerprint: &ModFingerprint,
     api_key: Option<&str>,
 ) -> Result<Vec<SourceCandidate>, SourceLookupError> {
-    let client = CurseForgeClient::new(api_key, UreqCurseForgeTransport)?;
+    let client = CurseForgeClient::new(api_key, UreqCurseForgeTransport::default())?;
     let mut mods = vec![];
     for query in curseforge_queries(fingerprint) {
         mods.extend(client.search_mods(&query)?);
@@ -115,9 +115,11 @@ fn find_with_curseforge(
 
     let mut candidates = vec![];
     for mod_summary in mods.into_iter().take(12) {
-        let files = client
-            .get_mod_files(mod_summary.project_id)
-            .unwrap_or_default();
+        let files = match client.get_mod_files(mod_summary.project_id) {
+            Ok(files) => files,
+            Err(SourceLookupError::Network) => return Err(SourceLookupError::Network),
+            Err(_) => vec![],
+        };
         if let Some(candidate) = candidate_from_curseforge(fingerprint, mod_summary, &files) {
             candidates.push(candidate);
         }

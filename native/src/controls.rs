@@ -60,7 +60,7 @@ impl Controls {
         managed: PathBuf,
         home: PathBuf,
         settings: Settings,
-        wake: impl Fn() + Send + 'static,
+        wake: impl Fn() + Send + Sync + 'static,
     ) -> std::io::Result<Self> {
         let theme_edit = settings
             .custom_themes
@@ -107,6 +107,11 @@ impl Controls {
         Some(identity)
     }
     fn submit(&mut self, identity: Identity, action: Action) {
+        if matches!(action, Action::Lookup(_)) && self.operations.iter().any(|o|
+            matches!(o.job.action, Action::Lookup(_)) && (o.status == "Queued" || o.status == "Running")) {
+            self.notice = Some("A source lookup is already running. Local actions remain available.".into());
+            return;
+        }
         let job = Job {
             identity,
             managed: self.managed.clone(),
@@ -218,7 +223,7 @@ impl Controls {
             || self
                 .operations
                 .iter()
-                .any(|o| o.status == "Queued" || o.status == "Running")
+                .any(|o| !matches!(o.job.action, Action::Lookup(_)) && (o.status == "Queued" || o.status == "Running"))
     }
     pub fn poll(&mut self, catalog: &Catalog) {
         for event in self.worker.drain().collect::<Vec<_>>() {

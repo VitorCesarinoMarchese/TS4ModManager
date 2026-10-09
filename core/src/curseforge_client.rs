@@ -50,11 +50,28 @@ pub trait CurseForgeTransport {
     fn get(&self, request: &CurseForgeRequest) -> Result<(u16, String), SourceLookupError>;
 }
 
-pub struct UreqCurseForgeTransport;
+pub struct UreqCurseForgeTransport {
+    deadline: std::time::Instant,
+}
+
+impl Default for UreqCurseForgeTransport {
+    fn default() -> Self {
+        Self::with_budget(std::time::Duration::from_secs(20))
+    }
+}
+impl UreqCurseForgeTransport {
+    pub fn with_budget(budget: std::time::Duration) -> Self {
+        Self { deadline: std::time::Instant::now() + budget }
+    }
+}
 
 impl CurseForgeTransport for UreqCurseForgeTransport {
     fn get(&self, request: &CurseForgeRequest) -> Result<(u16, String), SourceLookupError> {
-        let response = ureq::get(&request.url)
+        let remaining = self.deadline.checked_duration_since(std::time::Instant::now())
+            .filter(|duration| !duration.is_zero()).ok_or(SourceLookupError::Network)?;
+        let timeout = remaining.min(std::time::Duration::from_secs(5));
+        let agent = ureq::builder().timeout(timeout).timeout_connect(timeout).build();
+        let response = agent.get(&request.url)
             .set("x-api-key", &request.api_key)
             .set("User-Agent", "TS4ModManager/0.1 source lookup")
             .call();
@@ -302,6 +319,26 @@ mod tests {
     "#;
 
     #[test]
+    fn transport_deadline_bounds_stalled_response() {
+        use std::{io::Read, net::TcpListener, time::{Duration, Instant}};
+        let server = TcpListener::bind("127.0.0.1:0").unwrap();
+        let address = server.local_addr().unwrap();
+        let listener = std::thread::spawn(move || {
+            let (mut socket, _) = server.accept().unwrap();
+            let mut bytes = [0; 1024];
+            socket.read(&mut bytes).unwrap();
+            std::thread::sleep(Duration::from_millis(300));
+        });
+        let transport = UreqCurseForgeTransport::with_budget(Duration::from_millis(50));
+        let start = Instant::now();
+        assert_eq!(transport.get(&CurseForgeRequest {url: format!("http://{address}"), api_key: "fixture".into()}), Err(SourceLookupError::Network));
+        assert!(start.elapsed() < Duration::from_millis(250));
+        // The second request must not receive a fresh budget.
+        assert_eq!(transport.get(&CurseForgeRequest {url: format!("http://{address}"), api_key: "fixture".into()}), Err(SourceLookupError::Network));
+        listener.join().unwrap();
+    }
+
+    #[test]
     fn sims4_game_id_is_stable() {
         assert_eq!(SIMS4_GAME_ID, 78062);
     }
@@ -415,7 +452,7 @@ mod tests {
     #[ignore = "requires CURSEFORGE_API_KEY in environment"]
     fn live_search_mccc_returns_results() {
         let api_key = std::env::var("CURSEFORGE_API_KEY").expect("CURSEFORGE_API_KEY env var");
-        let client = CurseForgeClient::new(Some(&api_key), UreqCurseForgeTransport).expect("client");
+        let client = CurseForgeClient::new(Some(&api_key), UreqCurseForgeTransport::default()).expect("client");
 
         let mods = client.search_mods_by_slug("mc-command-center").expect("search");
 
@@ -430,7 +467,7 @@ mod tests {
     #[ignore = "requires CURSEFORGE_API_KEY in environment"]
     fn live_diagnose_mccc_search_variants() {
         let api_key = std::env::var("CURSEFORGE_API_KEY").expect("CURSEFORGE_API_KEY env var");
-        let transport = UreqCurseForgeTransport;
+        let transport = UreqCurseForgeTransport::default();
         let urls = [
             format!("{CURSEFORGE_API_BASE}/v1/mods/search?gameId={SIMS4_GAME_ID}&searchFilter=mc+command+center"),
             format!("{CURSEFORGE_API_BASE}/v1/mods/search?gameId={SIMS4_GAME_ID}&searchFilter=mccc"),

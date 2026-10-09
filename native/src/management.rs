@@ -76,25 +76,49 @@ pub enum Event {
 }
 pub struct Mutations {
     sender: Option<mpsc::Sender<Job>>,
+    lookups: Option<mpsc::Sender<Job>>,
     results: mpsc::Receiver<Event>,
     thread: Option<JoinHandle<()>>,
 }
 impl Mutations {
-    pub fn start(wake: impl Fn() + Send + 'static) -> std::io::Result<Self> {
+    pub fn start(wake: impl Fn() + Send + Sync + 'static) -> std::io::Result<Self> {
         Self::start_worker(None, wake)
     }
     pub fn start_with_recovery(
         managed: PathBuf,
-        wake: impl Fn() + Send + 'static,
+        wake: impl Fn() + Send + Sync + 'static,
     ) -> std::io::Result<Self> {
         Self::start_worker(Some(managed), wake)
     }
     fn start_worker(
         recovery: Option<PathBuf>,
-        wake: impl Fn() + Send + 'static,
+        wake: impl Fn() + Send + Sync + 'static,
     ) -> std::io::Result<Self> {
+        Self::start_executor(recovery, wake, execute)
+    }
+    fn start_executor(
+        recovery: Option<PathBuf>,
+        wake: impl Fn() + Send + Sync + 'static,
+        execute: impl Fn(&Job) -> Result<Output, String> + Send + Sync + 'static,
+    ) -> std::io::Result<Self> {
+        let wake = std::sync::Arc::new(wake);
+        let execute = std::sync::Arc::new(execute);
         let (sender, inbox) = mpsc::channel::<Job>();
         let (out, results) = mpsc::channel();
+        let (lookup_sender, lookup_inbox) = mpsc::channel::<Job>();
+        let lookup_out = out.clone();
+        let lookup_wake = wake.clone();
+        let lookup_execute = execute.clone();
+        // Source requests are read-only. Closing the app must not wait on DNS or provider IO.
+        std::thread::Builder::new().name("source-lookups".into()).spawn(move || {
+            while let Ok(job) = lookup_inbox.recv() {
+                if lookup_out.send(Event::Running(job.identity.clone())).is_err() { break; }
+                lookup_wake();
+                let result = lookup_execute(&job);
+                if lookup_out.send(Event::Finished(job.identity, result)).is_err() { break; }
+                lookup_wake();
+            }
+        })?;
         let thread = std::thread::Builder::new()
             .name("approved-management-fifo".into())
             .spawn(move || {
@@ -115,13 +139,14 @@ impl Mutations {
             })?;
         Ok(Self {
             sender: Some(sender),
+            lookups: Some(lookup_sender),
             results,
             thread: Some(thread),
         })
     }
     pub fn submit(&self, job: Job) -> Result<(), String> {
-        self.sender
-            .as_ref()
+        let sender = if matches!(job.action, Action::Lookup(_)) { &self.lookups } else { &self.sender };
+        sender.as_ref()
             .ok_or("Management worker stopped")?
             .send(job)
             .map_err(|_| "Management worker stopped".into())
@@ -132,6 +157,7 @@ impl Mutations {
 }
 impl Drop for Mutations {
     fn drop(&mut self) {
+        self.lookups.take();
         self.sender.take();
         if let Some(thread) = self.thread.take() {
             let _ = thread.join();
@@ -306,5 +332,43 @@ pub fn execute(job: &Job) -> Result<Output, String> {
             )
             .map_err(error)?,
         )),
+    }
+}
+
+#[cfg(test)]
+mod lookup_worker_tests {
+    use super::*;
+    use std::{sync::{Arc, Mutex}, time::Duration};
+
+    #[test]
+    fn stalled_lookup_does_not_block_local_jobs_or_shutdown() {
+        let (entered, started) = mpsc::channel();
+        let (release, stalled) = mpsc::channel();
+        let stalled = Arc::new(Mutex::new(stalled));
+        let worker = Mutations::start_executor(None, || {}, move |job| {
+            if matches!(job.action, Action::Lookup(_)) {
+                entered.send(()).unwrap();
+                stalled.lock().unwrap().recv().unwrap();
+            }
+            Ok(Output::Changed(vec![]))
+        }).unwrap();
+        let make_job = |operation, action| Job {
+            identity: Identity {operation, root: "fixture".into(), entry: None, generation: 1},
+            managed: "managed".into(), trash: "trash".into(), action,
+        };
+        worker.submit(make_job(1, Action::Lookup(None))).unwrap();
+        started.recv_timeout(Duration::from_secs(1)).unwrap();
+        worker.submit(make_job(2, Action::ListTrash)).unwrap();
+        let deadline = std::time::Instant::now() + Duration::from_secs(1);
+        loop {
+            if worker.drain().any(|event| matches!(event, Event::Finished(id, Ok(_)) if id.operation == 2)) { break; }
+            assert!(std::time::Instant::now() < deadline, "local job blocked by source lookup");
+            std::thread::yield_now();
+        }
+        let (closed, done) = mpsc::channel();
+        std::thread::spawn(move || {drop(worker); closed.send(()).unwrap();});
+        let result = done.recv_timeout(Duration::from_secs(1));
+        release.send(()).unwrap();
+        result.expect("shutdown must not wait for a read-only lookup");
     }
 }
