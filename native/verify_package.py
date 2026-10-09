@@ -46,7 +46,12 @@ def main():
         assert json.loads(output)["total"] == 1
         assert package.read_bytes() == b"original package"
         assert not root.joinpath("absent-managed").exists()
-        print("Packaged executable, desktop entry, icon, licenses and fixture scan verified")
+        workflows = json.loads(subprocess.check_output(
+            [str(executable), "--verify-workflows"], text=True, timeout=120,
+        ))
+        assert workflows["passed"] and workflows["fixturePathsOnly"]
+        assert workflows["mods"] == 3
+        print("Packaged executable, desktop assets, licenses, catalog and management workflows verified")
 
 
 if __name__ == "__main__":
