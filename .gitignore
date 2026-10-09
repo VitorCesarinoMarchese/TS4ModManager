@@ -10,3 +10,5 @@ coverage/
 *.tsbuildinfo
 src-tauri/target/
 native/target/
+__pycache__/
+*.pyc
