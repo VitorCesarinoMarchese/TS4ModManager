@@ -8,6 +8,13 @@ ROOT = Path(__file__).resolve().parents[2]
 
 
 class NativeRepository(unittest.TestCase):
+    def test_ci_fetches_full_graph_before_offline_audit(self):
+        workflow = (ROOT / ".github/workflows/ci.yml").read_text()
+        fetch = "cargo fetch --manifest-path native/Cargo.toml --locked"
+        self.assertIn(fetch, workflow)
+        self.assertLess(workflow.index(fetch), workflow.index("unittest discover"))
+        self.assertIn("runs-on: ubuntu-24.04", workflow)
+
     def test_benchmark_has_no_retired_launcher_option(self):
         help_text = subprocess.check_output([
             "python3", str(ROOT / "native/benchmark.py"), "--help",

@@ -7,7 +7,7 @@ on:
 
 jobs:
   native:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
@@ -17,6 +17,8 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y libxkbcommon-dev libwayland-dev libgl1-mesa-dev
+      - name: Fetch locked dependency graph for offline audit
+        run: cargo fetch --manifest-path native/Cargo.toml --locked
       - name: Core regression tests
         run: cargo test --manifest-path core/Cargo.toml --locked
       - name: Native regression tests
