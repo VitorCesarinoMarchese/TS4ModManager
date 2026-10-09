@@ -33,11 +33,11 @@ Use `--settings` to open Settings directly. The [native app guide](native/README
 
 ## Local storage and safety
 
-Managed files live in `~/.local/share/sims4-mod-manager`. Scanning does not create managed storage. Each managed mod keeps its metadata in `meta.json`.
+Managed files live in `~/.local/share/sims4-mod-manager`. Scanning does not create managed storage. Unreadable folders, file entries and damaged managed metadata report an incomplete scan rather than a successful partial catalog. Each managed mod keeps its metadata in `meta.json`.
 
 Settings live in `~/.config/ts4-mod-manager/settings.json`. Saves use atomic replacement and restricted permissions. Custom theme colors persist locally and have a separate JSON export. Settings transfers omit the API key unless explicitly included.
 
-Source lookup uses real CurseForge provider results and requires a locally configured API key. Attachment always requires confirmation. Weak candidates retain their confidence warnings. Keep API keys outside Git, chat and per-mod metadata.
+Source lookup uses real CurseForge provider results and requires a locally configured API key. Requests run separately from local management, with a 20-second shared network budget and a 5-second request limit. Closing the app does not wait on read-only provider requests. Attachment always requires confirmation. Weak candidates retain their confidence warnings. Keep API keys outside Git, chat and per-mod metadata.
 
 Enable/disable reviews exact paths before applying changes. Ownership checks protect replacement files and foreign symlinks. Trash keeps managed files recoverable; unmanaged files are not removed. Startup recovery preserves ambiguous or changed paths and reports issues. Approved operations finish before normal window shutdown.
 
@@ -69,6 +69,8 @@ After building the release executable:
 ```bash
 python3 native/package.py --binary native/target/release/ts4-mod-manager-native
 ```
+
+CI builds release archives on Ubuntu 24.04 and rejects executables requiring glibc newer than 2.39. Use CI artifacts for distribution. Locally built executables inherit the host library requirements and may require a newer Linux installation. Other runtime graphics dependencies still need to be installed.
 
 The archive appears under `native/target/packages/`. It contains the executable, desktop entry, icon and dependency licenses. The package verifier runs the extracted binary against isolated catalog and management fixtures.
 
