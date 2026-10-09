@@ -38,6 +38,8 @@ Durable local evidence is in `/home/tept/Projects/.TS4ModManager-migration/repor
 
 ## Release measurements
 
+These measurements and hashes identify the migration build before the later photo-card redesign in `2e4fe03`. The local archive path is reused when packaging a newer build; verify its current hash directly rather than comparing that newer archive with the historical hashes below.
+
 The committed [benchmark script](../native/benchmark.py) launched each current release three times on the same Hyprland desktop, with separate temporary homes and 1,000 synthetic mod groups per launch. Memory covers the process tree two seconds after window mapping. PSS apportions shared pages. Window mapping measures appearance, not a completed catalog frame or input-to-paint latency.
 
 | Metric | Native | React/Tauri |

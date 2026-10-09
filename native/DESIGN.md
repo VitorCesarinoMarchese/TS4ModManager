@@ -1,63 +1,134 @@
-# Native management UI design
+---
+name: Sims 4 Mod Manager native
+description: A photo-first library for local Sims 4 mods.
+colors:
+  panel-light: "#F6F4EF"
+  panel-dark: "#131315"
+  surface-light: "#FFFFFF"
+  surface-dark: "#1B1B1E"
+  text-light: "#1F1E1B"
+  text-dark: "#F5F3EE"
+  muted-light: "#656056"
+  muted-dark: "#B3B1AB"
+  selection-fill-light: "#EBDDB9"
+  selection-fill-dark: "#3D3423"
+  selection-stroke-light: "#533D14"
+  selection-stroke-dark: "#E8CF95"
+  border-light: "#DAD5C9"
+  border-dark: "#39393D"
+  widget-fill-light: "#E9E5DC"
+  widget-fill-dark: "#252528"
+typography:
+  headline:
+    fontSize: "27pt"
+  title:
+    fontSize: "23pt"
+  card-title:
+    fontSize: "15pt"
+  body:
+    fontSize: "13pt"
+  label:
+    fontSize: "12pt"
+rounded:
+  widget: "6pt"
+  search: "8pt"
+  card: "12pt"
+spacing:
+  item-horizontal: "10pt"
+  item-vertical: "8pt"
+  card-gap: "16pt"
+  panel: "24pt"
+components:
+  card-light:
+    backgroundColor: "{colors.surface-light}"
+    textColor: "{colors.text-light}"
+    rounded: "{rounded.card}"
+    height: "262pt"
+  card-dark:
+    backgroundColor: "{colors.surface-dark}"
+    textColor: "{colors.text-dark}"
+    rounded: "{rounded.card}"
+    height: "262pt"
+  button-primary-light:
+    backgroundColor: "{colors.selection-fill-light}"
+    textColor: "{colors.text-light}"
+    rounded: "{rounded.widget}"
+    padding: "8pt 12pt"
+  button-primary-dark:
+    backgroundColor: "{colors.selection-fill-dark}"
+    textColor: "{colors.text-dark}"
+    rounded: "{rounded.widget}"
+    padding: "8pt 12pt"
+---
 
-This Fastframe/egui UI keeps TS4 Mod Manager's existing green accent and light/dark appearance. The Rust core owns filesystem and provider behavior. The React/Tauri app remains available.
+# Design System: Sims 4 Mod Manager native
 
-## Scope
+## Overview
 
-The catalog reads game folders, searches mod names and filenames, and displays installed/stored state, files, photos, and saved source metadata. The management bar imports folders and ZIP archives, reviews enable and disable, migrates reviewed external files, renames managed mods, finds or attaches sources, and moves or restores managed mods through trash.
+**Creative North Star: "The local mod library"**
 
-A separate FIFO worker retains approved operations. Review, lookup, and dialog results bind to operation ID, root, entry identity, and scan generation. Stale results cannot replace a new selection. Changes request a fresh scan for the current root because managed storage and metadata are shared across roots. Approved jobs finish before the window closes.
+The native library follows the user-approved Deadlock Mod Manager and CurseForge direction. Large previews carry recognition; warm neutral surfaces, gold selection and visible installed state keep local management clear. The light and dark themes share the same hierarchy.
 
-Source attachment and removal require explicit confirmation. Candidate confidence, reasons, and evidence appear before attachment. Keep weak-match warnings visible in both the candidate list and confirmation. Broken candidate images hide. Saved previews retain No Preview fallback and HTTP requests without a Referer header. The app does not download or update mods.
+This design applies to the Linux Fastframe/egui app. The Rust implementation is authoritative. Dimensions use egui logical points, not CSS pixels. Fastframe supplies default fonts and platform text rendering.
 
-Startup asks the core to recover pending operations and displays recovery issues. Native toggle and migration hold the shared writer guard across revalidation and mutation. A forced process termination can interrupt approved work; core recovery preserves changed or ambiguous user paths and may require attention before further mutations. OS kill, reboot, touchpad, monitor, and screen-reader checks still need separate evidence.
+**Key Characteristics:**
 
-Settings use atomic local writes with mode 0600 on Unix. Transfer JSON uses the shared version 1 schema. Export requires an unused file path and excludes the API key by default. Import is bounded to 1 MiB and shows its theme, roots, selected root, and API-key behavior before confirmation. An omitted key preserves the existing local key. CLI overrides remain transient.
+- Photo cards by default, with a compact list switch.
+- Warm light and charcoal dark themes with gold selection.
+- A persistent inspector on wide windows and a return path on narrow windows.
 
-## Appearance tokens
+## Colors
 
-Values below describe `src/ui.rs`. Dimensions use egui logical points.
+The frontmatter records the exact theme pairs from `src/ui.rs::setup`; use each pair within its theme.
 
-| Role | Light | Dark |
-| --- | --- | --- |
-| Header, catalog, status background | `#F8FAFC` | `#15171C` |
-| Details and extreme background | `#FFFFFF` | `#1C1F24` |
-| Main text | `#020617` | `#F8FAFC` |
-| Selection background | `#D1FAE5` | `#0A4636` |
-| Selection stroke | `#065F46` | `#6EE7B7` |
+### Primary
 
-Other widget colors, weak text, and error colors follow egui's theme. Use Fastframe's default font definitions and detected platform text rendering. The pilot defines no custom font family.
+Gold selection fill and stroke identify selected navigation, installed state, focused cards and the Import folder action. Selected cards use a gold outline rather than a gold body fill.
 
-| Element | Size or spacing |
-| --- | --- |
-| App title | 22, strong |
-| Catalog / selected mod title | 24 / 23, strong |
-| Catalog name / metadata | 15 / 12, truncated |
-| Header margins | 24 horizontal, 16 vertical |
-| Catalog and details / status margins | 24 / 24 horizontal, 10 vertical |
-| Global item spacing | 10 horizontal, 8 vertical |
-| Button padding | 12 horizontal, 8 vertical |
-| Catalog row | 64 high; 12 horizontal and 10 vertical inner inset |
-| Row name-to-metadata spacing | 5 |
-| Row highlight corner radius | 6 |
-| Catalog thumbnail | 44 square, centered crop, 6 corner radius |
-| Detail photo | 180 high, contain, 6 corner radius |
-| File row | 48 high; basename 13, folder path 11 |
-| Search field | 40 high; 8 corner radius |
-| Buttons | Minimum 34 high; 6 corner radius |
-| Muted text, light / dark | `#556170` / `#AAB3BE` noninteractive foreground |
-| Search / general action / Copy icon | 18 / 16 / 14 |
+### Neutral
 
-## Layout and interaction
+Warm panel backgrounds contain the library, header and status. White or charcoal surfaces hold the rail, inspector, search and cards. Main text stays separate from explicit muted text. Warm borders and widget fills provide structure without competing with previews. Hover, active, disabled and error colors otherwise follow egui's theme.
 
-At available widths of 900 or greater, show the catalog beside a right details pane. The pane starts at 350 wide and has limits of 280 and 480. Below 900, selecting a mod replaces the catalog with details; Back to mods restores the list. Keep the game-folder header and status visible in both views.
+**The readable metadata rule.** Use the explicit muted theme color for secondary text; do not substitute egui's default weak alpha for it.
 
-Follow the saved theme preference, or the desktop theme when no preference exists. The Light/Dark button switches themes. The current folder appears as a compact path summary with a full-path tooltip. Change folder reveals the path editor and detected-folder menu. On first launch the editor is already visible. Open accepts a nonempty trimmed path; Enter in the folder field also opens it. Choosing a detected folder starts a scan. Disable Rescan while loading or before a root exists.
+## Typography
 
-Search filters as the text changes and displays the match count. Catalog rows use egui's selected, hover, and focus visuals. Full mod names appear in hover text. Rows separate the name and ownership/file count from installed/stored state. File rows show the basename first and the folder below it, with full-path tooltips and selectable basenames. Copy copies the complete file list and confirms with Copied for two seconds. Selected-row secondary text uses the green selection foreground.
+Use Fastframe's default font definitions with detected platform rendering. There is no custom application font family. The library heading is strong at 27 points; the selected-mod title is strong at 23; the app title is strong at 20. Card titles are strong at 15. Here, egui's strong treatment selects a text color rather than a separate 700-weight font. Supporting library text uses 13 and metadata uses 12. File basenames use 13 and containing paths use 11. Full names and paths remain available through tooltips where text truncates.
 
-Render only visible catalog and file rows. Load saved image paths and URLs in the background, showing a spinner while pending and No Preview when absent or broken. The detail summary has its own scroll area, reserving 150 points for file controls and rows where space allows. Its minimum viewport is 80 points. Local relative previews resolve under the chosen Mods folder. Reset preview caching on a new scan; retain at most 32 URIs. HTTP requests and redirects send no Referer header. Show separate guidance for initial folder selection, scanning, empty catalogs, and no matches. Errors explain how to retry. Saved source URLs are selectable wrapped text. Keep the local-first status visible throughout. The management bar uses the catalog background and existing button sizes. Import folder uses the green selection fill and stroke as its primary emphasis; Restore from trash and Settings use secondary button styling. Review dialogs show exact filesystem paths and warnings before Confirm.
+## Layout
 
-## Evidence
+The wide library has a fixed 176-point navigation rail and a resizable inspector, initially 300 points wide with limits of 280 and 400. Central and inspector panels use 24-point inner margins; the rail uses 16. The header uses 24 horizontal and 10 vertical points.
 
-This document records the implemented controls and tokens in `src/ui.rs`, with management scope from `README.md` and `../docs/native-management-design.md`. It does not define a broader product identity or claim that desktop performance and touchpad behavior have been validated.
+Below 1040 points of available width, state tabs replace the rail. Selecting a mod replaces the library with details; Back to mods returns to browsing. The header, local-first status and management controls remain available.
+
+Cards are 262 points high with a 16-point gap. The column count is `floor((available_width + 16) / 236)`, with at least one column; widths then divide the remaining space evenly. The 236-point column budget includes the gap, so it is not a guaranteed minimum card width. Images occupy 150 points in height with an 8-point inset. Text and footer content use a 14-point horizontal inset. Cards and list rows render only visible rows.
+
+The list uses 64-point rows, 44-point square previews and 12 horizontal / 10 vertical points of inner inset. The inspector preview is 180 points high. Its summary scrolls separately, reserving 150 points for file controls where space allows and keeping an 80-point minimum summary viewport. File rows are 48 points high. Global item spacing is 10 horizontal / 8 vertical; buttons use 12 horizontal / 8 vertical padding and a 34-point minimum interaction height.
+
+## Elevation & Depth
+
+Library depth comes from panel/surface contrast and restrained borders. Cards have no custom shadow. Native menus and dialogs retain egui's standard elevation. Selection and keyboard focus share a 1.5-point gold card outline; hover uses the current egui hovered widget fill. These states update immediately, without a custom selection animation.
+
+## Shapes
+
+Cards use 12-point corners. Search uses 8-point corners. Buttons, list highlights, previews and installed-state containers use 6-point corners. Keep the larger card shape around the full image and metadata group.
+
+## Components
+
+- Photo cards show the real name, saved author when present, file count and Installed or Stored state. Without a saved author they show Managed collection or External collection. Missing and broken previews show No Preview; pending previews show a spinner. Card cover crops account for both source and destination proportions. Inspector images use contain sizing.
+- Search is a 40-point field with an 18-point icon. It filters display names and filenames as text changes. All, Installed and Stored filters intersect the current search. Rail counts describe the full catalog; the library count describes the visible collection. Filtering does not enable or disable files.
+- The card/list switch changes presentation while retaining search and selected identity. Standard native hover and focus remain visible. Selection opens the wide inspector or narrow detail view.
+- Import folder is the primary management action. Import ZIP, Restore from trash and Settings remain secondary. Enable/Disable stays direct for managed mods; More actions holds rename, source lookup/attachment/removal and trash. External mods retain reviewed migration. Menu activations explicitly close the popup before opening their next interaction.
+- The inspector retains complete file and saved-source inspection, full-path tooltips and Copy feedback. Source changes and destructive management reviews require explicit confirmation. Low-confidence candidate warnings remain visible.
+- Preview requests send no Referer header. Relative local paths resolve under the selected Mods folder. Preview caching resets on scans and retains at most 32 URIs. Candidate review is currently text-only; any future candidate images must hide on failure.
+
+## Do's and Don'ts
+
+- Do preserve photo proportions with destination-aware centered cover crops in cards and contain sizing in the inspector.
+- Do keep explicit weak text colors readable on panels, cards, widgets and selected fills.
+- Do preserve search and selected identity when switching card/list layouts.
+- Do show No Preview for missing or broken mod photos and keep weak source-match warnings visible.
+
+- Don't fabricate mod photography, authors, source candidates or discovery counters.
+- Don't add download or update actions to this local management library.
+- Don't replace native focus and hover behavior with a custom selection animation.

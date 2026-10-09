@@ -1,0 +1,203 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-10-09T14:49:15.864576+00:00",
+  "title": "Design System: Sims 4 Mod Manager native",
+  "extensions": {
+    "platform": "Linux Fastframe/egui",
+    "source": "native/DESIGN.md",
+    "implementationSources": [
+      "native/src/ui.rs",
+      "native/src/catalog.rs",
+      "native/src/controls.rs"
+    ],
+    "units": "egui logical points",
+    "colorMeta": {
+      "panel-light": {
+        "role": "neutral",
+        "displayName": "panel light"
+      },
+      "panel-dark": {
+        "role": "neutral",
+        "displayName": "panel dark"
+      },
+      "surface-light": {
+        "role": "neutral",
+        "displayName": "surface light"
+      },
+      "surface-dark": {
+        "role": "neutral",
+        "displayName": "surface dark"
+      },
+      "text-light": {
+        "role": "neutral",
+        "displayName": "text light"
+      },
+      "text-dark": {
+        "role": "neutral",
+        "displayName": "text dark"
+      },
+      "muted-light": {
+        "role": "neutral",
+        "displayName": "muted light"
+      },
+      "muted-dark": {
+        "role": "neutral",
+        "displayName": "muted dark"
+      },
+      "selection-fill-light": {
+        "role": "primary",
+        "displayName": "selection fill light"
+      },
+      "selection-fill-dark": {
+        "role": "primary",
+        "displayName": "selection fill dark"
+      },
+      "selection-stroke-light": {
+        "role": "primary",
+        "displayName": "selection stroke light"
+      },
+      "selection-stroke-dark": {
+        "role": "primary",
+        "displayName": "selection stroke dark"
+      },
+      "border-light": {
+        "role": "neutral",
+        "displayName": "border light"
+      },
+      "border-dark": {
+        "role": "neutral",
+        "displayName": "border dark"
+      },
+      "widget-fill-light": {
+        "role": "neutral",
+        "displayName": "widget fill light"
+      },
+      "widget-fill-dark": {
+        "role": "neutral",
+        "displayName": "widget fill dark"
+      }
+    },
+    "typographyMeta": {
+      "headline": {
+        "displayName": "Library heading",
+        "purpose": "Main library title."
+      },
+      "title": {
+        "displayName": "Selected mod title",
+        "purpose": "Inspector title."
+      },
+      "card-title": {
+        "displayName": "Card title",
+        "purpose": "Mod name."
+      },
+      "body": {
+        "displayName": "Body",
+        "purpose": "Supporting library text."
+      },
+      "label": {
+        "displayName": "Metadata",
+        "purpose": "Authors, ownership, file counts and installed state."
+      }
+    },
+    "breakpoints": [
+      {
+        "name": "narrow-library",
+        "value": "1040pt"
+      }
+    ],
+    "nativeLayout": {
+      "railWidth": 176,
+      "inspectorDefaultWidth": 300,
+      "inspectorMinWidth": 280,
+      "inspectorMaxWidth": 400,
+      "cardHeight": 262,
+      "cardImageHeight": 150,
+      "cardGap": 16,
+      "columnBudget": 236,
+      "columnFormula": "max(1, floor((available_width + 16) / 236))",
+      "cardWidthFormula": "(available_width - 16 * (columns - 1)) / columns",
+      "listRowHeight": 64,
+      "listPreviewSize": 44,
+      "detailPreviewHeight": 180,
+      "searchHeight": 40,
+      "fileRowHeight": 48
+    },
+    "nativeStates": {
+      "cardSelection": "Immediate 1.5-point selection-stroke outline.",
+      "cardFocus": "Same outline when response.has_focus().",
+      "cardHover": "egui hovered widget weak_bg_fill.",
+      "list": "egui interact_selectable visuals.",
+      "customSelectionAnimation": false
+    },
+    "nativeComponents": [
+      {
+        "name": "Photo card",
+        "source": "native/src/ui.rs::card_grid",
+        "refersTo": [
+          "card-light",
+          "card-dark"
+        ]
+      },
+      {
+        "name": "Search",
+        "source": "native/src/ui.rs::View::show"
+      },
+      {
+        "name": "State navigation",
+        "source": "native/src/ui.rs::View::show"
+      },
+      {
+        "name": "List row",
+        "source": "native/src/ui.rs::library_list"
+      },
+      {
+        "name": "Inspector",
+        "source": "native/src/ui.rs::details"
+      },
+      {
+        "name": "Management actions",
+        "source": "native/src/controls.rs",
+        "refersTo": [
+          "button-primary-light",
+          "button-primary-dark"
+        ]
+      }
+    ],
+    "previewPolicy": {
+      "cardSizing": "centered destination-aware cover",
+      "inspectorSizing": "contain",
+      "fallback": "No Preview",
+      "httpReferer": false,
+      "uriCacheLimit": 32
+    },
+    "documentationNote": "Native egui components have no HTML/CSS runtime. Native component records replace web snippets; no HTML/CSS design detector applies. No invented tonal ramps or motion values are added."
+  },
+  "components": [],
+  "narrative": {
+    "northStar": "The local mod library",
+    "overview": "The native library follows the user-approved Deadlock Mod Manager and CurseForge direction. Large previews carry recognition; warm neutral surfaces, gold selection and visible installed state keep local management clear. The light and dark themes share the same hierarchy.\n\nThis design applies to the Linux Fastframe/egui app. The Rust implementation is authoritative. Dimensions use egui logical points, not CSS pixels. Fastframe supplies default fonts and platform text rendering.",
+    "keyCharacteristics": [
+      "Photo cards by default, with a compact list switch.",
+      "Warm light and charcoal dark themes with gold selection.",
+      "A persistent inspector on wide windows and a return path on narrow windows."
+    ],
+    "rules": [
+      {
+        "name": "readable metadata",
+        "body": "Use the explicit muted theme color for secondary text; do not substitute egui's default weak alpha for it.",
+        "section": "colors"
+      }
+    ],
+    "dos": [
+      "Do preserve photo proportions with destination-aware centered cover crops in cards and contain sizing in the inspector.",
+      "Do keep explicit weak text colors readable on panels, cards, widgets and selected fills.",
+      "Do preserve search and selected identity when switching card/list layouts.",
+      "Do show No Preview for missing or broken mod photos and keep weak source-match warnings visible."
+    ],
+    "donts": [
+      "Don't fabricate mod photography, authors, source candidates or discovery counters.",
+      "Don't add download or update actions to this local management library.",
+      "Don't replace native focus and hover behavior with a custom selection animation."
+    ]
+  }
+}
