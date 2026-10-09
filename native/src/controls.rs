@@ -75,7 +75,7 @@ impl Controls {
             theme_edit_original,
             confirm_rect: None,
             import_rect: None,
-            previews: Default::default(),
+            previews: crate::preview::Previews::with_cache(home.join(".cache/ts4-mod-manager/photos")),
             worker: Mutations::start_with_recovery(managed.clone(), wake)?,
             managed,
             trash: home.join(".local/share/Trash/files"),

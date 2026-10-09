@@ -1,4 +1,8 @@
-use std::{collections::VecDeque, path::Path};
+use std::{
+    collections::{HashMap, VecDeque},
+    path::{Path, PathBuf},
+    sync::mpsc,
+};
 
 #[derive(Debug, PartialEq)]
 pub enum State {
@@ -11,14 +15,69 @@ pub enum State {
 pub struct Previews {
     recent: VecDeque<String>,
     generation: Option<u64>,
+    cache: Option<PathBuf>,
+    remote: HashMap<String, Result<String, mpsc::Receiver<Result<PathBuf, String>>>>,
 }
 
 impl Previews {
+    pub fn with_cache(directory: PathBuf) -> Self {
+        Self {
+            cache: Some(directory),
+            ..Self::default()
+        }
+    }
+
+    fn cached_uri(&mut self, ctx: &egui::Context, uri: &str) -> Result<String, State> {
+        let Some(directory) = self.cache.clone() else {
+            return Ok(uri.into());
+        };
+        if !uri.starts_with("http://") && !uri.starts_with("https://") {
+            return Ok(uri.into());
+        }
+        if let Some(state) = self.remote.get_mut(uri) {
+            return match state {
+                Ok(path) if path.is_empty() => Err(State::Missing),
+                Ok(path) => Ok(path.clone()),
+                Err(receiver) => match receiver.try_recv() {
+                    Ok(Ok(path)) => {
+                        let path = resolve_uri(path.to_str(), None).ok_or(State::Missing)?;
+                        *state = Ok(path.clone());
+                        Ok(path)
+                    }
+                    Ok(Err(_)) | Err(mpsc::TryRecvError::Disconnected) => {
+                        *state = Ok(String::new());
+                        Err(State::Missing)
+                    }
+                    Err(mpsc::TryRecvError::Empty) => Err(State::Pending),
+                },
+            };
+        }
+        if self.remote.values().filter(|state| state.is_err()).count() >= 4 {
+            return Err(State::Pending);
+        }
+        let (sender, receiver) = mpsc::channel();
+        let url = uri.to_owned();
+        let wake = ctx.clone();
+        if std::thread::Builder::new()
+            .name("photo-cache".into())
+            .spawn(move || {
+                let result = crate::photo_cache::fetch(&directory, &url);
+                let _ = sender.send(result);
+                wake.request_repaint();
+            })
+            .is_err()
+        {
+            return Err(State::Missing);
+        }
+        self.remote.insert(uri.into(), Err(receiver));
+        Err(State::Pending)
+    }
     pub fn begin_frame(&mut self, ctx: &egui::Context, generation: u64) {
         if self.generation != Some(generation) {
             for uri in self.recent.drain(..) {
                 ctx.forget_image(&uri);
             }
+            self.remote.clear();
             self.generation = Some(generation);
         }
     }
@@ -31,6 +90,10 @@ impl Previews {
     ) -> State {
         let Some(uri) = resolve_uri(preview, root) else {
             return State::Missing;
+        };
+        let uri = match self.cached_uri(ctx, &uri) {
+            Ok(uri) => uri,
+            Err(state) => return state,
         };
         if let Some(index) = self.recent.iter().position(|cached| *cached == uri) {
             self.recent.remove(index);
@@ -108,6 +171,56 @@ mod tests {
             );
             std::thread::sleep(std::time::Duration::from_millis(5));
         }
+    }
+
+    #[test]
+    fn remote_photo_survives_rescan_and_app_restart_offline() {
+        use std::io::{Read, Write};
+        let temp = tempfile::tempdir().unwrap();
+        let path = temp.path().join("source.png");
+        image::RgbaImage::from_pixel(20, 30, image::Rgba([10, 100, 80, 255]))
+            .save(&path)
+            .unwrap();
+        let png = std::fs::read(&path).unwrap();
+        let server = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let url = format!("http://{}/photo.png", server.local_addr().unwrap());
+        let requests = std::thread::spawn(move || {
+            let (mut socket, _) = server.accept().unwrap();
+            socket
+                .set_read_timeout(Some(std::time::Duration::from_secs(2)))
+                .unwrap();
+            let mut request = [0; 8192];
+            let count = socket.read(&mut request).unwrap();
+            assert!(
+                !String::from_utf8_lossy(&request[..count])
+                    .to_lowercase()
+                    .contains("referer:")
+            );
+            write!(socket, "HTTP/1.1 200 OK\r\nContent-Type: image/png\r\nContent-Length: {}\r\nConnection: close\r\n\r\n", png.len()).unwrap();
+            socket.write_all(&png).unwrap();
+        });
+        let cache = temp.path().join("cache");
+        let ctx = egui::Context::default();
+        crate::ui::setup(&ctx);
+        let mut previews = Previews::with_cache(cache.clone());
+        assert!(matches!(
+            wait_for_preview(&ctx, &mut previews, &url),
+            State::Ready(_)
+        ));
+        requests.join().unwrap();
+        previews.begin_frame(&ctx, 2);
+        assert!(matches!(
+            wait_for_preview(&ctx, &mut previews, &url),
+            State::Ready(_)
+        ));
+        drop(previews);
+        let ctx = egui::Context::default();
+        crate::ui::setup(&ctx);
+        let mut reopened = Previews::with_cache(cache);
+        assert!(matches!(
+            wait_for_preview(&ctx, &mut reopened, &url),
+            State::Ready(_)
+        ));
     }
 
     #[test]
@@ -217,7 +330,7 @@ mod tests {
         });
         let ctx = egui::Context::default();
         crate::ui::setup(&ctx);
-        let mut previews = Previews::default();
+        let mut previews = Previews::with_cache(temp.path().join("cache"));
         assert!(matches!(
             wait_for_preview(&ctx, &mut previews, &url),
             State::Ready(_)

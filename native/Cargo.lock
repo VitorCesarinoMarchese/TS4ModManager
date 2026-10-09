@@ -3743,8 +3743,10 @@ dependencies = [
  "image",
  "serde",
  "serde_json",
+ "sha2",
  "tempfile",
  "ts4-mod-manager-core",
+ "ureq 2.12.1",
  "url",
  "zip",
 ]

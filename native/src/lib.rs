@@ -8,3 +8,5 @@ pub mod controls;
 pub mod management;
 pub mod settings;
 pub mod workflows;
+
+mod photo_cache;
