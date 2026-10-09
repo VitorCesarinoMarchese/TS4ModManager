@@ -70,6 +70,7 @@ pub enum Output {
     Trash(Vec<ts4_mod_manager_core::lifecycle::TrashEntry>),
 }
 pub enum Event {
+    Recovered(Result<Vec<String>, String>),
     Running(Identity),
     Finished(Identity, Result<Output, String>),
 }
@@ -80,11 +81,30 @@ pub struct Mutations {
 }
 impl Mutations {
     pub fn start(wake: impl Fn() + Send + 'static) -> std::io::Result<Self> {
+        Self::start_worker(None, wake)
+    }
+    pub fn start_with_recovery(
+        managed: PathBuf,
+        wake: impl Fn() + Send + 'static,
+    ) -> std::io::Result<Self> {
+        Self::start_worker(Some(managed), wake)
+    }
+    fn start_worker(
+        recovery: Option<PathBuf>,
+        wake: impl Fn() + Send + 'static,
+    ) -> std::io::Result<Self> {
         let (sender, inbox) = mpsc::channel::<Job>();
         let (out, results) = mpsc::channel();
         let thread = std::thread::Builder::new()
             .name("approved-management-fifo".into())
             .spawn(move || {
+                if let Some(managed) = recovery {
+                    let result = ts4_mod_manager_core::operation::recover_pending(&managed)
+                        .map(|issues| issues.into_iter().map(|i| i.message).collect())
+                        .map_err(|e| format!("{}: {}", e.code.as_str(), e.message));
+                    let _ = out.send(Event::Recovered(result));
+                    wake();
+                }
                 while let Ok(job) = inbox.recv() {
                     let _ = out.send(Event::Running(job.identity.clone()));
                     wake();
@@ -160,6 +180,7 @@ pub fn execute(job: &Job) -> Result<Output, String> {
             toggle::dry_run_toggle(managed, &mods, id(job)?, *enabled).map_err(error)?,
         )),
         Action::Toggle { enabled, review } => {
+            let _authority = ts4_mod_manager_core::operation::acquire(managed).map_err(error)?;
             let current =
                 toggle::dry_run_toggle(managed, &mods, id(job)?, *enabled).map_err(error)?;
             if !current.can_apply
@@ -183,6 +204,7 @@ pub fn execute(job: &Job) -> Result<Output, String> {
             ))
         }
         Action::Migrate { files } => {
+            let _authority = ts4_mod_manager_core::operation::acquire(managed).map_err(error)?;
             let Some(EntryId::External(key)) = &job.identity.entry else {
                 return Err("Select an external mod".into());
             };

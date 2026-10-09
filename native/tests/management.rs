@@ -119,3 +119,44 @@ fn settings_save_rejects_invalid_in_memory_roots_before_touching_disk() {
     assert!(settings.save(&path).is_err());
     assert!(!path.parent().unwrap().exists());
 }
+#[test]
+fn settings_reject_nul_and_bounded_transfer_reads() {
+    assert!(
+        Settings::parse(r#"{"version":1,"theme":"light","gameRoots":["/game\u0000folder"]}"#)
+            .is_err()
+    );
+    let directory = tempfile::tempdir().unwrap();
+    let file = directory.path().join("large.json");
+    std::fs::write(&file, vec![b' '; 1024 * 1024 + 1]).unwrap();
+    let Err(error) = Settings::read_transfer(&file) else {
+        panic!("oversized import accepted")
+    };
+    assert!(error.contains("1 MiB"));
+}
+#[test]
+fn settings_import_preserves_existing_key_when_omitted() {
+    let local = Settings {
+        curseforge_api_key: Some("fixture-key".into()),
+        ..Default::default()
+    };
+    let mut incoming = Settings::default();
+    incoming.preserve_omitted_key(&local);
+    assert_eq!(incoming.curseforge_api_key, local.curseforge_api_key);
+    let mut replacement = Settings {
+        curseforge_api_key: Some("replacement-fixture".into()),
+        ..Default::default()
+    };
+    replacement.preserve_omitted_key(&local);
+    assert_eq!(
+        replacement.curseforge_api_key.as_deref(),
+        Some("replacement-fixture")
+    );
+}
+#[test]
+fn settings_export_never_overwrites_an_existing_user_file() {
+    let directory = tempfile::tempdir().unwrap();
+    let path = directory.path().join("existing.json");
+    std::fs::write(&path, b"user original").unwrap();
+    assert!(Settings::default().save_new(&path).is_err());
+    assert_eq!(std::fs::read(path).unwrap(), b"user original");
+}

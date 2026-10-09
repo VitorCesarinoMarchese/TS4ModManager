@@ -1,10 +1,10 @@
-# Native catalog pilot
+# Native mod manager
 
-This is the first Fastframe/egui UI for TS4 Mod Manager. It uses the existing Rust core to detect game folders, scan mods, search names and filenames, and show photos, saved source details, and file lists. Catalog and file lists render only visible rows. Filesystem work runs on one background worker; obsolete scan results are ignored.
+The Fastframe/egui UI uses the existing Rust core to detect game folders, scan mods, search names and filenames, and manage local mods. Catalog and file lists render only visible rows. A replaceable reader handles scans. A separate FIFO worker retains approved management operations and reports their queued, running, and finished states.
 
-The pilot is read-only. Import, enable/disable, migration, source attachment, trash/restore, and settings migration remain future migration work. The existing React/Tauri app remains available.
+Import folder is the primary action in the management bar. Import ZIP, Restore from trash, and Settings sit beside it. Select a managed mod to enable or disable it, rename it, find or attach its source, or move it to trash. Select an external mod to review its files before migration. The existing React/Tauri app remains available.
 
-Requires Rust 1.98 or later and native Linux graphics support. Fastframe is pinned to `bb79dbddef01e660f9cfc37ccd9dff1c299a8d47`. `Cargo.lock` pins the resolved dependencies, including egui/eframe 0.36.2. This pilot uses published egui/winit rather than the optional Fastframe forks.
+Requires Rust 1.98 or later and native Linux graphics support. Fastframe is pinned to `bb79dbddef01e660f9cfc37ccd9dff1c299a8d47`. `Cargo.lock` pins the resolved dependencies, including egui/eframe 0.36.2. The native app uses published egui/winit rather than the optional Fastframe forks.
 
 Run from the project root:
 
@@ -19,7 +19,7 @@ cargo run --manifest-path native/Cargo.toml --locked -- \
   --root '/path/to/The Sims 4'
 ```
 
-The window follows the desktop theme, with a light/dark switch. Select Change folder to choose another detected game folder or enter a path and select Open. Search works over display names and filenames. The catalog shows photo thumbnails, and details show a larger preview. Saved local PNG/JPEG/WebP/GIF images and HTTP(S) URLs load in the background without a Referer header. Missing, broken, and unsupported previews show No Preview. No preview files are written or source metadata changed. Select a row to inspect files and saved source metadata. On narrow windows, details replace the catalog and offer Back to mods. Copy copies the full file list and confirms with Copied. Files show their basename above the containing folder; truncated names have full-path tooltips.
+The window follows the desktop theme, with a light/dark switch. Select Change folder to choose another detected game folder or enter a path and select Open. Search works over display names and filenames. The catalog shows photo thumbnails, and details show a larger preview. Saved local PNG/JPEG/WebP/GIF images and HTTP(S) URLs load in the background without a Referer header. Missing, broken, and unsupported previews show No Preview. Preview loading writes no preview files. Source attachment and removal require explicit confirmation. Select a row to inspect files and saved source metadata. On narrow windows, details replace the catalog and offer Back to mods. Copy copies the full file list and confirms with Copied. Files show their basename above the containing folder; truncated names have full-path tooltips.
 
 The default managed root is `~/.local/share/sims4-mod-manager`. Scanning does not create it. Override it with `--managed-root PATH`. Use `--help` for all options. The scanner still suppresses some nested filesystem read errors; a successful scan is not proof that every nested path was readable.
 
@@ -30,18 +30,29 @@ native/target/debug/ts4-mod-manager-native \
   --root '/path/to/The Sims 4' --inspect --query 'filename'
 ```
 
+Enable and disable first show their exact paths and warnings. Confirmation revalidates the approved review. Migration shows the external file set. Trash accepts managed mods and requires confirmation. Restore lists recoverable entries and requires a destination review. An approved operation remains associated with its original root and entry after navigation. Closing the window waits for approved operations to finish.
+
+Find source uses real CurseForge provider results and reports a missing API key. Candidates show confidence, reasons, and evidence. Low-confidence warnings stay visible in attachment review. Manual URLs carry no verified-match claim. The native app does not download or update mods.
+
+Startup asks the core to recover pending operations and displays recovery issues. Native toggle and migration hold the shared writer guard across revalidation and mutation. A forced process termination can interrupt approved work; core recovery preserves changed or ambiguous user paths and may require attention before further mutations. OS kill, reboot, touchpad, monitor, and screen-reader checks still need separate evidence.
+
+Settings save locally in `~/.config/ts4-mod-manager/settings.json` using atomic replacement and mode 0600 on Unix. Save local settings persists the theme, remembered game folders, selected folder, and optional API key. CLI overrides apply to that launch. Export requires an unused file path and omits the API key unless Include API key in export is checked. Import reads at most 1 MiB, validates and previews version 1 JSON before confirmation, and preserves the existing API key when the transfer omits it. Keys stay outside mod metadata and operation history.
+
 Run tests and repeatable verification:
 
 ```bash
 cargo test --manifest-path native/Cargo.toml --locked
 cargo build --manifest-path native/Cargo.toml --locked
 python native/verify.py
+native/target/debug/ts4-mod-manager-native --verify-workflows
 ```
+
+`--verify-workflows` creates its own temporary fixtures and uses the same native controller and management worker as the UI. It verifies folder and ZIP imports, reviewed enable and disable in two instances, migration, rename, manual source changes, trash and restore, missing-key errors, refreshed catalog data, and byte preservation. It prints a JSON report and ignores user paths for its fixtures.
 
 `verify.py` creates temporary catalogs of 100, 1,000, and 10,000 mod groups, exercises the actual binary, checks Unicode/filename search and invalid paths, and verifies that input bytes and paths remain unchanged. It reports scan/search timings. For native screenshots, run this from a graphical desktop:
 
 ```bash
-python native/verify.py --sizes 100 --capture-dir /tmp/ts4-native-captures
+python native/verify.py --sizes 100 --capture-dir native/target/captures
 ```
 
 This captures real light, dark, and narrow windows. Screenshot mode fixes the window size and quits after writing the PNG. Normal launches remain resizable. For release measurements, build with `cargo build --manifest-path native/Cargo.toml --release --locked` and pass `--binary native/target/release/ts4-mod-manager-native` to the script.
@@ -59,7 +70,7 @@ Archives are written under `native/target/packages`. Pass `--binary PATH` to pac
 
 The scanner ownership fix and native controller use failing-before regression tests. Scanner tests prove managed mods stay separate when they share a folder with each other or external files, and relative managed links report installed state. Native tests cover stale success/error rejection, stable identities, same-instance refresh, Unicode/filename search, pending-request replacement, unchanged temporary inputs, CLI validation, and actual egui search interaction and virtualized rendering.
 
-See [the investigation](../docs/fastframe-investigation.md) for the original bug inventory and [the chosen design](../docs/native-pilot-design.md) for the controller rationale. The inventory describes the pre-pilot revision. This work fixes shared-folder scan identity and supplies scan enabled state; it does not fix the other lifecycle or source-lookup defects.
+See [the investigation](../docs/fastframe-investigation.md) for the original bug inventory and [the chosen design](../docs/native-pilot-design.md) for the original controller rationale. See [native management design](../docs/native-management-design.md) for the current safety contracts. The investigation inventory describes the earlier revision.
 
 Folder and file icons are vendored from [Lucide](https://github.com/lucide-icons/lucide/tree/main/icons), with white strokes for Fastframe tinting. Their license is included in `licenses/Lucide-LICENSE.txt`.
 

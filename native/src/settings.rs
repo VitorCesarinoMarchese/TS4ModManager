@@ -1,5 +1,9 @@
 use serde::{Deserialize, Serialize};
-use std::{io::Write, path::Path};
+use std::{
+    io::{Read, Write},
+    path::Path,
+};
+const MAX_TRANSFER_BYTES: u64 = 1024 * 1024;
 #[derive(Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
 pub enum Theme {
@@ -31,6 +35,9 @@ impl Default for Settings {
 }
 impl Settings {
     pub fn parse(raw: &str) -> Result<Self, String> {
+        if raw.len() as u64 > MAX_TRANSFER_BYTES {
+            return Err("Settings transfer exceeds 1 MiB".into());
+        }
         let mut value: Self =
             serde_json::from_str(raw).map_err(|_| "Invalid settings JSON or schema".to_string())?;
         if value.version != 1 {
@@ -62,10 +69,33 @@ impl Settings {
         if !path.exists() {
             return Ok(Self::default());
         }
-        Self::parse(
-            &std::fs::read_to_string(path).map_err(|_| "Cannot read local settings".to_string())?,
-        )
+        Self::read_transfer(path)
     }
+    pub fn read_transfer(path: &Path) -> Result<Self, String> {
+        if !std::fs::metadata(path)
+            .map_err(|_| "Cannot read settings transfer")?
+            .is_file()
+        {
+            return Err("Settings transfer must be a regular file".into());
+        }
+        let file = std::fs::File::open(path).map_err(|_| "Cannot read settings transfer")?;
+        let mut bytes = Vec::new();
+        file.take(MAX_TRANSFER_BYTES + 1)
+            .read_to_end(&mut bytes)
+            .map_err(|_| "Cannot read settings transfer")?;
+        if bytes.len() as u64 > MAX_TRANSFER_BYTES {
+            return Err("Settings transfer exceeds 1 MiB".into());
+        }
+        let raw =
+            std::str::from_utf8(&bytes).map_err(|_| "Settings transfer must be UTF-8 JSON")?;
+        Self::parse(raw)
+    }
+    pub fn preserve_omitted_key(&mut self, current: &Self) {
+        if self.curseforge_api_key.is_none() {
+            self.curseforge_api_key = current.curseforge_api_key.clone();
+        }
+    }
+
     pub fn export(&self, include_key: bool) -> Result<String, String> {
         let mut copy = self.clone();
         if !include_key {
@@ -74,6 +104,12 @@ impl Settings {
         serde_json::to_string_pretty(&copy).map_err(|_| "Cannot serialize settings".into())
     }
     pub fn save(&self, path: &Path) -> Result<(), String> {
+        self.write_file(path, false)
+    }
+    pub fn save_new(&self, path: &Path) -> Result<(), String> {
+        self.write_file(path, true)
+    }
+    fn write_file(&self, path: &Path, require_new: bool) -> Result<(), String> {
         let serialized = Self::parse(&self.export(true)?)?.export(true)?;
         let parent = path.parent().ok_or("Settings path has no parent")?;
         std::fs::create_dir_all(parent).map_err(|_| "Cannot create settings directory")?;
@@ -91,7 +127,12 @@ impl Settings {
         temp.as_file()
             .sync_all()
             .map_err(|_| "Cannot sync settings")?;
-        temp.persist(path).map_err(|_| "Cannot publish settings")?;
+        if require_new {
+            temp.persist_noclobber(path)
+                .map_err(|_| "Settings export requires an unused writable file path")?;
+        } else {
+            temp.persist(path).map_err(|_| "Cannot publish settings")?;
+        }
         std::fs::File::open(parent)
             .and_then(|f| f.sync_all())
             .map_err(|_| "Cannot sync settings directory")?;
@@ -100,6 +141,9 @@ impl Settings {
 }
 
 fn normalize_root(root: &str) -> Result<String, String> {
+    if root.contains('\0') {
+        return Err("Game folders must not contain NUL characters".into());
+    }
     let path = Path::new(root.trim());
     if !path.is_absolute() {
         return Err("Game folders must be nonempty absolute paths".into());

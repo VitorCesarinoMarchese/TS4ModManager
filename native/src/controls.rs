@@ -25,7 +25,7 @@ enum Dialog {
         lines: Vec<String>,
     },
     Settings,
-    SettingsImport(Settings),
+    SettingsImport(Settings, bool),
 }
 pub struct Controls {
     pub confirm_rect: Option<egui::Rect>,
@@ -61,7 +61,7 @@ impl Controls {
             confirm_rect: None,
             import_rect: None,
             previews: Default::default(),
-            worker: Mutations::start(wake)?,
+            worker: Mutations::start_with_recovery(managed.clone(), wake)?,
             managed,
             trash: home.join(".local/share/Trash/files"),
             settings,
@@ -105,6 +105,37 @@ impl Controls {
             Err(e) => self.error = Some(e),
         }
     }
+    fn approve(
+        &mut self,
+        catalog: &Catalog,
+        identity: &Identity,
+        action: Action,
+    ) -> Result<u64, String> {
+        if !identity.current(
+            catalog.root.as_ref(),
+            catalog.selected.as_ref(),
+            catalog.generation(),
+        ) {
+            return Err("Selection or catalog changed. Review again before approving.".into());
+        }
+        let mut identity = identity.clone();
+        identity.operation = self.next;
+        self.next += 1;
+        let operation = identity.operation;
+        self.submit(identity, action);
+        if self
+            .operations
+            .last()
+            .is_some_and(|job| job.job.identity.operation == operation)
+        {
+            Ok(operation)
+        } else {
+            Err(self
+                .error
+                .clone()
+                .unwrap_or_else(|| "Cannot queue approved operation".into()))
+        }
+    }
     pub(crate) fn fixture_action(
         &mut self,
         root: PathBuf,
@@ -115,8 +146,22 @@ impl Controls {
         catalog.begin_scan(root);
         catalog.selected = entry;
         let identity = self.identity(&catalog).ok_or("Missing fixture root")?;
-        let operation = identity.operation;
-        self.submit(identity, action);
+        let operation = if matches!(
+            &action,
+            Action::Toggle { .. }
+                | Action::Migrate { .. }
+                | Action::ManualSource(_)
+                | Action::Attach(_)
+                | Action::RemoveSource
+                | Action::Trash
+                | Action::Restore(_)
+        ) {
+            self.approve(&catalog, &identity, action)?
+        } else {
+            let operation = identity.operation;
+            self.submit(identity, action);
+            operation
+        };
         let deadline = std::time::Instant::now() + std::time::Duration::from_secs(20);
         loop {
             for event in self.worker.drain() {
@@ -158,6 +203,21 @@ impl Controls {
     pub fn poll(&mut self, catalog: &Catalog) {
         for event in self.worker.drain().collect::<Vec<_>>() {
             match event {
+                Event::Recovered(result) => {
+                    self.refresh = catalog.root.clone();
+                    match result {
+                        Ok(issues) if !issues.is_empty() => {
+                            self.error = Some(format!(
+                                "Startup recovery requires attention: {}",
+                                issues.join("\n")
+                            ))
+                        }
+                        Err(error) => {
+                            self.error = Some(format!("Startup recovery failed: {error}"))
+                        }
+                        _ => {}
+                    }
+                }
                 Event::Running(identity) => {
                     if let Some(op) = self
                         .operations
@@ -172,9 +232,7 @@ impl Controls {
                     match result {
                         Err(e) => failure = Some(e),
                         Ok(Output::Changed(issues)) => {
-                            if catalog.root.as_ref() == Some(&identity.root) {
-                                self.refresh = Some(identity.root.clone())
-                            }
+                            self.refresh = catalog.root.clone();
                             if !issues.is_empty() {
                                 failure = Some(issues.join("\n"))
                             }
@@ -511,7 +569,7 @@ impl Controls {
             Dialog::Manual(..) => "Attach manual source URL",
             Dialog::Confirm { title, .. } => title,
             Dialog::Settings => "Local settings",
-            Dialog::SettingsImport(_) => "Review imported settings",
+            Dialog::SettingsImport(..) => "Review imported settings",
         }
         .to_string();
         egui::Window::new(title)
@@ -633,11 +691,10 @@ impl Controls {
                             self.confirm_rect = Some(confirm.rect);
                         }
                         if confirm.clicked() {
-                            let mut identity = identity.clone();
-                            identity.operation = self.next;
-                            self.next += 1;
-                            self.submit(identity, action.clone());
-                            keep = false;
+                            match self.approve(catalog, identity, action.clone()) {
+                                Ok(_) => keep = false,
+                                Err(error) => self.error = Some(error),
+                            }
                         }
                     }
                     Dialog::Settings => {
@@ -694,7 +751,7 @@ impl Controls {
                             if !self.include_key {
                                 exported.curseforge_api_key = None;
                             }
-                            match exported.save(&PathBuf::from(self.transfer_path.trim())) {
+                            match exported.save_new(&PathBuf::from(self.transfer_path.trim())) {
                                 Ok(()) => self.error = Some("Settings exported".into()),
                                 Err(e) => self.error = Some(e),
                             }
@@ -706,19 +763,21 @@ impl Controls {
                             )
                             .clicked()
                         {
-                            let result = std::fs::read_to_string(self.transfer_path.trim())
-                                .map_err(|_| "Cannot read settings transfer".to_string())
-                                .and_then(|raw| Settings::parse(&raw));
+                            let result =
+                                Settings::read_transfer(&PathBuf::from(self.transfer_path.trim()));
                             match result {
-                                Ok(settings) => {
-                                    self.dialog = Some(Dialog::SettingsImport(settings));
+                                Ok(mut settings) => {
+                                    let key_included = settings.curseforge_api_key.is_some();
+                                    settings.preserve_omitted_key(&self.settings);
+                                    self.dialog =
+                                        Some(Dialog::SettingsImport(settings, key_included));
                                     keep = false;
                                 }
                                 Err(e) => self.error = Some(e),
                             }
                         }
                     }
-                    Dialog::SettingsImport(settings) => {
+                    Dialog::SettingsImport(settings, key_included) => {
                         ui.label("Version 1 settings");
                         ui.label(format!(
                             "Theme: {}",
@@ -734,10 +793,10 @@ impl Controls {
                         if let Some(selected) = &settings.selected_root {
                             ui.label(format!("Selected folder: {selected}"));
                         }
-                        ui.label(if settings.curseforge_api_key.is_some() {
+                        ui.label(if *key_included {
                             "Includes an API key"
                         } else {
-                            "Does not include an API key"
+                            "API key omitted. Existing local key will be preserved."
                         });
                         if ui.button("Confirm settings import").clicked() {
                             match settings.save(&self.settings_path) {
@@ -897,6 +956,13 @@ mod tests {
             || {},
         )
         .unwrap();
+        let startup_deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+        while controls.refresh.is_none() {
+            controls.poll(&catalog);
+            assert!(std::time::Instant::now() < startup_deadline);
+            std::thread::sleep(std::time::Duration::from_millis(2));
+        }
+        controls.refresh = None;
         let identity = controls.identity(&catalog).unwrap();
         controls.submit(identity.clone(), Action::ReviewToggle { enabled: true });
         catalog.begin_scan(dir.path().join("new"));
@@ -912,5 +978,134 @@ mod tests {
         assert!(catalog.error.is_none());
         assert!(controls.operations[0].error);
         assert_eq!(controls.operations[0].job.identity, identity);
+    }
+    #[test]
+    fn manual_source_metadata_is_written_only_after_actual_confirmation_click() {
+        let fixture = tempfile::tempdir().unwrap();
+        let root = fixture.path().join("game");
+        let managed = fixture.path().join("managed");
+        let source = fixture.path().join("source");
+        std::fs::create_dir_all(root.join("Mods")).unwrap();
+        std::fs::create_dir_all(&source).unwrap();
+        std::fs::write(source.join("test.package"), b"fixture").unwrap();
+        let metadata = ts4_mod_manager_core::managed_storage::create_managed_mod(
+            &managed,
+            ts4_mod_manager_core::managed_storage::ImportRequest {
+                name: "Fixture".into(),
+                slug: None,
+                source_dir: source,
+            },
+        )
+        .unwrap();
+        let mut catalog = Catalog::default();
+        let generation = catalog.begin_scan(root);
+        catalog.accept_scan(
+            generation,
+            Ok(
+                crate::worker::scan(catalog.root.as_ref().unwrap(), &managed)
+                    .unwrap()
+                    .mods,
+            ),
+        );
+        catalog.select(0);
+        let mut controls = Controls::new(
+            managed.clone(),
+            fixture.path().to_path_buf(),
+            Settings::default(),
+            || {},
+        )
+        .unwrap();
+        controls.confirm(
+            &catalog,
+            Action::ManualSource("https://example.org/fixture".into()),
+            "Attach manual source URL",
+            vec!["https://example.org/fixture".into()],
+        );
+        assert!(
+            ts4_mod_manager_core::managed_storage::read_managed_mod(&managed, &metadata.mod_id)
+                .unwrap()
+                .source_url
+                .is_none()
+        );
+        let context = egui::Context::default();
+        frame(&context, &mut controls, &catalog, vec![]);
+        frame(&context, &mut controls, &catalog, vec![]);
+        let pos = controls.confirm_rect.unwrap().center();
+        frame(
+            &context,
+            &mut controls,
+            &catalog,
+            vec![
+                egui::Event::PointerMoved(pos),
+                egui::Event::PointerButton {
+                    pos,
+                    button: egui::PointerButton::Primary,
+                    pressed: true,
+                    modifiers: Default::default(),
+                },
+                egui::Event::PointerButton {
+                    pos,
+                    button: egui::PointerButton::Primary,
+                    pressed: false,
+                    modifiers: Default::default(),
+                },
+            ],
+        );
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+        while controls.busy() {
+            controls.poll(&catalog);
+            assert!(std::time::Instant::now() < deadline);
+            std::thread::sleep(std::time::Duration::from_millis(2));
+        }
+        assert_eq!(
+            ts4_mod_manager_core::managed_storage::read_managed_mod(&managed, &metadata.mod_id)
+                .unwrap()
+                .source_url
+                .as_deref(),
+            Some("https://example.org/fixture")
+        );
+    }
+    #[test]
+    fn shared_managed_mutation_refreshes_the_current_root_after_navigation() {
+        let fixture = tempfile::tempdir().unwrap();
+        let root_a = fixture.path().join("a");
+        let root_b = fixture.path().join("b");
+        let source = fixture.path().join("source");
+        for path in [root_a.join("Mods"), root_b.join("Mods"), source.clone()] {
+            std::fs::create_dir_all(path).unwrap();
+        }
+        std::fs::write(source.join("test.package"), b"fixture").unwrap();
+        let mut catalog = Catalog::default();
+        catalog.begin_scan(root_a);
+        let mut controls = Controls::new(
+            fixture.path().join("managed"),
+            fixture.path().to_path_buf(),
+            Settings::default(),
+            || {},
+        )
+        .unwrap();
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+        while controls.refresh.is_none() {
+            controls.poll(&catalog);
+            assert!(std::time::Instant::now() < deadline);
+            std::thread::sleep(std::time::Duration::from_millis(2));
+        }
+        controls.refresh = None;
+        let identity = controls.identity(&catalog).unwrap();
+        controls.submit(
+            identity,
+            Action::ImportFolder {
+                path: source,
+                name: "Fixture".into(),
+            },
+        );
+        catalog.begin_scan(root_b.clone());
+        while controls.busy() {
+            controls.poll(&catalog);
+            assert!(std::time::Instant::now() < deadline);
+            std::thread::sleep(std::time::Duration::from_millis(2));
+        }
+        assert_eq!(controls.refresh, Some(root_b));
+        assert!(!controls.operations[0].error);
     }
 }
