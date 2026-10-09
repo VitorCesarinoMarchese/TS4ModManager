@@ -5,6 +5,7 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use crate::error::{ErrorCode, ManagerError};
+use crate::fs_scope;
 use crate::metadata_names::detect_display_name;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -79,13 +80,22 @@ impl ModMetadata {
         self.custom_name
             .as_deref()
             .filter(|name| !name.trim().is_empty())
-            .or_else(|| self.detected_name.as_deref().filter(|name| !name.trim().is_empty()))
-            .or_else(|| (!self.display_name.trim().is_empty()).then_some(self.display_name.as_str()))
+            .or_else(|| {
+                self.detected_name
+                    .as_deref()
+                    .filter(|name| !name.trim().is_empty())
+            })
+            .or_else(|| {
+                (!self.display_name.trim().is_empty()).then_some(self.display_name.as_str())
+            })
             .unwrap_or(&self.name)
     }
 }
 
-pub fn create_managed_mod(managed_root: &Path, req: ImportRequest) -> Result<ModMetadata, ManagerError> {
+pub fn create_managed_mod(
+    managed_root: &Path,
+    req: ImportRequest,
+) -> Result<ModMetadata, ManagerError> {
     if !req.source_dir.is_dir() {
         return Err(ManagerError::new(
             ErrorCode::InvalidPath,
@@ -94,16 +104,15 @@ pub fn create_managed_mod(managed_root: &Path, req: ImportRequest) -> Result<Mod
     }
 
     let mod_id = Uuid::new_v4().to_string();
-    let mod_root = managed_root.join("mods").join(&mod_id);
+    fs_scope::create_dir_all(&managed_root)?;
+    fs_scope::ensure_no_symlink_parents(managed_root, Path::new("mods/staging"))?;
+    let final_root = managed_root.join("mods").join(&mod_id);
+    let mod_root = managed_root.join("tmp").join(format!("import-{mod_id}"));
     let files_root = mod_root.join("files");
 
-    fs::create_dir_all(&files_root).map_err(|e| {
-        ManagerError::new(
-            ErrorCode::IoError,
-            format!("Failed to create managed dirs: {e}"),
-        )
-    })?;
+    fs_scope::create_dir_all(&&files_root)?;
 
+    fs_scope::Directory::open(&req.source_dir)?;
     let files = copy_recursive(&req.source_dir, &files_root)?;
 
     let name = req.name;
@@ -127,39 +136,55 @@ pub fn create_managed_mod(managed_root: &Path, req: ImportRequest) -> Result<Mod
         updated_at: None,
     };
 
-    write_managed_mod(managed_root, &meta)?;
+    fs_scope::atomic_write(
+        &mod_root.join("meta.json"),
+        &serde_json::to_vec_pretty(&meta)
+            .map_err(|e| ManagerError::new(ErrorCode::InternalError, e.to_string()))?,
+    )?;
+    fs_scope::create_dir_all(final_root.parent().unwrap())?;
+    fs_scope::rename_no_replace(&mod_root, &final_root)?;
 
     Ok(meta)
 }
 
 pub fn write_managed_mod(managed_root: &Path, meta: &ModMetadata) -> Result<(), ManagerError> {
-    let meta_json = serde_json::to_string_pretty(meta).map_err(|e| {
-        ManagerError::new(
-            ErrorCode::InternalError,
-            format!("Metadata serialize failed: {e}"),
-        )
-    })?;
+    validate_metadata(meta, &meta.mod_id)?;
+    let rel = PathBuf::from("mods").join(&meta.mod_id).join("meta.json");
+    fs_scope::ensure_no_symlink_parents(managed_root, &rel)?;
+    let meta_path = managed_root.join(rel);
+    fs_scope::create_dir_all(meta_path.parent().unwrap())?;
+    fs_scope::atomic_write(
+        &meta_path,
+        &serde_json::to_vec_pretty(meta)
+            .map_err(|e| ManagerError::new(ErrorCode::InternalError, e.to_string()))?,
+    )
+}
 
-    let meta_path = managed_root.join("mods").join(&meta.mod_id).join("meta.json");
-    if let Some(parent) = meta_path.parent() {
-        fs::create_dir_all(parent).map_err(|e| {
-            ManagerError::new(
-                ErrorCode::IoError,
-                format!("Metadata dir create failed {}: {e}", parent.display()),
-            )
-        })?;
+fn validate_metadata(meta: &ModMetadata, id: &str) -> Result<(), ManagerError> {
+    fs_scope::component(id)?;
+    if meta.version != 1 || meta.mod_id != id {
+        return Err(ManagerError::new(
+            ErrorCode::InvalidPath,
+            "Metadata identity or version mismatch",
+        ));
     }
-
-    fs::write(&meta_path, meta_json).map_err(|e| {
-        ManagerError::new(
-            ErrorCode::IoError,
-            format!("Metadata write failed {}: {e}", meta_path.display()),
-        )
-    })
+    for file in &meta.files {
+        fs_scope::relative(Path::new(file))?;
+    }
+    Ok(())
 }
 
 pub fn read_managed_mod(managed_root: &Path, mod_id: &str) -> Result<ModMetadata, ManagerError> {
-    let meta_path = managed_root.join("mods").join(mod_id).join("meta.json");
+    fs_scope::component(mod_id)?;
+    let rel = PathBuf::from("mods").join(mod_id).join("meta.json");
+    fs_scope::ensure_no_symlink_parents(managed_root, &rel)?;
+    let meta_path = managed_root.join(rel);
+    if fs::symlink_metadata(&meta_path).is_ok_and(|m| m.file_type().is_symlink()) {
+        return Err(ManagerError::new(
+            ErrorCode::InvalidPath,
+            "Metadata is a symlink",
+        ));
+    }
 
     let content = fs::read_to_string(&meta_path).map_err(|_| {
         ManagerError::new(
@@ -169,10 +194,7 @@ pub fn read_managed_mod(managed_root: &Path, mod_id: &str) -> Result<ModMetadata
     })?;
 
     let meta: ModMetadata = serde_json::from_str(&content).map_err(|e| {
-        ManagerError::new(
-            ErrorCode::InvalidPath,
-            format!("Metadata malformed: {e}"),
-        )
+        ManagerError::new(ErrorCode::InvalidPath, format!("Metadata malformed: {e}"))
     })?;
 
     if meta.version != 1 {
@@ -182,35 +204,15 @@ pub fn read_managed_mod(managed_root: &Path, mod_id: &str) -> Result<ModMetadata
         ));
     }
 
+    validate_metadata(&meta, mod_id)?;
     Ok(meta)
 }
 
-fn read_managed_mod_or_create_local(managed_root: &Path, mod_id: &str) -> Result<ModMetadata, ManagerError> {
-    match read_managed_mod(managed_root, mod_id) {
-        Ok(meta) => Ok(meta),
-        Err(err) if err.code == ErrorCode::NotFound => {
-            let detected_name = detect_display_name(mod_id);
-            Ok(ModMetadata {
-                version: 1,
-                created_by: "sims4-mod-manager".to_string(),
-                mod_id: mod_id.to_string(),
-                name: mod_id.to_string(),
-                display_name: detected_name.clone(),
-                detected_name: Some(detected_name),
-                custom_name: None,
-                slug: None,
-                files: vec![],
-                source: "local".to_string(),
-                source_url: None,
-                preview_url: None,
-                local_preview_path: None,
-                source_attachment: None,
-                locked_name: false,
-                updated_at: None,
-            })
-        }
-        Err(err) => Err(err),
-    }
+fn read_managed_mod_or_create_local(
+    managed_root: &Path,
+    mod_id: &str,
+) -> Result<ModMetadata, ManagerError> {
+    read_managed_mod(managed_root, mod_id)
 }
 
 pub fn set_custom_display_name(
@@ -257,13 +259,24 @@ pub fn set_source_url(
     if let Some(provider) = normalized_provider.clone() {
         meta.source = provider;
     }
-    if let Some(title) = display_name.map(|name| name.trim().to_string()).filter(|name| !name.is_empty()) {
+    if let Some(title) = display_name
+        .map(|name| name.trim().to_string())
+        .filter(|name| !name.is_empty())
+    {
         meta.detected_name = Some(title.clone());
-        if meta.custom_name.as_deref().unwrap_or_default().trim().is_empty() {
+        if meta
+            .custom_name
+            .as_deref()
+            .unwrap_or_default()
+            .trim()
+            .is_empty()
+        {
             meta.display_name = title;
         }
     }
-    meta.preview_url = preview_url.map(|url| url.trim().to_string()).filter(|url| !url.is_empty());
+    meta.preview_url = preview_url
+        .map(|url| url.trim().to_string())
+        .filter(|url| !url.is_empty());
     meta.source_attachment = source_attachment.map(|mut attachment| {
         attachment.source_url = trimmed.to_string();
         if let Some(provider) = normalized_provider {
@@ -284,7 +297,11 @@ pub fn remove_source_url(managed_root: &Path, mod_id: &str) -> Result<ModMetadat
     Ok(meta)
 }
 
-pub fn read_managed_mod_or_default(managed_root: &Path, mod_id: &str, detected_name: &str) -> ModMetadata {
+pub fn read_managed_mod_or_default(
+    managed_root: &Path,
+    mod_id: &str,
+    detected_name: &str,
+) -> ModMetadata {
     read_managed_mod(managed_root, mod_id).unwrap_or_else(|_| ModMetadata {
         version: 1,
         created_by: "sims4-mod-manager".to_string(),
@@ -317,10 +334,14 @@ fn copy_recursive(from: &Path, to: &Path) -> Result<Vec<String>, ManagerError> {
             )
         })?;
 
-        for entry in entries.flatten() {
+        for entry in entries {
+            let entry = entry.map_err(fs_scope::io_error)?;
             let src = entry.path();
             let meta = fs::symlink_metadata(&src).map_err(|e| {
-                ManagerError::new(ErrorCode::IoError, format!("Metadata failed {}: {e}", src.display()))
+                ManagerError::new(
+                    ErrorCode::IoError,
+                    format!("Metadata failed {}: {e}", src.display()),
+                )
             })?;
 
             if meta.is_dir() {
@@ -329,7 +350,10 @@ fn copy_recursive(from: &Path, to: &Path) -> Result<Vec<String>, ManagerError> {
             }
 
             if !meta.is_file() {
-                continue;
+                return Err(ManagerError::new(
+                    ErrorCode::InvalidPath,
+                    "Import contains a symlink or special file",
+                ));
             }
 
             let rel = src.strip_prefix(from).map_err(|e| {
@@ -341,20 +365,23 @@ fn copy_recursive(from: &Path, to: &Path) -> Result<Vec<String>, ManagerError> {
 
             let dst = to.join(rel);
             if let Some(parent) = dst.parent() {
-                fs::create_dir_all(parent).map_err(|e| {
-                    ManagerError::new(
-                        ErrorCode::IoError,
-                        format!("Create parent failed {}: {e}", parent.display()),
-                    )
-                })?;
+                fs_scope::create_dir_all(&parent)?;
             }
 
-            fs::copy(&src, &dst).map_err(|e| {
-                ManagerError::new(
-                    ErrorCode::IoError,
-                    format!("Copy failed {} -> {}: {e}", src.display(), dst.display()),
-                )
-            })?;
+            #[cfg(unix)]
+            let mut input = {
+                use std::os::unix::fs::OpenOptionsExt;
+                fs::OpenOptions::new()
+                    .read(true)
+                    .custom_flags(libc::O_NOFOLLOW)
+                    .open(&src)
+                    .map_err(fs_scope::io_error)?
+            };
+            #[cfg(not(unix))]
+            let mut input = fs::File::open(&src).map_err(fs_scope::io_error)?;
+            let mut output = fs_scope::create_file(to, rel)?;
+            std::io::copy(&mut input, &mut output).map_err(fs_scope::io_error)?;
+            output.sync_all().map_err(fs_scope::io_error)?;
 
             collected.push(rel.to_string_lossy().replace('\\', "/"));
         }
@@ -370,7 +397,10 @@ mod tests {
 
     use tempfile::TempDir;
 
-    use super::{create_managed_mod, read_managed_mod, read_managed_mod_or_default, write_managed_mod, ImportRequest, SourceAttachmentMetadata, SourceEvidence};
+    use super::{
+        create_managed_mod, read_managed_mod, read_managed_mod_or_default, write_managed_mod,
+        ImportRequest, SourceAttachmentMetadata, SourceEvidence,
+    };
 
     #[test]
     fn creates_managed_mod_with_uuid_directory() {
@@ -521,7 +551,10 @@ mod tests {
     #[test]
     fn attaches_source_url_by_imported_bundle_name_when_id_is_missing() {
         let tmp = TempDir::new().expect("tmp");
-        let src = tmp.path().join("import").join("McCmdCenter_AllModules_2026_2_0");
+        let src = tmp
+            .path()
+            .join("import")
+            .join("McCmdCenter_AllModules_2026_2_0");
         fs::create_dir_all(&src).expect("src");
         fs::write(src.join("mc_cmd_center.package"), b"x").expect("file");
         create_managed_mod(
@@ -534,22 +567,21 @@ mod tests {
         )
         .expect("create");
 
-        let updated = super::set_source_url(
+        let error = super::set_source_url(
             tmp.path(),
             "McCmdCenter_AllModules_2026_2_0",
-            "https://www.curseforge.com/sims4/mods/mc-command-center".to_string(),
-            Some("curseforge".to_string()),
+            "https://www.curseforge.com/sims4/mods/mc-command-center".into(),
+            Some("curseforge".into()),
             None,
             None,
             None,
         )
-        .expect("attach by bundle name");
-
-        assert_eq!(updated.name, "McCmdCenter_AllModules_2026_2_0");
-        assert_eq!(
-            updated.source_url.as_deref(),
-            Some("https://www.curseforge.com/sims4/mods/mc-command-center")
-        );
+        .expect_err("Missing bundle must not create metadata");
+        assert_eq!(error.code, crate::error::ErrorCode::NotFound);
+        assert!(!tmp
+            .path()
+            .join("mods/McCmdCenter_AllModules_2026_2_0")
+            .exists());
     }
 
     #[test]
@@ -622,7 +654,10 @@ mod tests {
 
         assert_eq!(updated.source, "modthesims");
         assert_eq!(updated.display_name, "Real Mod Title");
-        assert_eq!(updated.preview_url.as_deref(), Some("https://static.modthesims.info/cover.jpg"));
+        assert_eq!(
+            updated.preview_url.as_deref(),
+            Some("https://static.modthesims.info/cover.jpg")
+        );
     }
 
     #[test]
@@ -671,7 +706,8 @@ mod tests {
         .expect("attach");
 
         assert_eq!(updated.source_attachment.as_ref(), Some(&attachment));
-        let raw = fs::read_to_string(tmp.path().join("mods").join(&meta.mod_id).join("meta.json")).expect("read");
+        let raw = fs::read_to_string(tmp.path().join("mods").join(&meta.mod_id).join("meta.json"))
+            .expect("read");
         assert!(raw.contains("\"sourceAttachment\""));
         assert!(raw.contains("\"attachedBy\": \"user\""));
     }
@@ -693,8 +729,9 @@ mod tests {
         )
         .expect("create");
 
-        let updated = super::set_custom_display_name(tmp.path(), &meta.mod_id, "Custom Display".to_string())
-            .expect("update");
+        let updated =
+            super::set_custom_display_name(tmp.path(), &meta.mod_id, "Custom Display".to_string())
+                .expect("update");
 
         assert_eq!(updated.custom_name.as_deref(), Some("Custom Display"));
         assert_eq!(updated.display_name, "Custom Display");

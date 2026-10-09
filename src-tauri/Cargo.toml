@@ -18,6 +18,7 @@ path = "src/main.rs"
 required-features = ["tauri-app"]
 
 [dependencies]
+libc = "0.2"
 chrono = { version = "0.4", default-features = false, features = ["clock"] }
 image = { version = "0.25", default-features = false, features = ["png", "jpeg"] }
 serde = { version = "1", features = ["derive"] }

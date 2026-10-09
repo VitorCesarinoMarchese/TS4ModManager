@@ -8,6 +8,7 @@ use sha2::{Digest, Sha256};
 
 use crate::error::{ErrorCode, ManagerError};
 use crate::managed_storage::read_managed_mod;
+use crate::{fs_scope, link_ownership};
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct IssueEvent {
@@ -38,14 +39,6 @@ pub struct ApplyResult {
     pub issues: Vec<IssueEvent>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "camelCase")]
-struct LinkSidecar {
-    version: u32,
-    mod_id: String,
-    links: Vec<String>,
-}
-
 pub fn dry_run_toggle(
     managed_root: &Path,
     game_mods_dir: &Path,
@@ -68,11 +61,32 @@ pub fn dry_run_toggle(
         let existing_hashes = collect_hashes(game_mods_dir);
 
         for rel in meta.files {
-            let src = managed_root.join("mods").join(mod_id).join("files").join(&rel);
+            let src = managed_root
+                .join("mods")
+                .join(mod_id)
+                .join("files")
+                .join(&rel);
             let dst = game_mods_dir.join(&rel);
             let rel_dst = rel_path_for_issue(&dst, game_mods_dir);
 
-            if dst.exists() {
+            fs_scope::ensure_no_symlink_parents(game_mods_dir, Path::new(&rel))?;
+            fs_scope::ensure_no_symlink_parents(
+                managed_root,
+                &PathBuf::from("mods").join(mod_id).join("files").join(&rel),
+            )?;
+            let source_meta = fs::symlink_metadata(&src).map_err(|_| {
+                ManagerError::new(
+                    ErrorCode::NotFound,
+                    format!("Managed source missing: {}", src.display()),
+                )
+            })?;
+            if !source_meta.is_file() || source_meta.file_type().is_symlink() {
+                return Err(ManagerError::new(
+                    ErrorCode::InvalidPath,
+                    "Managed source must be a regular file",
+                ));
+            }
+            if fs_scope::exists(&dst) {
                 can_apply = false;
                 operations.push(DryRunOp {
                     action: "skip".to_string(),
@@ -110,12 +124,13 @@ pub fn dry_run_toggle(
             });
         }
     } else {
-        let sidecar = read_sidecar(managed_root, mod_id)?;
+        let sidecar = link_ownership::read(managed_root, mod_id, game_mods_dir)?;
         for rel in sidecar.links {
             let dst = game_mods_dir.join(&rel);
             let rel_dst = rel_path_for_issue(&dst, game_mods_dir);
 
-            if !dst.exists() {
+            fs_scope::ensure_no_symlink_parents(game_mods_dir, Path::new(&rel))?;
+            if !fs_scope::exists(&dst) {
                 continue;
             }
 
@@ -126,7 +141,9 @@ pub fn dry_run_toggle(
                 )
             })?;
 
-            if !meta.file_type().is_symlink() {
+            if !meta.file_type().is_symlink()
+                || !link_ownership::owned(managed_root, mod_id, game_mods_dir, &rel)?
+            {
                 operations.push(DryRunOp {
                     action: "skip".to_string(),
                     path: rel_dst.clone(),
@@ -171,43 +188,62 @@ pub fn apply_toggle(
         });
     }
 
+    let directory = fs_scope::Directory::open(game_mods_dir)?;
     if target_enabled {
-        let mut links = vec![];
+        let mut links: Vec<String> = vec![];
         for op in &dry.operations {
             if op.action != "create_symlink" {
                 continue;
             }
 
             let rel = PathBuf::from(&op.path);
-            let src = managed_root.join("mods").join(mod_id).join("files").join(&rel);
-            let dst = game_mods_dir.join(&rel);
-
-            if let Some(parent) = dst.parent() {
-                fs::create_dir_all(parent).map_err(|e| {
-                    ManagerError::new(
-                        ErrorCode::IoError,
-                        format!("Create parent failed {}: {e}", parent.display()),
-                    )
-                })?;
+            let src = link_ownership::target(managed_root, mod_id, &op.path)?;
+            if let Err(error) = directory.symlink(&rel, &src) {
+                for previous in &links {
+                    let target = link_ownership::target(managed_root, mod_id, previous)?;
+                    directory.unlink_owned(Path::new(previous), &target)?;
+                }
+                return Err(error);
             }
-
-            create_symlink(&src, &dst)?;
             links.push(rel.to_string_lossy().replace('\\', "/"));
         }
 
-        write_sidecar(managed_root, mod_id, links)?;
+        if let Err(error) =
+            link_ownership::write(managed_root, mod_id, game_mods_dir, links.clone())
+        {
+            for previous in &links {
+                let target = link_ownership::target(managed_root, mod_id, previous)?;
+                directory.unlink_owned(Path::new(previous), &target)?;
+            }
+            return Err(error);
+        }
     } else {
         for op in &dry.operations {
             if op.action != "remove_symlink" {
                 continue;
             }
 
-            let dst = game_mods_dir.join(&op.path);
-            let _ = fs::remove_file(&dst);
+            let raw_target =
+                fs::read_link(game_mods_dir.join(&op.path)).map_err(fs_scope::io_error)?;
+            if !link_ownership::owned(managed_root, mod_id, game_mods_dir, &op.path)? {
+                return Err(ManagerError::new(
+                    ErrorCode::ExternalLink,
+                    "Link target changed",
+                ));
+            }
+            directory.unlink_owned(Path::new(&op.path), &raw_target)?;
         }
 
-        let sidecar_path = sidecar_path(managed_root, mod_id);
-        let _ = fs::remove_file(sidecar_path);
+        let record = link_ownership::read(managed_root, mod_id, game_mods_dir)?;
+        let is_instance = record.instance_root.is_some();
+        let unresolved = record
+            .links
+            .into_iter()
+            .filter(|rel| fs_scope::exists(&game_mods_dir.join(rel)))
+            .collect();
+        if is_instance {
+            link_ownership::write(managed_root, mod_id, game_mods_dir, unresolved)?;
+        }
     }
 
     Ok(ApplyResult {
@@ -221,50 +257,6 @@ fn rel_path_for_issue(path: &Path, root: &Path) -> String {
         .unwrap_or(path)
         .to_string_lossy()
         .replace('\\', "/")
-}
-
-fn sidecar_path(managed_root: &Path, mod_id: &str) -> PathBuf {
-    managed_root.join("mods").join(mod_id).join("links.json")
-}
-
-fn read_sidecar(managed_root: &Path, mod_id: &str) -> Result<LinkSidecar, ManagerError> {
-    let p = sidecar_path(managed_root, mod_id);
-    let raw = fs::read_to_string(&p).map_err(|_| {
-        ManagerError::new(
-            ErrorCode::NotFound,
-            format!("Link sidecar not found: {}", p.display()),
-        )
-    })?;
-
-    serde_json::from_str(&raw).map_err(|e| {
-        ManagerError::new(
-            ErrorCode::InvalidPath,
-            format!("Link sidecar malformed: {e}"),
-        )
-    })
-}
-
-fn write_sidecar(managed_root: &Path, mod_id: &str, links: Vec<String>) -> Result<(), ManagerError> {
-    let p = sidecar_path(managed_root, mod_id);
-    let sidecar = LinkSidecar {
-        version: 1,
-        mod_id: mod_id.to_string(),
-        links,
-    };
-
-    let raw = serde_json::to_string_pretty(&sidecar).map_err(|e| {
-        ManagerError::new(
-            ErrorCode::InternalError,
-            format!("Serialize sidecar failed: {e}"),
-        )
-    })?;
-
-    fs::write(&p, raw).map_err(|e| {
-        ManagerError::new(
-            ErrorCode::IoError,
-            format!("Write sidecar failed {}: {e}", p.display()),
-        )
-    })
 }
 
 fn file_hash(path: &Path) -> Result<String, ManagerError> {
@@ -324,28 +316,6 @@ fn collect_hashes(root: &Path) -> HashMap<String, PathBuf> {
     }
 
     out
-}
-
-fn create_symlink(src: &Path, dst: &Path) -> Result<(), ManagerError> {
-    #[cfg(unix)]
-    {
-        std::os::unix::fs::symlink(src, dst).map_err(|e| {
-            ManagerError::new(
-                ErrorCode::IoError,
-                format!("symlink failed {} -> {}: {e}", src.display(), dst.display()),
-            )
-        })
-    }
-
-    #[cfg(not(unix))]
-    {
-        let _ = src;
-        let _ = dst;
-        Err(ManagerError::new(
-            ErrorCode::InternalError,
-            "symlink not supported on this platform",
-        ))
-    }
 }
 
 #[cfg(test)]
