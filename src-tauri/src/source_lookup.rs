@@ -122,7 +122,7 @@ fn find_with_curseforge(
             candidates.push(candidate);
         }
     }
-    candidates.sort_by(|a, b| b.confidence.cmp(&a.confidence));
+    candidates.sort_by_key(|candidate| std::cmp::Reverse(candidate.confidence));
     candidates.truncate(5);
     Ok(candidates)
 }
