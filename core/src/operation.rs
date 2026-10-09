@@ -553,7 +553,7 @@ mod tests {
             outside
         );
         assert_eq!(fs::read(outside).unwrap(), b"original");
-        assert!(crate::mod_scan::scan_mods(&game, &managed)
+        assert!(crate::mod_scan::scan_mods(&game, &managed).unwrap()
             .iter()
             .all(|entry| entry.source != crate::mod_scan::ModSource::Managed));
         assert!(recover_pending(&managed).unwrap().is_empty());

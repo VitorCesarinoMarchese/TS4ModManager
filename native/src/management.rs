@@ -208,7 +208,7 @@ pub fn execute(job: &Job) -> Result<Output, String> {
             let Some(EntryId::External(key)) = &job.identity.entry else {
                 return Err("Select an external mod".into());
             };
-            let current = ts4_mod_manager_core::mod_scan::scan_mods(&mods, managed)
+            let current = ts4_mod_manager_core::mod_scan::scan_mods(&mods, managed).map_err(error)?
                 .into_iter()
                 .find(|m| m.key == *key)
                 .ok_or("External mod no longer exists")?;

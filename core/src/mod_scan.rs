@@ -4,6 +4,7 @@ use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 
+use crate::error::{ErrorCode, ManagerError};
 use crate::managed_storage::{read_managed_mod, ModMetadata, SourceAttachmentMetadata};
 use crate::metadata_names::detect_display_name;
 
@@ -46,20 +47,16 @@ enum GroupOwner {
     External(String),
 }
 
-pub fn scan_mods(mods_dir: &Path, managed_root: &Path) -> Vec<ScannedMod> {
+pub fn scan_mods(mods_dir: &Path, managed_root: &Path) -> Result<Vec<ScannedMod>, ManagerError> {
     let mut groups: BTreeMap<GroupOwner, (String, Vec<FileEntry>)> = BTreeMap::new();
     let mut stack = vec![mods_dir.to_path_buf()];
 
     while let Some(dir) = stack.pop() {
-        let Ok(entries) = fs::read_dir(&dir) else {
-            continue;
-        };
-
-        for entry in entries.flatten() {
+        let entries = fs::read_dir(&dir).map_err(|e| scan_error(&dir, e))?;
+        for entry in entries {
+            let entry = entry.map_err(|e| scan_error(&dir, e))?;
             let path = entry.path();
-            let Ok(meta) = fs::symlink_metadata(&path) else {
-                continue;
-            };
+            let meta = fs::symlink_metadata(&path).map_err(|e| scan_error(&path, e))?;
 
             if meta.is_dir() {
                 stack.push(path);
@@ -77,7 +74,7 @@ pub fn scan_mods(mods_dir: &Path, managed_root: &Path) -> Vec<ScannedMod> {
             let relative = rel.to_string_lossy().replace('\\', "/");
             let key = group_key(rel);
             let symlink_target = if meta.file_type().is_symlink() {
-                fs::read_link(&path).ok().map(|target| {
+                Some(fs::read_link(&path).map_err(|e| scan_error(&path, e))?).map(|target| {
                     let absolute = if target.is_absolute() {
                         target
                     } else {
@@ -116,32 +113,43 @@ pub fn scan_mods(mods_dir: &Path, managed_root: &Path) -> Vec<ScannedMod> {
         })
         .collect::<Vec<_>>();
 
-    append_disabled_managed_mods(&mut scanned, managed_root);
-    scanned
+    append_disabled_managed_mods(&mut scanned, managed_root)?;
+    Ok(scanned)
 }
 
-fn append_disabled_managed_mods(scanned: &mut Vec<ScannedMod>, managed_root: &Path) {
-    let managed_mods = managed_root.join("mods");
-    let Ok(entries) = fs::read_dir(&managed_mods) else {
-        return;
-    };
+fn scan_error(path: &Path, error: std::io::Error) -> ManagerError {
+    ManagerError::new(ErrorCode::IoError, format!("Scan incomplete. Cannot read {}: {error}", path.display()))
+}
 
-    for entry in entries.flatten() {
+fn append_disabled_managed_mods(scanned: &mut Vec<ScannedMod>, managed_root: &Path) -> Result<(), ManagerError> {
+    let managed_mods = managed_root.join("mods");
+    let entries = match fs::read_dir(&managed_mods) {
+        Ok(entries) => entries,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+        Err(e) => return Err(scan_error(&managed_mods, e)),
+    };
+    for entry in entries {
+        let entry = entry.map_err(|e| scan_error(&managed_mods, e))?;
         let mod_id = entry.file_name().to_string_lossy().to_string();
+        // Recovery holdings are retained originals, not catalog entries.
+        if mod_id.starts_with(".ts4-holding-") {
+            continue;
+        }
         if scanned
             .iter()
             .any(|mod_entry| mod_entry.id.as_deref() == Some(&mod_id))
         {
             continue;
         }
-        let Ok(meta) = read_managed_mod(managed_root, &mod_id) else {
-            continue;
-        };
+        let meta = read_managed_mod(managed_root, &mod_id).map_err(|e| {
+            ManagerError::new(e.code, format!("Scan incomplete. Cannot read managed mod {mod_id}: {}", e.message))
+        })?;
         let scanned_mod = scanned_mod_from_metadata(meta);
         if !scanned_mod.mod_files.is_empty() {
             scanned.push(scanned_mod);
         }
     }
+    Ok(())
 }
 
 fn scanned_mod_from_metadata(meta: ModMetadata) -> ScannedMod {
@@ -323,6 +331,23 @@ mod tests {
     use super::{scan_mods, ModSource};
 
     #[test]
+    fn missing_mods_folder_is_not_a_successful_empty_scan() {
+        let root = TempDir::new().unwrap();
+        assert!(scan_mods(&root.path().join("missing"), &root.path().join("managed")).is_err());
+    }
+
+    #[test]
+    fn corrupt_managed_metadata_is_not_silently_skipped() {
+        let root = TempDir::new().unwrap();
+        let mods = root.path().join("Mods");
+        let managed = root.path().join("managed");
+        fs::create_dir_all(&mods).unwrap();
+        fs::create_dir_all(managed.join("mods/broken")).unwrap();
+        fs::write(managed.join("mods/broken/meta.json"), "{broken").unwrap();
+        assert!(scan_mods(&mods, &managed).is_err());
+    }
+
+    #[test]
     #[cfg(unix)]
     fn keeps_managed_mods_and_external_files_separate_in_shared_folder() {
         use crate::managed_storage::{create_managed_mod, ImportRequest};
@@ -351,7 +376,7 @@ mod tests {
         }
         fs::write(mods.join("Shared/External.package"), b"external").expect("external");
 
-        let scanned = scan_mods(&mods, &managed);
+        let scanned = scan_mods(&mods, &managed).unwrap();
         assert_eq!(
             scanned.len(),
             3,
@@ -397,7 +422,7 @@ mod tests {
             },
         )
         .expect("import");
-        let stored = scan_mods(&mods, &managed);
+        let stored = scan_mods(&mods, &managed).unwrap();
         assert_eq!(
             serde_json::to_value(&stored[0]).expect("json")["enabled"],
             false
@@ -408,7 +433,7 @@ mod tests {
             mods.join("Example.package"),
         )
         .expect("link");
-        let installed = scan_mods(&mods, &managed);
+        let installed = scan_mods(&mods, &managed).unwrap();
         assert_eq!(installed.len(), 1);
         assert_eq!(installed[0].id.as_deref(), Some(meta.mod_id.as_str()));
         assert_eq!(
@@ -428,7 +453,7 @@ mod tests {
         fs::write(mods.join("MyMod/main.package"), b"pkg").expect("file");
         fs::write(mods.join("MyMod/sub/readme.txt"), b"txt").expect("file");
 
-        let scanned = scan_mods(&mods, &managed);
+        let scanned = scan_mods(&mods, &managed).unwrap();
         assert_eq!(scanned.len(), 1);
         assert_eq!(scanned[0].key, "MyMod");
         assert_eq!(scanned[0].files.len(), 2);
@@ -448,7 +473,7 @@ mod tests {
         )
         .expect("pkg");
 
-        let scanned = scan_mods(&mods, &managed);
+        let scanned = scan_mods(&mods, &managed).unwrap();
         assert_eq!(scanned[0].key, "Gabymelove Sims");
         assert_eq!(scanned[0].name, "Gabymelove Sims");
     }
@@ -464,7 +489,7 @@ mod tests {
         fs::write(mods.join("CoolMod_A.package"), b"a").expect("a");
         fs::write(mods.join("CoolMod_B.ts4script"), b"b").expect("b");
 
-        let scanned = scan_mods(&mods, &managed);
+        let scanned = scan_mods(&mods, &managed).unwrap();
         assert_eq!(scanned.len(), 1);
         assert_eq!(scanned[0].key, "CoolMod");
     }
@@ -482,7 +507,7 @@ mod tests {
         fs::write(mods.join("Pack/cover.jpg"), b"jpg").expect("jpg");
         fs::write(mods.join("Pack/readme.md"), b"md").expect("md");
 
-        let scanned = scan_mods(&mods, &managed);
+        let scanned = scan_mods(&mods, &managed).unwrap();
         assert_eq!(scanned.len(), 1);
         assert_eq!(scanned[0].files.len(), 4);
         assert_eq!(scanned[0].mod_files.len(), 2);
@@ -501,7 +526,7 @@ mod tests {
         fs::write(mods.join("orphan.txt"), b"txt").expect("orphan");
         fs::write(mods.join("RealMod/main.package"), b"pkg").expect("pkg");
 
-        let scanned = scan_mods(&mods, &managed);
+        let scanned = scan_mods(&mods, &managed).unwrap();
         assert_eq!(scanned.len(), 1);
         assert_eq!(scanned[0].key, "RealMod");
     }
@@ -525,7 +550,7 @@ mod tests {
         big.save(mods.join("Pack/preview_big.png"))
             .expect("save big");
 
-        let scanned = scan_mods(&mods, &managed);
+        let scanned = scan_mods(&mods, &managed).unwrap();
         assert_eq!(
             scanned[0].preview.as_deref(),
             Some(mods.join("Pack/preview_big.png").to_string_lossy().as_ref())
@@ -563,7 +588,7 @@ mod tests {
         )
         .expect("meta");
 
-        let scanned = scan_mods(&mods, &managed);
+        let scanned = scan_mods(&mods, &managed).unwrap();
 
         assert_eq!(scanned.len(), 1);
         assert_eq!(scanned[0].id.as_deref(), Some("id"));
@@ -581,7 +606,7 @@ mod tests {
         fs::create_dir_all(&managed).expect("managed");
         fs::write(mods.join("InstalledMod/main.package"), b"pkg").expect("pkg");
 
-        let scanned = scan_mods(&mods, &managed);
+        let scanned = scan_mods(&mods, &managed).unwrap();
         assert_eq!(scanned[0].source, ModSource::External);
     }
 
@@ -601,7 +626,7 @@ mod tests {
         std::os::unix::fs::symlink(external_root.join("x.package"), mods.join("Ext_x.package"))
             .expect("symlink");
 
-        let scanned = scan_mods(&mods, &managed);
+        let scanned = scan_mods(&mods, &managed).unwrap();
         assert_eq!(scanned[0].source, ModSource::External);
     }
 
@@ -647,7 +672,7 @@ mod tests {
         )
         .expect("symlink");
 
-        let scanned = scan_mods(&mods, &managed);
+        let scanned = scan_mods(&mods, &managed).unwrap();
         assert_eq!(scanned[0].key, "McCmdCenter_AllModules_2026_2_0");
         assert_eq!(scanned[0].id.as_deref(), Some("uuid-123"));
     }
@@ -704,7 +729,7 @@ mod tests {
         #[cfg(unix)]
         std::os::unix::fs::symlink(&managed_file, mods.join("Example.package")).expect("symlink");
 
-        let scanned = scan_mods(&mods, &managed);
+        let scanned = scan_mods(&mods, &managed).unwrap();
         assert_eq!(
             scanned[0].source_url.as_deref(),
             Some("https://www.curseforge.com/sims4/mods/example")
@@ -762,7 +787,7 @@ mod tests {
         )
         .expect("symlink");
 
-        let scanned = scan_mods(&mods, &managed);
+        let scanned = scan_mods(&mods, &managed).unwrap();
         assert_eq!(scanned[0].name, "My MCCC");
     }
 
@@ -777,10 +802,16 @@ mod tests {
         fs::create_dir_all(managed_file.parent().expect("parent")).expect("managed tree");
         fs::write(&managed_file, b"pkg").expect("pkg");
 
+        fs::write(managed.join("mods/id/meta.json"), serde_json::json!({
+            "version": 1, "createdBy": "sims4-mod-manager", "modId": "id",
+            "name": "Local", "displayName": "Local", "files": ["y.package"],
+            "source": "local"
+        }).to_string()).unwrap();
+
         #[cfg(unix)]
         std::os::unix::fs::symlink(&managed_file, mods.join("Managed_y.package")).expect("symlink");
 
-        let scanned = scan_mods(&mods, &managed);
+        let scanned = scan_mods(&mods, &managed).unwrap();
         assert_eq!(scanned[0].source, ModSource::Managed);
     }
 }

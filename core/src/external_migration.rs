@@ -24,7 +24,7 @@ pub fn migrate_external_mod(
 ) -> Result<MigrateResult, ManagerError> {
     let _guard = operation::acquire(managed_root)?;
     fs_scope::component(external_mod_key)?;
-    let scanned = scan_mods(game_mods_dir, managed_root);
+    let scanned = scan_mods(game_mods_dir, managed_root)?;
     let external = scanned
         .into_iter()
         .find(|m| m.key == external_mod_key)
@@ -276,6 +276,12 @@ mod tests {
         fs::create_dir_all(managed_file.parent().expect("parent")).expect("managed");
         fs::create_dir_all(&game_mods).expect("mods");
         fs::write(&managed_file, b"PKG").expect("pkg");
+
+        fs::write(managed.join("mods/id/meta.json"), serde_json::json!({
+            "version": 1, "createdBy": "sims4-mod-manager", "modId": "id",
+            "name": "Local", "displayName": "Local", "files": ["y.package"],
+            "source": "local"
+        }).to_string()).unwrap();
 
         #[cfg(unix)]
         std::os::unix::fs::symlink(&managed_file, game_mods.join("Local_main.package"))

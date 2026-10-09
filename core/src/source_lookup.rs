@@ -32,7 +32,7 @@ fn fingerprint_for_lookup(
     game_mods_dir: &Path,
     mod_id: &str,
 ) -> Result<ModFingerprint, ManagerError> {
-    let scanned = scan_mods(game_mods_dir, managed_root);
+    let scanned = scan_mods(game_mods_dir, managed_root)?;
     if let Some(selected) = scanned
         .iter()
         .find(|mod_entry| matches_mod_id(mod_entry, mod_id))

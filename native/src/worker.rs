@@ -53,7 +53,7 @@ pub fn scan(root: &Path, managed_root: &Path) -> Result<ScanOutput, String> {
         .map_err(|error| error.message)?;
     let mods_dir = instance.path.join("Mods");
     std::fs::read_dir(&mods_dir).map_err(|error| format!("Cannot read Mods folder: {error}"))?;
-    let mods = ts4_mod_manager_core::mod_scan::scan_mods(&mods_dir, managed_root);
+    let mods = ts4_mod_manager_core::mod_scan::scan_mods(&mods_dir, managed_root).map_err(|e| e.message)?;
     Ok(ScanOutput {
         instance,
         mods,

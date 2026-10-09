@@ -112,7 +112,7 @@ fn trash_and_restore_work_across_filesystems() {
     let result = uninstall_managed_mod(&managed, &game, &trash, &id).unwrap();
     assert!(!managed.join("mods").join(&id).exists());
     assert!(
-        ts4_mod_manager_core::mod_scan::scan_mods(&game, &managed).is_empty(),
+        ts4_mod_manager_core::mod_scan::scan_mods(&game, &managed).unwrap().is_empty(),
         "preserved source holding must not appear as a managed mod"
     );
     let trashed = PathBuf::from(result.trashed_path);
