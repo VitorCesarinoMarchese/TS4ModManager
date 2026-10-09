@@ -57,7 +57,15 @@ python native/verify.py --sizes 100 --capture-dir native/target/captures
 
 This captures real light, dark, and narrow windows. Screenshot mode fixes the window size and quits after writing the PNG. Normal launches remain resizable. For release measurements, build with `cargo build --manifest-path native/Cargo.toml --release --locked` and pass `--binary native/target/release/ts4-mod-manager-native` to the script.
 
-Initial debug verification on this workspace measured about 137 ms to scan 10,000 synthetic external mod groups and about 1 ms to filter them. These are single-run fixture timings, not release benchmarks or a comparison with Tauri. Startup, resident memory, frame times, real touchpad behavior, and production mod collections still need measurement before choosing a full rewrite.
+The current release scanned 10,000 synthetic groups in 53 ms. On 1,000-group fixtures, three launches used median process-tree PSS of 60 MiB for native and 208 MiB for the current Tauri release. Median window mapping was 153 ms and 173 ms. These fixture measurements exclude input-to-paint latency and GPU frame times. See the [completion report](../docs/native-migration-report.md) for raw evidence, method and remaining desktop checks.
+
+Compare release executables on a running Hyprland desktop without opening real game data:
+
+```bash
+python3 native/benchmark.py --native native/target/release/ts4-mod-manager-native \
+  --tauri src-tauri/target/release/ts4-mod-manager --mods 1000 --runs 3 \
+  --output native/target/benchmark.json
+```
 
 Build a Linux release archive with a desktop entry, icon and dependency license inventory:
 

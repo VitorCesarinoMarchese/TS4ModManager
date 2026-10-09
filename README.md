@@ -1,25 +1,16 @@
 # TS4 Mod Manager
 
-Linux-first desktop mod manager for **The Sims 4**. Built with React, TypeScript, Tauri, and Rust.
+Linux-first desktop mod manager for **The Sims 4**. The React/Tauri interface and the Fastframe/egui native interface share the Rust core.
 
 The app focuses on local, inspectable, safe filesystem management: scan your Sims 4 `Mods` folder, identify installed mods, attach metadata, manage display names/source URLs, move mods to trash, restore trashed mods, and optionally migrate existing installed mods into manager-owned storage.
 
-## Native UI pilot
+## Native UI
 
-A read-only Fastframe/egui catalog pilot is available alongside the existing app. Run `cargo run --manifest-path native/Cargo.toml --locked`. See [native/README.md](native/README.md) for custom game paths, verification, and current limits.
+A Fastframe/egui interface is available alongside the existing app. Run `cargo run --manifest-path native/Cargo.toml --locked`. It supports local folder and ZIP imports, reviewed toggles, external migration, metadata edits, trash and restore, photo previews, and local settings transfer. See [native/README.md](native/README.md) for custom game paths, verification, and current limits.
 
 ## Current State
 
-Phase 2 is complete: metadata, themes, game instance UX, safe lifecycle management, and Linux desktop hardening are implemented.
-
-Current validation baseline:
-
-```text
-npm run test:coverage  -> 120 frontend tests, branch coverage 80.15%
-cargo test             -> 70 Rust tests
-npm run build          -> passing
-cargo check --features tauri-app -> passing
-```
+Both interfaces use the same managed metadata and filesystem operations. The [completion report](docs/native-migration-report.md) records the seven delivered workstreams, test results, release measurements and remaining limits. The [decision trail](docs/native-migration-decisions.tsv) records the changes.
 
 ## Core Principles
 
@@ -113,11 +104,12 @@ External installed mods can be migrated with **Manage this mod**:
 
 1. Copy current installed files into manager storage.
 2. Write metadata/manifest.
-3. Replace live installed files with manager-owned symlinks.
+3. Preserve the original files or symlink objects in a backup on the game filesystem.
+4. Replace live installed files with manager-owned symlinks.
 
 ### Import
 
-Local archive import is implemented for supported archive flows. Imported mods are copied into manager storage and then can be enabled via symlinks.
+Local ZIP imports are copied into manager storage and can then be enabled via symlinks. RAR and 7z imports are unsupported. The native interface also imports local folders. Imports preserve their source files.
 
 ### Safe uninstall and trash
 
@@ -125,7 +117,8 @@ Uninstall behavior:
 
 - Requires confirmation.
 - Removes manager-created symlinks when present.
-- Moves managed storage and/or installed files to trash.
+- Moves the managed bundle to trash after checking installed links.
+- Requires external mods to be managed before uninstall.
 - Does **not** permanently delete user files.
 - Does **not** delete unmanaged files.
 
@@ -145,6 +138,8 @@ Settings includes buttons to open:
 
 - managed mod folder: `~/.local/share/sims4-mod-manager/mods`
 - manager folder: `~/.local/share/sims4-mod-manager`
+
+Settings can export and import a local version 1 JSON file shared with the native interface. The export omits the CurseForge API key by default. Import requires a preview and confirmation. Custom theme colors use the separate theme export, with an explicit built-in theme choice for native settings.
 
 Folder opening uses `xdg-open` with detached stdio and Linux desktop env workarounds.
 

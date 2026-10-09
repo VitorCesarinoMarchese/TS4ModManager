@@ -63,6 +63,6 @@ The Linux archive includes the executable, desktop entry, icon and dependency li
 
 ## Verification status
 
-This document specifies the implementation contract, not completed safety claims. Eight ownership regressions reproduced current defects before implementation. Four lifecycle regressions cover unmanaged removal, mixed metadata restore, collision preflight and cross-device transfer; their failing baseline still needs recording. The source fallback fix has 16 passing targeted tests. ZIP safety and Linux package verification have executable checks. Full workflow, interruption, desktop and comparative performance evidence will be recorded in the migration decision trail as implementation completes.
+The contract is implemented and the combined tree was validated on 2026-10-09. Core ownership, lifecycle and recovery suites pass, including cross-device wrapper restore and injected rollback failures. The extracted Linux executable passes the production controller's temporary management workflows. The [completion report](native-migration-report.md) records test counts, current release measurements and remaining limits. Historical temporary baselines lost between sessions remain disclosed in the decision trail.
 
 Physical touchpad, multiple-monitor and screen-reader checks need the relevant hardware/session. Fixture timings and compilation success cannot substitute for them.
