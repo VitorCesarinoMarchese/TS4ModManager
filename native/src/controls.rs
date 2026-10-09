@@ -37,6 +37,7 @@ pub struct Controls {
     pub settings: Settings,
     settings_path: PathBuf,
     next: u64,
+    recovering: bool,
     operations: Vec<Operation>,
     dialog: Option<Dialog>,
     candidates: Option<(
@@ -67,6 +68,7 @@ impl Controls {
             settings,
             settings_path: home.join(".config/ts4-mod-manager/settings.json"),
             next: 1,
+            recovering: true,
             operations: vec![],
             dialog: None,
             candidates: None,
@@ -166,6 +168,7 @@ impl Controls {
         loop {
             for event in self.worker.drain() {
                 match event {
+                    Event::Recovered(_) => self.recovering = false,
                     Event::Running(identity) => {
                         if let Some(job) = self
                             .operations
@@ -196,14 +199,17 @@ impl Controls {
         }
     }
     pub fn busy(&self) -> bool {
-        self.operations
-            .iter()
-            .any(|o| o.status == "Queued" || o.status == "Running")
+        self.recovering
+            || self
+                .operations
+                .iter()
+                .any(|o| o.status == "Queued" || o.status == "Running")
     }
     pub fn poll(&mut self, catalog: &Catalog) {
         for event in self.worker.drain().collect::<Vec<_>>() {
             match event {
                 Event::Recovered(result) => {
+                    self.recovering = false;
                     self.refresh = catalog.root.clone();
                     match result {
                         Ok(issues) if !issues.is_empty() => {
@@ -429,7 +435,9 @@ impl Controls {
                         }
                     }
                 });
-                if self.busy() {
+                if self.recovering {
+                    ui.label("Checking interrupted operations. Waiting for other app writes if needed.");
+                } else if self.busy() {
                     ui.label("Approved operations will finish before the window closes.");
                 }
                 if let Some(error) = &self.error {
@@ -827,6 +835,27 @@ impl Controls {
 }
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn startup_recovery_keeps_window_busy_until_completion_is_polled() {
+        let fixture = tempfile::tempdir().unwrap();
+        let mut controls = Controls::new(
+            fixture.path().join("managed"),
+            fixture.path().to_path_buf(),
+            Settings::default(),
+            || {},
+        )
+        .unwrap();
+        assert!(
+            controls.busy(),
+            "startup recovery must prevent blocking window shutdown"
+        );
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+        while controls.busy() {
+            controls.poll(&Catalog::default());
+            assert!(std::time::Instant::now() < deadline);
+            std::thread::sleep(std::time::Duration::from_millis(2));
+        }
+    }
     use super::*;
     fn frame(
         ctx: &egui::Context,
