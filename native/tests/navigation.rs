@@ -281,7 +281,7 @@ fn settings_transfer_remains_compatible_with_the_previous_app() {
 }
 
 #[test]
-fn builtin_theme_switch_discards_the_custom_editor_draft() {
+fn color_mode_switch_preserves_the_custom_editor_draft() {
     let dir = tempfile::tempdir().unwrap();
     let mut controls = Controls::new(
         dir.path().join("managed"),
@@ -304,7 +304,7 @@ fn builtin_theme_switch_discards_the_custom_editor_draft() {
         &mut catalog,
         click_text(&output, "Create custom theme"),
     );
-    controls.set_builtin_theme(&ctx, ts4_mod_manager_native::settings::Theme::Light);
+    controls.set_color_mode(&ctx, ts4_mod_manager_native::settings::Theme::Light);
     let output = frame(&ctx, &mut view, &mut controls, &mut catalog, vec![]);
     frame(
         &ctx,
@@ -317,6 +317,14 @@ fn builtin_theme_switch_discards_the_custom_editor_draft() {
         Settings::load(&dir.path().join(".config/ts4-mod-manager/settings.json"))
             .unwrap()
             .active_custom_theme
-            .is_none()
+            .is_some()
     );
+    let output = frame(&ctx, &mut view, &mut controls, &mut catalog, vec![]);
+    frame(&ctx, &mut view, &mut controls, &mut catalog, click_text(&output, "Use default colors"));
+    let output = frame(&ctx, &mut view, &mut controls, &mut catalog, vec![]);
+    frame(&ctx, &mut view, &mut controls, &mut catalog, click_text(&output, "Save settings"));
+    let saved = Settings::load(&dir.path().join(".config/ts4-mod-manager/settings.json")).unwrap();
+    assert!(saved.active_custom_theme.is_none());
+    assert_eq!(saved.custom_themes.len(), 1);
+
 }

@@ -475,15 +475,21 @@ impl Controls {
             }
         });
     }
-    pub fn set_builtin_theme(&mut self, ctx: &egui::Context, theme: Theme) {
+    pub fn set_color_mode(&mut self, ctx: &egui::Context, theme: Theme) {
+        self.preview_color_mode(ctx, theme);
+        if let Err(error) = self.settings.save(&self.settings_path) {
+            self.error = Some(error);
+        }
+    }
+    fn preview_color_mode(&mut self, ctx: &egui::Context, theme: Theme) {
         self.settings.theme = theme;
+        crate::ui::apply_settings_theme(ctx, &self.settings);
+    }
+    fn use_default_colors(&mut self, ctx: &egui::Context) {
         self.settings.active_custom_theme = None;
         self.theme_edit = None;
         self.theme_edit_original = None;
         crate::ui::apply_settings_theme(ctx, &self.settings);
-        if let Err(error) = self.settings.save(&self.settings_path) {
-            self.error = Some(error);
-        }
     }
     fn save_preferences(&mut self, ctx: &egui::Context) {
         let mut next = self.settings.clone();
@@ -544,11 +550,13 @@ impl Controls {
             ui.add_space(8.0);
             ui.horizontal_wrapped(|ui| {
                 for (theme, label) in [(Theme::Light, "Light"), (Theme::Dark, "Dark"), (Theme::System, "System")] {
-                    if ui.selectable_label(self.settings.active_custom_theme.is_none() && self.settings.theme == theme, label).clicked() {
-                        self.settings.theme = theme; self.settings.active_custom_theme = None;
-                        self.theme_edit = None; self.theme_edit_original = None;
-                        crate::ui::apply_settings_theme(&ctx, &self.settings);
+                    if ui.selectable_label(self.settings.theme == theme, label).clicked() {
+                        self.preview_color_mode(&ctx, theme);
                     }
+                }
+                if (self.settings.active_custom_theme.is_some() || self.theme_edit.is_some())
+                    && ui.button("Use default colors").clicked() {
+                    self.use_default_colors(&ctx);
                 }
                 if ui.button("Create custom theme").clicked() {
                     let mut theme = crate::settings::CustomTheme::base(ui.visuals().dark_mode);
@@ -987,6 +995,47 @@ impl Controls {
 }
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn mode_switch_preserves_custom_theme_and_unsaved_editor_colors() {
+        let fixture = tempfile::tempdir().unwrap();
+        let mut theme = crate::settings::CustomTheme::base(true);
+        theme.name = "My theme".into();
+        theme.colors.accent = "#BE73D1".into();
+        let settings = Settings {
+            theme: Theme::Dark,
+            active_custom_theme: Some(theme.name.clone()),
+            custom_themes: vec![theme.clone()],
+            ..Settings::default()
+        };
+        let mut controls = Controls::new(fixture.path().join("managed"), fixture.path().into(), settings, || {}).unwrap();
+        controls.theme_edit.as_mut().unwrap().colors.accent = "#123456".into();
+        let ctx = egui::Context::default();
+        controls.set_color_mode(&ctx, Theme::Light);
+        assert_eq!(ctx.theme(), egui::Theme::Light);
+        for mode in [egui::Theme::Light, egui::Theme::Dark] {
+            let style = ctx.style_of(mode);
+            assert_eq!(style.visuals.panel_fill, egui::Color32::from_rgb(0x13, 0x13, 0x15));
+            assert_eq!(style.visuals.hyperlink_color, egui::Color32::from_rgb(0xBE, 0x73, 0xD1));
+        }
+        assert_eq!(controls.settings.active_custom_theme.as_deref(), Some("My theme"));
+        assert_eq!(controls.theme_edit.as_ref().unwrap().colors.accent, "#123456");
+        assert_eq!(controls.theme_edit_original.as_deref(), Some("My theme"));
+        let saved = Settings::load(&controls.settings_path).unwrap();
+        assert!(saved.theme == Theme::Light);
+        assert_eq!(saved.active_custom_theme.as_deref(), Some("My theme"));
+        assert_eq!(saved.custom_themes[0].colors.accent, "#BE73D1");
+        controls.set_color_mode(&ctx, Theme::Dark);
+        assert_eq!(ctx.theme(), egui::Theme::Dark);
+        assert_eq!(controls.settings.active_custom_theme.as_deref(), Some("My theme"));
+        controls.preview_color_mode(&ctx, Theme::Light);
+        assert_eq!(controls.theme_edit.as_ref().unwrap().colors.accent, "#123456");
+        controls.use_default_colors(&ctx);
+        controls.save_preferences(&ctx);
+        let saved = Settings::load(&controls.settings_path).unwrap();
+        assert!(saved.active_custom_theme.is_none());
+        assert_eq!(saved.custom_themes[0].name, "My theme");
+    }
+
     #[test]
     fn startup_recovery_keeps_window_busy_until_completion_is_polled() {
         let fixture = tempfile::tempdir().unwrap();

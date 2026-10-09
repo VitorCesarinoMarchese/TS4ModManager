@@ -140,12 +140,6 @@ pub fn apply_settings_theme(ctx: &egui::Context, settings: &crate::settings::Set
         .and_then(|v| <Vec<Color32> as TryInto<[Color32; 6]>>::try_into(v).ok()) else {
             return;
         };
-        let dark = (background.r() as u32 + background.g() as u32 + background.b() as u32) < 384;
-        ctx.set_theme(if dark {
-            egui::Theme::Dark
-        } else {
-            egui::Theme::Light
-        });
         let blend = |a: Color32, b: Color32, ratio: f32| {
             Color32::from_rgb(
                 (a.r() as f32 * (1.0 - ratio) + b.r() as f32 * ratio) as u8,
@@ -278,7 +272,7 @@ impl View {
                             .clicked()
                         {
                             if let Some(c) = controls.as_deref_mut() {
-                                c.set_builtin_theme(
+                                c.set_color_mode(
                                     ui.ctx(),
                                     if dark {
                                         crate::settings::Theme::Light
