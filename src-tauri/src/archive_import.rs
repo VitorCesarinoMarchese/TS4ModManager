@@ -7,6 +7,7 @@ use uuid::Uuid;
 use zip::read::ZipArchive;
 
 use crate::error::{ErrorCode, ManagerError};
+use crate::fs_scope;
 use crate::managed_storage::{create_managed_mod, ImportRequest, ModMetadata};
 
 const MAX_ZIP_ENTRIES: usize = 100_000;
@@ -22,15 +23,7 @@ pub fn import_archive_to_managed(
     let temp_extract = managed_root
         .join("tmp")
         .join(format!("extract-{}", Uuid::new_v4()));
-    fs::create_dir_all(&temp_extract).map_err(|e| {
-        ManagerError::new(
-            ErrorCode::IoError,
-            format!(
-                "Create temp extract dir failed {}: {e}",
-                temp_extract.display()
-            ),
-        )
-    })?;
+    fs_scope::create_dir_all(&temp_extract)?;
 
     let extract_result = extract_archive(archive_path, &temp_extract);
     if let Err(err) = extract_result {
@@ -135,26 +128,23 @@ fn extract_zip(archive_path: &Path, destination: &Path) -> Result<(), ManagerErr
         }
     }
 
+    fs_scope::create_dir_all(destination)?;
+    let directory = fs_scope::Directory::open(destination)?;
     for i in 0..archive.len() {
         let mut entry = archive
             .by_index(i)
             .map_err(|error| extraction_error(error.to_string()))?;
         let name = entry.name().replace('\\', "/");
         let path = sanitize_zip_path(destination, &name)?;
+        let relative = path
+            .strip_prefix(destination)
+            .map_err(|_| extraction_error("Extraction path escapes its root"))?;
         check_extraction_path(destination, &path)?;
         if entry.is_dir() {
-            fs::create_dir_all(&path).map_err(|error| extraction_error(error.to_string()))?;
+            directory.parent(&relative.join(".extract-directory"), true)?;
             continue;
         }
-        if let Some(parent) = path.parent() {
-            fs::create_dir_all(parent).map_err(|error| extraction_error(error.to_string()))?;
-        }
-        check_extraction_path(destination, &path)?;
-        let mut output = fs::OpenOptions::new()
-            .write(true)
-            .create_new(true)
-            .open(&path)
-            .map_err(|error| extraction_error(format!("Create extracted file failed: {error}")))?;
+        let mut output = directory.create_file(relative)?;
         let expected = entry.size();
         let copied = std::io::copy(&mut (&mut entry).take(expected + 1), &mut output)
             .map_err(|error| extraction_error(format!("Read ZIP entry failed: {error}")))?;

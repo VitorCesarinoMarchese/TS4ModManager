@@ -90,3 +90,26 @@ fn unvalidated_external_extractors_are_not_used() {
         );
     }
 }
+
+#[cfg(unix)]
+#[test]
+fn archive_import_rejects_a_redirected_staging_directory() {
+    use std::os::unix::fs::symlink;
+    use ts4_mod_manager_core::archive_import::import_archive_to_managed;
+    let temp = tempfile::tempdir().unwrap();
+    let managed = temp.path().join("managed");
+    let outside = temp.path().join("outside");
+    fs::create_dir_all(&managed).unwrap();
+    fs::create_dir_all(&outside).unwrap();
+    symlink(&outside, managed.join("tmp")).unwrap();
+    let archive = temp.path().join("safe.zip");
+    let mut writer = ZipWriter::new(fs::File::create(&archive).unwrap());
+    writer
+        .start_file("test.package", SimpleFileOptions::default())
+        .unwrap();
+    writer.write_all(b"package").unwrap();
+    writer.finish().unwrap();
+    assert!(import_archive_to_managed(&managed, &archive, "Test".into(), None).is_err());
+    assert_eq!(fs::read_dir(outside).unwrap().count(), 0);
+    assert!(!managed.join("mods").exists());
+}
