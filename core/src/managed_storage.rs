@@ -129,6 +129,7 @@ pub(crate) fn create_managed_mod_transaction(
     let files_root = mod_root.join("files");
 
     fs_scope::create_dir_all(&files_root)?;
+    fs_scope::create_dir_all(&mod_root.join("links"))?;
 
     fs_scope::Directory::open(&req.source_dir)?;
     let files = copy_recursive(&req.source_dir, &files_root)?;

@@ -322,9 +322,9 @@ fn rollback_journal(journal: &Journal) -> Result<Vec<IssueEvent>, ManagerError> 
                     // Retain new bookkeeping as a recovery copy rather than deleting it.
                     fs_scope::rename_no_replace(
                         path,
-                        &path
-                            .parent()
-                            .unwrap()
+                        &journal
+                            .managed_root
+                            .join("operations")
                             .join(format!(".ts4-record-recovery-{}", uuid::Uuid::new_v4())),
                     )
                 }
@@ -484,6 +484,10 @@ pub fn recover_pending(root: &Path) -> Result<Vec<IssueEvent>, ManagerError> {
 }
 
 #[cfg(all(test, unix))]
+#[path = "operation_crash_tests.rs"]
+mod crash_tests;
+
+#[cfg(all(test, unix))]
 mod tests {
     use super::*;
     #[test]
@@ -553,7 +557,8 @@ mod tests {
             outside
         );
         assert_eq!(fs::read(outside).unwrap(), b"original");
-        assert!(crate::mod_scan::scan_mods(&game, &managed).unwrap()
+        assert!(crate::mod_scan::scan_mods(&game, &managed)
+            .unwrap()
             .iter()
             .all(|entry| entry.source != crate::mod_scan::ModSource::Managed));
         assert!(recover_pending(&managed).unwrap().is_empty());
@@ -577,6 +582,8 @@ pub fn recover_pending(_root: &Path) -> Result<Vec<IssueEvent>, ManagerError> {
 #[cfg(test)]
 thread_local! { static FAILURE_AFTER: Cell<Option<usize>> = const { Cell::new(None) }; }
 fn checkpoint() -> Result<(), ManagerError> {
+    #[cfg(all(test, unix))]
+    crash_tests::pause_after_side_effect();
     #[cfg(test)]
     {
         let fail = FAILURE_AFTER.with(|f| match f.get() {

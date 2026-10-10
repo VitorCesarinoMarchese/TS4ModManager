@@ -9,6 +9,7 @@
 
 - [Development guide](development.md): requirements, build commands, validation, repository layout, and Linux release packaging.
 - [Management safety design](native-management-design.md): ownership checks, reviewed operations, recovery, and filesystem contracts.
+- [Process-crash verification](process-crash-verification.md): twelve SIGKILL scenarios, the migration recovery regression, and test limits.
 - [Native design system](native-design.md): layout, colors, typography, and interaction behavior.
 
 ## Historical records

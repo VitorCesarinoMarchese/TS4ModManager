@@ -44,7 +44,7 @@ Enable and disable first show their exact paths and warnings. Confirmation reval
 
 Find source uses real CurseForge provider results and reports a missing API key. Candidates show confidence, reasons, and evidence. Low-confidence warnings stay visible in attachment review. Manual URLs carry no verified-match claim. The native app does not download or update mods.
 
-Startup asks the core to recover pending operations and displays recovery issues. Native toggle and migration hold the shared writer guard across revalidation and mutation. A forced process termination can interrupt approved work; core recovery preserves changed or ambiguous user paths and may require attention before further mutations. OS kill, reboot, touchpad, monitor, and screen-reader checks still need separate evidence.
+Startup asks the core to recover pending operations and displays recovery issues. Native toggle and migration hold the shared writer guard across revalidation and mutation. A forced process termination can interrupt approved work; core recovery preserves changed or ambiguous user paths and may require attention before further mutations. [Twelve core process-crash scenarios](process-crash-verification.md) cover real SIGKILL and fresh-process recovery. Desktop-window termination, reboot, touchpad, monitor, and screen-reader checks still need separate evidence.
 
 ## Settings and custom themes
 
