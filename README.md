@@ -1,88 +1,57 @@
+<p align="center">
+  <img src="native/assets/icon.png" width="96" alt="Sims 4 Mod Manager icon">
+</p>
+
 # Sims 4 Mod Manager
 
-A local-first Linux desktop mod manager built with Fastframe and egui. The native app uses a Rust library for filesystem safety, metadata and source lookup. The React/Tauri app has been retired.
+Your Sims 4 mods and custom content, organized on your Linux desktop.
 
-Browse your collection as photo cards or a compact list. Search names and filenames, filter installed and stored mods, and inspect complete file lists and saved sources. Missing or broken photos show No Preview.
+Browse your collection by photo, find a file by name, and choose which mods are active in your game. Keep downloaded mods in a local library, with reviewed changes and recoverable trash.
 
-Management includes folder and ZIP import, reviewed enable/disable, external-mod migration, rename, source attachment/removal, recoverable trash and reviewed restore. Right-click a mod for its actions. Settings is a full page with custom themes, remembered game folders and explicit settings transfer. The app does not download or update mods.
+[Getting started](#getting-started) · [Documentation](docs/README.md) · [Report a bug](https://github.com/VitorCesarinoMarchese/TS4ModManager/issues) · [Releases](https://github.com/VitorCesarinoMarchese/TS4ModManager/releases)
 
-## Run the app
+![Sims 4 Mod Manager in dark mode, showing the mod library and file inspector](docs/images/library-dark.png)
 
-Requirements: Rust 1.98 or newer, Cargo, and a graphical Linux session. Python 3.11 or newer is needed for verification and packaging.
+*The app running with sample mods. The screenshot uses synthetic test data.*
 
-Install native graphics build dependencies on Ubuntu or Debian:
+## What you can do
 
-```bash
-sudo apt-get update
-sudo apt-get install -y build-essential pkg-config libxkbcommon-dev libwayland-dev libgl1-mesa-dev
-```
+| Feature | What you can do |
+| --- | --- |
+| Browse your collection | Switch between photo cards and a compact list. Search mod names and filenames, or filter installed and stored mods. |
+| Bring your own mods | Import a local folder or ZIP archive, or review existing game mods before moving them into the managed library. |
+| Choose what loads | Review the files before enabling or disabling a managed mod. |
+| Keep track of sources | Save a source link yourself, or review CurseForge suggestions and confirm a match. |
+| Recover removed mods | Move managed mods to trash and review where they will go before restoring them. |
+| Make it yours | Choose light, dark, or system appearance, create a custom theme, and remember your game folders. |
 
-Run from the repository root:
+## Alpha 0.01
 
-```bash
-cargo run --manifest-path native/Cargo.toml --locked
-```
+The first alpha, **0.01**, is being prepared. Expect rough edges and report problems before relying on the app for your main collection.
 
-Open a specific Sims 4 folder containing `Mods`:
+Linux is the current supported platform. Windows and macOS have not been verified. Release downloads will appear on the [releases page](https://github.com/VitorCesarinoMarchese/TS4ModManager/releases) when published. Until then, use the [build and run guide](docs/development.md#run-the-app).
 
-```bash
-cargo run --manifest-path native/Cargo.toml --locked -- --root '/path/to/The Sims 4'
-```
+The app manages mods you already have. It does not download or update them. CurseForge lookup is optional and needs your own API key in local Settings. Suggestions are saved only after you confirm them, and weak matches show a warning.
 
-Use `--settings` to open Settings directly. The [native app guide](native/README.md) describes all controls and CLI options. The app supports Linux; other desktop platforms have not been verified.
+## Getting started
 
-## Local storage and safety
+1. Open the app and choose your **The Sims 4** folder, the folder containing **Mods**. Use **Change folder** if the detected location is wrong.
+2. Browse your existing mods, or select **Import folder** or **Import ZIP** to add files you have downloaded.
+3. Select a managed mod to inspect its files. Choose **Enable** or **Disable**, review the proposed changes, and confirm.
+4. Right-click a mod for more actions. Use **Restore from trash** to recover a removed managed mod.
 
-Managed files live in `~/.local/share/sims4-mod-manager`. Scanning does not create managed storage. Unreadable folders, file entries and damaged managed metadata report an incomplete scan rather than a successful partial catalog. Each managed mod keeps its metadata in `meta.json`.
+See the [app guide](docs/native-app.md) for settings, themes, source lookup, and folder selection.
 
-Settings live in `~/.config/ts4-mod-manager/settings.json`. Saves use atomic replacement and restricted permissions. Custom theme colors persist locally and have a separate JSON export. Settings transfers omit the API key unless explicitly included.
+## Your files stay yours
 
-Source lookup uses real CurseForge provider results and requires a locally configured API key. Requests run separately from local management, with a 20-second shared network budget and a 5-second request limit. Closing the app does not wait on read-only provider requests. Attachment always requires confirmation. Weak candidates retain their confidence warnings. Keep API keys outside Git, chat and per-mod metadata.
+Your library and settings stay on your computer. Local browsing and mod management work without CurseForge. Optional source lookup and remote preview images use network requests.
 
-Enable/disable reviews exact paths before applying changes. Ownership checks protect replacement files and foreign symlinks. Trash keeps managed files recoverable; unmanaged files are not removed. Startup recovery preserves ambiguous or changed paths and reports issues. Approved operations finish before normal window shutdown.
+Management actions require review. The app checks ownership before removing its links, leaves unmanaged files alone, and moves removed managed mods to recoverable trash. Read the [storage and safety details](docs/development.md#local-storage-and-safety) for locations and recovery behavior.
 
-## Validate changes
+## Help and contribute
 
-```bash
-cargo test --manifest-path core/Cargo.toml --locked
-cargo test --manifest-path native/Cargo.toml --locked
-cargo clippy --manifest-path native/Cargo.toml --locked --all-targets -- -D warnings
-cargo build --manifest-path native/Cargo.toml --release --locked
-python3 -m unittest discover -s native/tests -p 'test_*.py'
-python3 native/verify.py --binary native/target/release/ts4-mod-manager-native
-native/target/release/ts4-mod-manager-native --verify-workflows
-python3 native/verify_package.py --binary native/target/release/ts4-mod-manager-native
-```
+[Open an issue](https://github.com/VitorCesarinoMarchese/TS4ModManager/issues) with what you expected, what happened, your Linux distribution, and steps to reproduce the problem. Screenshots help. Keep API keys and private file paths out of reports.
 
-The catalog verifier checks 100, 1,000 and 10,000 synthetic mod groups and preserves their input files. The workflow verifier creates isolated fixtures and exercises reviewed management operations. The repository regression checks that the resolved build graph contains no Tauri or WebKit app dependencies.
+For code contributions, follow the [development and validation guide](docs/development.md). Architecture, safety contracts, packaging instructions, and past migration reports live in [docs](docs/README.md).
 
-Capture the actual native library and Settings from a graphical desktop:
-
-```bash
-python3 native/verify_navigation.py --capture-dir native/target/navigation-captures
-```
-
-## Package a Linux release
-
-After building the release executable:
-
-```bash
-python3 native/package.py --binary native/target/release/ts4-mod-manager-native
-```
-
-CI builds release archives on Ubuntu 24.04 and rejects executables requiring glibc newer than 2.39. Use CI artifacts for distribution. Locally built executables inherit the host library requirements and may require a newer Linux installation. Other runtime graphics dependencies still need to be installed.
-
-The archive appears under `native/target/packages/`. It contains the executable, desktop entry, icon and dependency licenses. The package verifier runs the extracted binary against isolated catalog and management fixtures.
-
-## Repository layout
-
-```text
-core/                 Rust domain library and filesystem regression tests
-native/               Fastframe desktop app, UI tests and verification tools
-native/assets/        Desktop application icon
-.github/workflows/    Core and native validation plus Linux release packaging
-docs/                 Safety design and historical migration evidence
-docs/archive/         Retired app specifications and setup documents
-```
-
-Read the [management safety design](docs/native-management-design.md) for ownership and recovery contracts, or the [native design system](native/DESIGN.md) for UI behavior and tokens. The [original investigation](docs/fastframe-investigation.md) and [migration report](docs/native-migration-report.md) describe historical revisions. Historical web source remains available in Git history, not in the active checkout.
+Sims 4 Mod Manager is an independent project and is not affiliated with Electronic Arts or Maxis.

@@ -1,6 +1,6 @@
 # Retired app documents
 
-These documents describe the React/Tauri app retired on 2026-10-09. Their setup commands and plans are historical. Use the [current README](../../README.md) to build and run the Fastframe app.
+These documents describe the React/Tauri app retired on 2026-10-09. Their setup commands and plans are historical. Use the [current development guide](../development.md) to build and run the Fastframe app.
 
 - [Former app README](react-tauri-readme.md)
 - [Original specification](MVP_SPEC.md)

@@ -4,7 +4,7 @@
   "title": "Design System: Sims 4 Mod Manager native",
   "extensions": {
     "platform": "Linux Fastframe/egui",
-    "source": "native/DESIGN.md",
+    "source": "docs/native-design.md",
     "implementationSources": [
       "native/src/ui.rs",
       "native/src/catalog.rs",

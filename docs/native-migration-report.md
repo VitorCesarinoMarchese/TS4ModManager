@@ -1,6 +1,6 @@
 # Native migration completion report
 
-Historical record from before the React/Tauri app was retired. Source paths and validation commands describe that revision. The current app lives in `native/`, with its Rust library in `core/`. See the [current setup instructions](../README.md).
+Historical record from before the React/Tauri app was retired. Source paths and validation commands describe that revision. The current app lives in `native/`, with its Rust library in `core/`. See the [current setup instructions](development.md).
 
 
 Validated on 2026-10-09. The Fastframe/egui executable now manages local mods through the shared Rust core. The React/Tauri interface remains available and received the state and error fixes. Photo thumbnails and larger detail previews remain in the native interface.

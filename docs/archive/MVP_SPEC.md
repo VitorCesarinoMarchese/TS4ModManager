@@ -1,6 +1,6 @@
 # Sims 4 Linux Mod Manager — MVP Specification (Authoritative)
 
-Historical document for the retired React/Tauri app. Its commands, paths and plans are not current development instructions. Use the [current README](../../README.md) for the Fastframe app.
+Historical document for the retired React/Tauri app. Its commands, paths and plans are not current development instructions. Use the [current development guide](../development.md) for the Fastframe app.
 
 
 Version: 1.0  

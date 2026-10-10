@@ -1,6 +1,6 @@
 # TS4 Mod Manager
 
-Historical document for the retired React/Tauri app. Its commands, paths and plans are not current development instructions. Use the [current README](../../README.md) for the Fastframe app.
+Historical document for the retired React/Tauri app. Its commands, paths and plans are not current development instructions. Use the [current development guide](../development.md) for the Fastframe app.
 
 
 Linux-first desktop mod manager for **The Sims 4**. The React/Tauri interface and the Fastframe/egui native interface share the Rust core.

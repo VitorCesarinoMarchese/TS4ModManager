@@ -1,6 +1,6 @@
 # Fastframe rewrite investigation
 
-Historical record from before the React/Tauri app was retired. Source paths and validation commands describe that revision. The current app lives in `native/`, with its Rust library in `core/`. See the [current setup instructions](../README.md).
+Historical record from before the React/Tauri app was retired. Source paths and validation commands describe that revision. The current app lives in `native/`, with its Rust library in `core/`. See the [current setup instructions](development.md).
 
 
 Investigated on 2026-10-08. Project revision: `f000b8547e315d23e013a9d0252b2cb103a9428f`. Fastframe revision: `bb79dbddef01e660f9cfc37ccd9dff1c299a8d47`.

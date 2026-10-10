@@ -1,6 +1,6 @@
 # Native catalog pilot
 
-Historical record from before the React/Tauri app was retired. Source paths and validation commands describe that revision. The current app lives in `native/`, with its Rust library in `core/`. See the [current setup instructions](../README.md).
+Historical record from before the React/Tauri app was retired. Source paths and validation commands describe that revision. The current app lives in `native/`, with its Rust library in `core/`. See the [current setup instructions](development.md).
 
 
 The pilot keeps the existing Rust core and adds a separate `native/` executable. It reads game instances, scans catalogs, searches names and filenames, and shows mod details. File-management actions remain in the existing app during this evaluation.

@@ -1,6 +1,6 @@
 # Native management migration
 
-Historical record from before the React/Tauri app was retired. Source paths and validation commands describe that revision. The current app lives in `native/`, with its Rust library in `core/`. See the [current setup instructions](../README.md).
+Historical record from before the React/Tauri app was retired. Source paths and validation commands describe that revision. The current app lives in `native/`, with its Rust library in `core/`. See the [current setup instructions](development.md).
 
 
 The user authorized all seven remaining workstreams on 2026-10-08. Preserve the existing managed storage and metadata, keep the React/Tauri app usable during the migration, and keep mod downloads and updates excluded.
