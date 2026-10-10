@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="native/assets/icon.png" width="96" alt="Sims 4 Mod Manager icon">
+  <img src="docs/images/logo.svg" width="560" alt="Sims 4 Mod Manager logo">
 </p>
 
 # Sims 4 Mod Manager

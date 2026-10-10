@@ -11,7 +11,10 @@ class Documentation(unittest.TestCase):
         pages = [ROOT / "README.md", *(ROOT / "docs").glob("*.md")]
         for page in pages:
             with self.subTest(page=page.relative_to(ROOT)):
-                for target in re.findall(r"!?\[[^\]]*\]\(([^)]+)\)", page.read_text()):
+                content = page.read_text()
+                targets = re.findall(r"!?\[[^\]]*\]\(([^)]+)\)", content)
+                targets += re.findall(r'<img\b[^>]*\bsrc="([^"]+)"', content)
+                for target in targets:
                     if "://" in target or target.startswith("#"):
                         continue
                     path = target.split("#", 1)[0]
