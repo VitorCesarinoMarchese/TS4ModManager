@@ -20,7 +20,6 @@ fastframe_icons::icons! {
         Grid => "layout-grid",
         List => "list",
         Library => "library",
-        Package => "package",
         Archive => "archive",
     }
 }
@@ -210,6 +209,8 @@ pub struct View {
 
 #[derive(Default)]
 pub struct RenderStats {
+    pub logo: Option<egui::Rect>,
+    pub theme_button: Option<egui::Rect>,
     pub rows: usize,
     pub files: usize,
     pub search: Option<egui::Rect>,
@@ -253,8 +254,14 @@ impl View {
             )
             .show(ui, |ui| {
                 ui.horizontal(|ui| {
-                    ui.add(Icon::Package.image(ui.visuals().selection.stroke.color, 22.0));
-                    ui.label(RichText::new("Sims 4 Mod Manager").size(20.0).strong());
+                    let logo = ui
+                        .add(
+                            egui::Image::new(egui::include_image!("../assets/logo.svg"))
+                                .fit_to_exact_size(egui::vec2(160.0, 160.0 * 482.0 / 2148.0))
+                                .alt_text("Sims 4 Mod Manager"),
+                        )
+                        .on_hover_text("Sims 4 Mod Manager");
+                    self.stats.logo = Some(logo.rect);
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                         if let Some(c) = controls.as_deref_mut()
                             && ui.selectable_label(c.settings_page, "Settings").clicked()
@@ -264,13 +271,12 @@ impl View {
                         let dark = ui.visuals().dark_mode;
                         let icon = if dark { Icon::Sun } else { Icon::Moon };
                         let label = if dark { "Light" } else { "Dark" };
-                        if ui
-                            .add(egui::Button::image_and_text(
-                                icon.image(foreground, 16.0),
-                                label,
-                            ))
-                            .clicked()
-                        {
+                        let theme_button = ui.add(egui::Button::image_and_text(
+                            icon.image(foreground, 16.0),
+                            label,
+                        ));
+                        self.stats.theme_button = Some(theme_button.rect);
+                        if theme_button.clicked() {
                             if let Some(c) = controls.as_deref_mut() {
                                 c.set_color_mode(
                                     ui.ctx(),
@@ -1215,6 +1221,63 @@ mod tests {
         output
     }
 
+    #[test]
+    fn header_logo_preserves_proportions_and_theme_control_at_supported_widths() {
+        for width in [640.0, 680.0, 1200.0, 1885.0] {
+            for dark in [false, true] {
+                let ctx = egui::Context::default();
+                setup(&ctx);
+                ctx.set_theme(if dark {
+                    egui::Theme::Dark
+                } else {
+                    egui::Theme::Light
+                });
+                let mut view = View::default();
+                let mut catalog = populated_catalog();
+                render(&ctx, &mut view, &mut catalog, vec![], width);
+                render(&ctx, &mut view, &mut catalog, vec![], width);
+                let logo = view
+                    .stats
+                    .logo
+                    .expect("Header must display the supplied logo");
+                let button = view
+                    .stats
+                    .theme_button
+                    .expect("Theme control must stay available");
+                assert!((logo.width() / logo.height() - 2148.0 / 482.0).abs() < 0.01);
+                assert!(logo.left() >= 0.0 && button.right() <= width);
+                assert!(!logo.intersects(button));
+                render(
+                    &ctx,
+                    &mut view,
+                    &mut catalog,
+                    vec![
+                        egui::Event::PointerMoved(button.center()),
+                        egui::Event::PointerButton {
+                            pos: button.center(),
+                            button: egui::PointerButton::Primary,
+                            pressed: true,
+                            modifiers: Default::default(),
+                        },
+                    ],
+                    width,
+                );
+                render(
+                    &ctx,
+                    &mut view,
+                    &mut catalog,
+                    vec![egui::Event::PointerButton {
+                        pos: button.center(),
+                        button: egui::PointerButton::Primary,
+                        pressed: false,
+                        modifiers: Default::default(),
+                    }],
+                    width,
+                );
+                assert_eq!(ctx.theme() == egui::Theme::Dark, !dark);
+            }
+        }
+    }
     #[test]
     fn large_catalog_and_file_details_only_render_visible_rows() {
         let mut catalog = populated_catalog();

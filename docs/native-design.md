@@ -93,7 +93,9 @@ Warm panel backgrounds contain the library, header and status. White or charcoal
 
 ## Typography
 
-Use Fastframe's default font definitions with detected platform rendering. There is no custom application font family. The library heading is strong at 27 points; the selected-mod title is strong at 23; the app title is strong at 20. Card titles are strong at 15. Here, egui's strong treatment selects a text color rather than a separate 700-weight font. Supporting library text uses 13 and metadata uses 12. File basenames use 13 and containing paths use 11. Full names and paths remain available through tooltips where text truncates.
+Use Fastframe's default font definitions with detected platform rendering. There is no custom application font family. The library heading is strong at 27 points; the selected-mod title is strong at 23. Card titles are strong at 15. Here, egui's strong treatment selects a text color rather than a separate 700-weight font. Supporting library text uses 13 and metadata uses 12. File basenames use 13 and containing paths use 11. Full names and paths remain available through tooltips where text truncates.
+
+The header displays the supplied blue and green SVG wordmark at 160 points wide, preserving its 2148:482 aspect ratio. Its colors remain the same in every theme. The SVG is embedded from `native/assets/logo.svg`, which is also used by the README. The image has the accessible label and tooltip Sims 4 Mod Manager.
 
 ## Layout
 
