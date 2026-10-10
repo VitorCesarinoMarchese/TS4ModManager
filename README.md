@@ -55,3 +55,5 @@ Management actions require review. The app checks ownership before removing its 
 For code contributions, follow the [development and validation guide](docs/development.md). Architecture, safety contracts, packaging instructions, and past migration reports live in [docs](docs/README.md).
 
 Sims 4 Mod Manager is an independent project and is not affiliated with Electronic Arts or Maxis.
+
+Licensed under the [MIT License](LICENSE).

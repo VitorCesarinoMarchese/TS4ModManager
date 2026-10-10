@@ -33,6 +33,7 @@ def main():
         licenses = bundle / "share/licenses/ts4-mod-manager-native"
         assert (licenses / "Inter-LICENSE.txt").is_file()
         assert (licenses / "Lucide-LICENSE.txt").is_file()
+        assert (licenses / "LICENSE").read_bytes() == (native.parent / "LICENSE").read_bytes()
         dependencies = json.loads((licenses / "dependencies.json").read_text())
         assert any(package["name"] == "eframe" for package in dependencies)
         game = root / "fixture/The Sims 4"

@@ -50,6 +50,7 @@ def main():
         shutil.copy2(native / "assets/icon.png", icon)
         licenses = bundle / "share/licenses/ts4-mod-manager-native"
         shutil.copytree(native / "licenses", licenses)
+        shutil.copy2(native.parent / "LICENSE", licenses / "LICENSE")
         inventory = []
         for dependency in sorted(metadata["packages"], key=lambda item: (item["name"], item["version"])):
             source = Path(dependency["manifest_path"]).parent
